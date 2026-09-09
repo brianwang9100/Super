@@ -65,6 +65,7 @@ struct BibleChapterReader: View {
     private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
+    private let topReserve: CGFloat
 
     /// Whether the latest scroll phase is one the *user* drove
     /// (`.interacting` / `.decelerating`) versus a programmatic `scrollTo`
@@ -140,7 +141,8 @@ struct BibleChapterReader: View {
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
         onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
-        onFooterVisible: @escaping (Bool) -> Void = { _ in }
+        onFooterVisible: @escaping (Bool) -> Void = { _ in },
+        topReserve: CGFloat = 68
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -180,6 +182,7 @@ struct BibleChapterReader: View {
         self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
+        self.topReserve = topReserve
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -304,7 +307,7 @@ struct BibleChapterReader: View {
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
                 // fades over the first lines as they scroll up beneath it.
-                .padding(.top, 68)
+                .padding(.top, topReserve)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // A tap that misses every verse word dismisses the action sheet.
                 .contentShape(Rectangle())

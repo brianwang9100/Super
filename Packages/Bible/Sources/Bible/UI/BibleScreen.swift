@@ -32,6 +32,7 @@ public struct BibleScreen: View {
     /// is then a no-op and the chevrons simply don't appear.
     @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
+    @State private var measuredNavigationHeight: CGFloat = 60
 
     /// Work to run once the currently-presented sheet finishes dismissing.
     /// Presenting a second native sheet while the first is still dismissing is
@@ -40,7 +41,7 @@ public struct BibleScreen: View {
     /// follow-on presentation here, dismiss the current sheet, and run it from
     /// that sheet's `onDismiss` (`runPendingSheetHandoff`). Shared by the book
     /// sheet and the action / narration sheet since only one is ever up.
-    @State private var pendingSheetHandoff: (() -> Void)?
+    @State private var pendingSheetHandoff: (position: BiblePosition, action: () -> Void)?
 
     /// How the toast and the picker state flips animate in and out — a bottom
     /// slide by default, a cross-fade when Reduce Motion is on. (The migrated
@@ -139,7 +140,19 @@ public struct BibleScreen: View {
             theme.background.ignoresSafeArea()
             content
             navBar
-            if let toast = viewModel.toast {
+            if let message = viewModel.navigationPersistenceError {
+                BibleAttachToast(
+                    message: message,
+                    onDismiss: { viewModel.dismissNavigationPersistenceError() },
+                    onRetry: { Task { await viewModel.retryNavigationPersistence() } },
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .disabled(viewModel.isRestoringNavigation)
+                .padding(.horizontal, 12)
+                .padding(.bottom, bottomReserve)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .transition(motion.transition)
+            } else if let toast = viewModel.toast {
                 BibleAttachToast(
                     message: toast,
                     onDismiss: { withAnimation(motion.animation) { viewModel.dismissToast() } }
@@ -160,6 +173,9 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.selectionCitation) { _, _ in
             publishComposerAccessories()
         }
+        .onChange(of: viewModel.isRestoringNavigation) { _, _ in
+            publishComposerAccessories()
+        }
         // Immersive reading: when the scroll reducer flips `isImmersive`,
         // mirror it to the shell so its hamburger + chat pill hide/show in
         // sympathy with the local nav bar. Published only on real flips
@@ -172,6 +188,7 @@ public struct BibleScreen: View {
         // the top; clear immersive so chrome can't strand hidden (the
         // `isImmersive` change above restores the shell's chrome too).
         .onChange(of: viewModel.position) { _, _ in
+            pendingSheetHandoff = nil
             viewModel.resetImmersive()
             // Stepping a chapter can flip the canon-end availability, so
             // refresh the hovering chevrons' enabled state.
@@ -191,6 +208,9 @@ public struct BibleScreen: View {
         // OS would silence anyway.
         .onChange(of: scenePhase) { _, new in
             if new != .active { viewModel.narration.stop() }
+            if new == .background {
+                Task { await viewModel.flushNavigationPersistence() }
+            }
         }
         // No `.onChange(narration.state) { dismissCard }` here on
         // purpose: per spec, Stop halts playback but keeps the card up
@@ -385,13 +405,13 @@ public struct BibleScreen: View {
             leading: ComposerAccessoryButton(
                 systemImage: "chevron.left",
                 accessibilityLabel: "Previous chapter",
-                isEnabled: viewModel.canStepBackward,
+                isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepBackward,
                 action: { viewModel.stepChapter(.previous) }
             ),
             trailing: ComposerAccessoryButton(
                 systemImage: "chevron.right",
                 accessibilityLabel: "Next chapter",
-                isEnabled: viewModel.canStepForward,
+                isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
             selection: viewModel.selectionCitation.map { citation in
@@ -492,15 +512,27 @@ public struct BibleScreen: View {
                         viewModel.presentNarrationSheet()
                     }
                 }
-            }
+            },
+            historyControls: .init(
+                backLabel: historyLabel(for: viewModel.backDestination),
+                forwardLabel: historyLabel(for: viewModel.forwardDestination),
+                onBack: { viewModel.goBack() }, onForward: { viewModel.goForward() }
+            ),
+            isRestoringNavigation: viewModel.isRestoringNavigation
         )
+        .disabled(viewModel.isRestoringNavigation)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            measuredNavigationHeight = height
+        }
         // Immersive reading: slide the whole bar up off the top edge and fade
-        // it as the user scrolls down into the chapter. `navBarHideDistance`
+        // it as the user scrolls down into the chapter. The measured hide distance
         // clears the bar plus the top safe area / Dynamic Island. The shell's
         // own chrome (hamburger + chat pill) hides in sympathy off the bus
         // event published below, on the same `chromeReveal` curve so the two
         // move together.
-        .offset(y: viewModel.isImmersive ? -Self.navBarHideDistance : 0)
+        .offset(y: viewModel.isImmersive ? -navigationHideDistance : 0)
         .opacity(viewModel.isImmersive ? 0 : 1)
         .animation(
             SuperMotion.chrome(hiding: viewModel.isImmersive, reduceMotion: reduceMotion),
@@ -508,10 +540,16 @@ public struct BibleScreen: View {
         )
     }
 
-    /// How far up to slide the nav bar when it hides — its own height plus a
-    /// generous allowance for the top safe area / Dynamic Island so it clears
-    /// the screen on every iPhone.
-    private static let navBarHideDistance: CGFloat = 120
+    /// Reserve every adaptive toolbar row above the chapter heading.
+    private var navigationTopReserve: CGFloat { measuredNavigationHeight + 8 }
+
+    /// Clear the measured toolbar and the top safe area when entering immersive mode.
+    private var navigationHideDistance: CGFloat { measuredNavigationHeight + 60 }
+
+    private func historyLabel(for position: BiblePosition?) -> String? {
+        guard let position, let book = BibleBookCatalog.standard.book(id: position.bookId) else { return nil }
+        return "\(book.name) \(position.chapterNumber)"
+    }
 
     /// Fire a generation intent for each contiguous range in the current
     /// verse selection. A non-contiguous selection (e.g. 28, 30) produces
@@ -594,7 +632,7 @@ public struct BibleScreen: View {
     /// Queue `work` and dismiss the book picker; `work` fires from the picker's
     /// `onDismiss` so the follow-on sheet lands on the bare reader.
     private func handOffAfterBookSheetDismiss(_ work: @escaping () -> Void) {
-        pendingSheetHandoff = work
+        pendingSheetHandoff = (viewModel.position, work)
         viewModel.dismissBookSheet()
     }
 
@@ -606,16 +644,17 @@ public struct BibleScreen: View {
             work()
             return
         }
-        pendingSheetHandoff = work
+        pendingSheetHandoff = (viewModel.position, work)
         viewModel.clearSelection()
     }
 
     /// Run (and clear) the hand-off queued before the current sheet dismissed.
     /// A no-op when no hand-off was queued (a plain drag-dismiss).
     private func runPendingSheetHandoff() {
-        let work = pendingSheetHandoff
+        let pending = pendingSheetHandoff
         pendingSheetHandoff = nil
-        work?()
+        guard let pending, pending.position == viewModel.position else { return }
+        pending.action()
     }
 
     @ViewBuilder
@@ -682,12 +721,14 @@ public struct BibleScreen: View {
                 },
                 onFooterVisible: { visible in
                     viewModel.updateFooterVisibility(visible)
-                }
+                },
+                topReserve: navigationTopReserve
             )
             // A fresh identity per chapter resets the scroll offset to the
             // top and re-subscribes the highlight `@Query` when the reader
             // steps.
             .id(viewModel.position)
+            .disabled(viewModel.isRestoringNavigation)
             // Swap chapters instantly even when the jump happens inside the
             // book picker's slide-down animation transaction.
             .transition(.identity)

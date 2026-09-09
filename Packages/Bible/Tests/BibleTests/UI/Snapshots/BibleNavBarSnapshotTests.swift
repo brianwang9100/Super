@@ -112,6 +112,66 @@ struct BibleNavBarSnapshotTests {
                narrationState: .speaking, narrationCitation: "1 Peter 2:4")
     }
 
+    @Test("history states keep independent disabled controls without changing layout")
+    func historyStatesGallery() {
+        let states: [(String?, String?)] = [(nil, nil), (nil, "Psalm 23"), ("John 3", "Psalm 23"), ("John 3", nil)]
+        let view = VStack(spacing: 0) {
+            ForEach(states.indices, id: \.self) { index in
+                bar(showsChapterChevrons: false, history: .init(
+                    backLabel: states[index].0, forwardLabel: states[index].1,
+                    onBack: {}, onForward: {}
+                ))
+            }
+        }
+        .frame(width: 402, height: 320, alignment: .top)
+        .background(SuperTheme.make(.vellumLight).background)
+        .superTheme(.make(.vellumLight))
+        let failure = verifyVisualSnapshot(
+            of: view, as: .image(layout: .fixed(width: 402, height: 320)),
+            named: "history_states", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
+    @Test("long names and accessibility text fit below utility controls on narrow screens")
+    func historyNarrowAccessibility() {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: true)
+            .frame(width: 320, height: 360, alignment: .top)
+            .background(SuperTheme.make(.vellumLight).background)
+            .dynamicTypeSize(.accessibility3)
+            .superFontScale(1.5)
+            .superTheme(.make(.vellumLight))
+        let failure = verifyVisualSnapshot(
+            of: view, as: .image(layout: .fixed(width: 320, height: 360)),
+            named: "history_narrow_accessibility", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
+    private func bar(
+        bookName: String = "1 Peter",
+        canStepBackward: Bool = true,
+        canStepForward: Bool = true,
+        selectionCitation: String? = nil,
+        showsChapterChevrons: Bool = true,
+        narrationState: NarrationController.State = .idle,
+        narrationCitation: String? = nil,
+        history: BibleNavBar.HistoryControls = .init(
+            backLabel: "John 3", forwardLabel: "Psalm 23", onBack: {}, onForward: {}
+        )
+    ) -> BibleNavBar {
+        BibleNavBar(
+            bookName: bookName, chapterNumber: 2, translation: .web,
+            selectionCitation: selectionCitation, showsSelectionPill: showsChapterChevrons,
+            showsChapterChevrons: showsChapterChevrons,
+            canStepBackward: canStepBackward, canStepForward: canStepForward,
+            narrationState: narrationState, narrationCitation: narrationCitation,
+            onPrevious: {}, onNext: {}, onPill: {}, onTranslation: {},
+            onSelectionPill: {}, onClearSelection: {}, onSparkMenuAction: { _ in },
+            onTapNarrationPill: {}, historyControls: history
+        )
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         canStepBackward: Bool,
@@ -126,33 +186,18 @@ struct BibleNavBarSnapshotTests {
         let theme = SuperTheme.make(themeID)
         let view = ZStack(alignment: .top) {
             theme.background
-            BibleNavBar(
-                bookName: "1 Peter",
-                chapterNumber: 2,
-                translation: .web,
-                selectionCitation: selectionCitation,
-                showsSelectionPill: showsChapterChevrons,
-                showsChapterChevrons: showsChapterChevrons,
-                canStepBackward: canStepBackward,
-                canStepForward: canStepForward,
-                narrationState: narrationState,
-                narrationCitation: narrationCitation,
-                onPrevious: {},
-                onNext: {},
-                onPill: {},
-                onTranslation: {},
-                onSelectionPill: {},
-                onClearSelection: {},
-                onSparkMenuAction: { _ in },
-                onTapNarrationPill: {}
+            bar(
+                canStepBackward: canStepBackward, canStepForward: canStepForward,
+                selectionCitation: selectionCitation, showsChapterChevrons: showsChapterChevrons,
+                narrationState: narrationState, narrationCitation: narrationCitation
             )
         }
-        .frame(width: 402, height: 96)
+        .frame(width: 402, height: 160)
         .superTheme(theme)
 
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 96)),
+            as: .image(layout: .fixed(width: 402, height: 160)),
             named: name,
             testName: function
         )

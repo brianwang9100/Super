@@ -406,7 +406,7 @@
     "image": "Bible_BibleAttachToastSnapshotTests_dark.dark.png",
     "pixels": [
       1206,
-      330
+      780
     ]
   },
   {
@@ -416,7 +416,7 @@
     "image": "Bible_BibleAttachToastSnapshotTests_light.light.png",
     "pixels": [
       1206,
-      330
+      780
     ]
   },
   {
@@ -856,7 +856,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_bottomSelectionDark.bottom_selection_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -866,7 +866,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_bottomSelectionLight.bottom_selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -876,7 +876,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_defaultDark.default_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -886,7 +886,27 @@
     "image": "Bible_BibleNavBarSnapshotTests_defaultLight.default_light.png",
     "pixels": [
       1206,
-      288
+      480
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/historyNarrowAccessibility.history_narrow_accessibility.png",
+    "image": "Bible_BibleNavBarSnapshotTests_historyNarrowAccessibility.history_narrow_accessibility.png",
+    "pixels": [
+      960,
+      1080
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/historyStatesGallery.history_states.png",
+    "image": "Bible_BibleNavBarSnapshotTests_historyStatesGallery.history_states.png",
+    "pixels": [
+      1206,
+      960
     ]
   },
   {
@@ -896,7 +916,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonPausedLight.narrating_speaker_button_paused_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -906,7 +926,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonSpeakingDark.narrating_speaker_button_speaking_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -916,7 +936,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonSpeakingLight.narrating_speaker_button_speaking_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -926,7 +946,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonWithSelectionDotLight.narrating_speaker_button_with_selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -936,7 +956,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_nextDisabled.next_disabled_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -946,7 +966,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_noChevronsDark.no_chevrons_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -956,7 +976,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_noChevronsLight.no_chevrons_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -966,7 +986,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_previousDisabled.previous_disabled_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -976,7 +996,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_selectionDark.selection_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -986,7 +1006,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_selectionLight.selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
