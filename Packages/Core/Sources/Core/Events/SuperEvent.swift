@@ -1,69 +1,31 @@
-/// Broadcast envelope for the cross-applet event bus. New cross-applet
-/// interactions append cases here rather than introducing parallel channels.
+/// Cross-applet interactions share this event bus envelope.
 public enum SuperEvent: Sendable, Equatable {
     /// A credential owner saved, replaced, or removed its referenced secret.
     case credentialChanged(id: String)
 
-    /// An applet asks Chat to attach `reference` to its message composer.
-    /// `startNewConversation` distinguishes "Add to chat" (`false`) from
-    /// "New chat" (`true`) so the receiver can route accordingly.
+    /// Attaches to the current composer, or starts a new conversation when requested.
     case recordAddedToChat(reference: RecordReference, startNewConversation: Bool)
 
-    /// Chats applet → shell: open the conversation with this id in the
-    /// chat overlay. The shell handles snapping the overlay to expanded
-    /// and rebuilding the per-conversation view model.
+    /// The shell expands Chat and loads this conversation.
     case openConversationRequested(id: String)
 
-    /// Chats applet → shell: create a fresh "New chat" draft in the
-    /// overlay. The shell handles allocating an id, snapping to expanded,
-    /// and routing through the existing lazy-persist driver.
+    /// The shell expands Chat with a draft that is persisted on first use.
     case newConversationRequested
 
-    /// Any applet → shell: focus the applet identified by
-    /// `reference.appletID` and pass `reference` to it for in-applet
-    /// navigation. Mirrors `recordAddedToChat` in reverse — that one
-    /// pulls a record *into* Chat; this one pushes the user *back out*
-    /// to the record's home applet. Today's sole consumer is Bible
-    /// receiving a verse-range tap originating in the Chat transcript
-    /// (and from `super://bible/...` deep links at the scene root).
+    /// The shell focuses `reference.appletID` and forwards the reference for navigation.
     case openRecord(reference: RecordReference)
 
-    /// Bible → Chat (headless): the user tapped a generation entry
-    /// point (spark button on a verse selection, the Annotate action
-    /// tile, an empty book-picker bubble) and Chat should fire a
-    /// one-off LLM turn that calls the `bible.annotate` tool against
-    /// the target encoded in `reference`. The turn must not be
-    /// visible in the Chats list — the dispatcher creates a transient
-    /// conversation, runs the turn, and cleans up the conversation
-    /// rows when finished. `reference.id` is the request id the
-    /// completion event will echo back.
+    /// Runs a headless `bible.annotate` turn for `reference`; the transient conversation
+    /// stays out of Chats and is deleted afterward. Completion echoes `reference.id`.
     case bibleAnnotateRequested(reference: RecordReference)
 
-    /// Chat → Bible (headless): a `bibleAnnotateRequested` dispatch
-    /// terminated. `requestId` is the originating `RecordReference.id`.
-    /// `result` is the outcome — Bible's view model uses it to remove
-    /// the running entry from its dispatch table or surface a retry
-    /// button.
+    /// Completes a headless annotation dispatch; `requestId` is its `RecordReference.id`.
     case bibleAnnotateCompleted(requestId: String, result: BibleAnnotateResult)
 
-    /// Shell → applets: the navigation drawer (sidebar) is opening.
-    /// Applets dismiss any native sheet they're presenting so the
-    /// in-view drawer — which renders *below* a native sheet's own
-    /// presentation window and would otherwise slide in behind it —
-    /// becomes the topmost surface. Subscribers dismiss any native sheet
-    /// they're presenting.
+    /// Applets dismiss native sheets so the opening sidebar is not obscured.
     case sidebarOpened
 
-    /// Any applet → shell: hide (`visible: false`) or restore
-    /// (`visible: true`) the shell's global chrome — the top-left
-    /// hamburger button and the minimized chat pill — so a reading /
-    /// content surface can claim the full screen. Deliberately
-    /// applet-agnostic (Core stays domain-free): the applet decides *when*
-    /// to ask; the shell decides *how* to comply. The shell honours it
-    /// only while the chat is in its minimized pill state and resets to
-    /// visible whenever the active applet changes or the chat leaves the
-    /// pill, so a request can never strand chrome off-screen. Today's sole
-    /// driver is the Bible reader hiding chrome as the user scrolls into a
-    /// chapter and restoring it on scroll-up / at the top.
+    /// Controls the hamburger and minimized Chat pill while Chat is minimized.
+    /// The shell restores chrome on applet changes or when Chat leaves the pill state.
     case shellChromeVisibilityRequested(visible: Bool)
 }
