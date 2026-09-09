@@ -404,7 +404,8 @@ public final class ChatScreenViewModel {
         usedTokens: Int = 0,
         streamingTail: MessageList.StreamingState? = nil,
         error: MessageList.ErrorState? = nil,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        showCopyConfirmation: Bool = false
     ) {
         // The view-model invariant — `streamingTail != nil ⇔ isStreaming
         // == true` — is what `ChatScreen`'s empty-state guard relies on
@@ -421,6 +422,7 @@ public final class ChatScreenViewModel {
         self.streamingTail = streamingTail
         self.error = error
         self.isStreaming = isStreaming
+        self.showCopyConfirmation = showCopyConfirmation
     }
 
     /// Inject resolved suggestions directly for snapshot tests/previews,

@@ -2915,6 +2915,28 @@
   },
   {
     "package": "Chat",
+    "suite": "ChatScreenSnapshotTests",
+    "image": "Chat_ChatScreenSnapshotTests_scrollToBottomDark.screen_scroll_to_bottom_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "testName": "scrollToBottomDark",
+    "captureName": "screen_scroll_to_bottom_dark"
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatScreenSnapshotTests",
+    "image": "Chat_ChatScreenSnapshotTests_scrollToBottomLight.screen_scroll_to_bottom_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "testName": "scrollToBottomLight",
+    "captureName": "screen_scroll_to_bottom_light"
+  },
+  {
+    "package": "Chat",
     "suite": "ChatsScreenSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatsScreenSnapshotTests/noChatsYet.chats_empty_light.png",
     "image": "Chat_ChatsScreenSnapshotTests_noChatsYet.chats_empty_light.png",

@@ -60,6 +60,8 @@ public struct MessageList: View {
     public let scrollRequest: ScrollRequest?
     /// Unpersisted partial response retained after a stop or error.
     public let interruptedResponse: StreamingState?
+    /// Shows the non-interactive copy confirmation above transcript navigation.
+    public let showCopyConfirmation: Bool
 
     public init(
         items: [Item],
@@ -67,6 +69,7 @@ public struct MessageList: View {
         error: ErrorState? = nil,
         scrollRequest: ScrollRequest? = nil,
         interruptedResponse: StreamingState? = nil,
+        showCopyConfirmation: Bool = false,
         verbosity: ChatVerbosity = .simple,
         onRetry: @escaping () -> Void = {},
         onContentTap: @escaping () -> Void = {},
@@ -81,6 +84,7 @@ public struct MessageList: View {
         self.error = error
         self.scrollRequest = scrollRequest
         self.interruptedResponse = interruptedResponse
+        self.showCopyConfirmation = showCopyConfirmation
         self.verbosity = verbosity
         self.onRetry = onRetry
         self.onContentTap = onContentTap
@@ -95,11 +99,15 @@ public struct MessageList: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.messageListReduceMotionOverride) private var reduceMotionOverride
     @State private var focus = MessageListFocus()
-    @State private var focusMeasurementID = 0
+    @State private var scrollMeasurementID = 0
     @State private var thinkingExpansion: [ThinkingKey: Bool] = [:]
+    @State private var bottomScroll = BottomScrollState()
+    @State private var bottomVisibility = ScrollToBottomButton.VisibilityState()
+
+    private static let bottomID = "__transcript_bottom"
 
     /// The live response and its saved row share the same logical slot.
-    private struct ThinkingKey: Hashable {
+    struct ThinkingKey: Hashable {
         let turnID: String
         let responseIndex: Int
     }
@@ -116,14 +124,39 @@ public struct MessageList: View {
         )
     }
 
+    /// Geometry callbacks mutate the request without invalidating layout.
+    private final class BottomScrollState {
+        var request = MessageListBottomScrollRequest<BottomScrollContext>()
+        var isNativeAnimating = false
+    }
+
+    /// Same-turn tokens and persistence keep the tap alive until rendered arrival.
+    struct BottomScrollContext: Equatable {
+        let turnID: String?
+        let viewport: CGSize
+        let verbosity: ChatVerbosity
+        let thinkingExpansion: [ThinkingKey: Bool]
+    }
+
+    private struct BottomGeometry: Equatable {
+        let bottomY: CGFloat
+        let measurementID: Int
+        let content: BottomScrollContext
+    }
+
     public var body: some View {
         GeometryReader { geometry in
-            transcript(containerHeight: geometry.size.height)
+            transcript(containerSize: geometry.size)
         }
     }
 
-    private func transcript(containerHeight: CGFloat) -> some View {
+    private func transcript(containerSize: CGSize) -> some View {
+        let containerHeight = containerSize.height
         let turns = MessageListTurn.group(items)
+        let bottomScrollContext = BottomScrollContext(
+            turnID: turns.last?.id, viewport: containerSize,
+            verbosity: verbosity, thinkingExpansion: thinkingExpansion
+        )
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -145,16 +178,31 @@ public struct MessageList: View {
                             alignment: .top
                         )
                         .id(turn.id)
-                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { [focusMeasurementID] geometry in
+                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { [scrollMeasurementID] geometry in
                             guard let request = scrollRequest, request.messageID == turn.id else { return nil }
                             return MessageListFocus.Geometry(
                                 request: request,
                                 viewportY: geometry.frame(in: .named("transcript-viewport")).minY,
-                                measurementID: focusMeasurementID
+                                measurementID: scrollMeasurementID
                             )
                         } action: { geometry in
                             guard let geometry else { return }
                             perform(focus.measure(geometry), using: proxy)
+                        }
+                        .onGeometryChange(for: BottomGeometry?.self) { [scrollMeasurementID] geometry in
+                            guard turn.id == turns.last?.id else { return nil }
+                            return BottomGeometry(
+                                bottomY: geometry.frame(in: .named("transcript-viewport")).maxY + 8,
+                                measurementID: scrollMeasurementID, content: bottomScrollContext
+                            )
+                        } action: { geometry in
+                            guard let geometry else { return }
+                            if bottomScroll.request.shouldRefine(
+                                distanceToBottom: geometry.bottomY - containerHeight,
+                                isRendered: true, content: geometry.content, measurementID: geometry.measurementID
+                            ) {
+                                scrollToBottom(using: proxy)
+                            }
                         }
                     }
                     if turns.isEmpty {
@@ -166,6 +214,22 @@ public struct MessageList: View {
                 // Synchronous viewport input, never a geometry-to-state feedback
                 // loop. The focused turn keeps its space even after a short reply.
                 .frame(minHeight: containerHeight, alignment: .top)
+                .id(Self.bottomID)
+                .onGeometryChange(for: BottomGeometry.self) { [scrollMeasurementID] geometry in
+                    BottomGeometry(
+                        bottomY: geometry.frame(in: .named("transcript-viewport")).maxY,
+                        measurementID: scrollMeasurementID, content: bottomScrollContext
+                    )
+                } action: { geometry in
+                    // The stack can seek using estimates, but the rendered last
+                    // turn above confirms arrival after lazy materialization.
+                    if bottomScroll.request.shouldRefine(
+                        distanceToBottom: geometry.bottomY - containerHeight,
+                        isRendered: turns.isEmpty, content: geometry.content, measurementID: geometry.measurementID
+                    ) {
+                        scrollToBottom(using: proxy)
+                    }
+                }
                 .contentShape(Rectangle())
                 .simultaneousGesture(TapGesture().onEnded { onContentTap() })
             }
@@ -176,22 +240,54 @@ public struct MessageList: View {
             // preserve the leading reading edge; only a user action calls scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .sizeChanges)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                ScrollToBottomButton.VisibilityState.isAwayFromBottom(geometry)
+            } action: { _, isAway in
+                bottomVisibility.isVisible = isAway
+            }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 8) {
+                    if showCopyConfirmation {
+                        CopyConfirmationPill()
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                    }
+                    // Retain this slot while the arrow fades or is hidden, so
+                    // the confirmation never moves across its hit target.
+                    ScrollToBottomButton(visibility: bottomVisibility) {
+                        focus.cancel()
+                        bottomScroll.request.begin(content: bottomScrollContext, animated: !reduceMotion)
+                        scrollToBottom(using: proxy)
+                    }
+                }
+                .padding(.bottom, ScrollToBottomButton.bottomPadding)
+                .animation(.easeInOut(duration: 0.18), value: showCopyConfirmation)
+            }
+            .onChange(of: bottomScrollContext) { _, _ in
+                bottomScroll.request.cancel()
+            }
             .onChange(of: scrollRequest, initial: true) { previous, request in
                 guard let request, turns.contains(where: { $0.id == request.messageID }) else { return }
+                bottomScroll.request.cancel()
                 // Mount restored history immediately; animate only new intent.
                 perform(focus.begin(request, animated: previous != request && !reduceMotion), using: proxy)
             }
             .onScrollPhaseChange { previous, phase in
+                bottomScroll.isNativeAnimating = phase == .animating
                 if phase == .tracking || phase == .interacting || phase == .decelerating {
                     focus.cancel()
+                    bottomScroll.request.cancel()
                 } else if phase == .animating {
                     focus.motionBegan()
+                    bottomScroll.request.motionBegan()
                 } else if previous == .animating, phase == .idle {
-                    let nextMeasurementID = focusMeasurementID + 1
-                    if focus.motionEnded(awaiting: nextMeasurementID) {
+                    let nextMeasurementID = scrollMeasurementID + 1
+                    let focusEnded = focus.motionEnded(awaiting: nextMeasurementID)
+                    let bottomEnded = bottomScroll.request.motionEnded(awaiting: nextMeasurementID)
+                    if focusEnded || bottomEnded {
                         // One fresh measurement per completed move, even when
                         // the last animation frame's geometry callback is late.
-                        focusMeasurementID = nextMeasurementID
+                        scrollMeasurementID = nextMeasurementID
                     }
                 }
             }
@@ -199,6 +295,21 @@ public struct MessageList: View {
     }
 
     private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+    private func scrollToBottom(using proxy: ScrollViewProxy) {
+        let movementID = bottomScroll.request.movementID
+        if bottomScroll.isNativeAnimating { bottomScroll.request.motionBegan() }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3), completionCriteria: .removed) {
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        } completion: {
+            // A lazy target may produce no native motion. Reconcile that seek
+            // without treating transaction completion as the end of real motion.
+            let nextMeasurementID = scrollMeasurementID + 1
+            if bottomScroll.request.animationCompleted(for: movementID, awaiting: nextMeasurementID) {
+                scrollMeasurementID = nextMeasurementID
+            }
+        }
+    }
 
     private func perform(_ move: MessageListFocus.Move?, using proxy: ScrollViewProxy) {
         guard let move else { return }

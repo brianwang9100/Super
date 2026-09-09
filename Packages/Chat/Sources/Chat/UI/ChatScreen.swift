@@ -373,21 +373,10 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
-                // Tap-to-dismiss must attach to `content` (a *sibling* of the
-                // composer), not to the `.safeAreaInset` composite below (an
-                // *ancestor* of the composer). On the composite the
-                // `.simultaneousGesture` fires concurrently with the composer
-                // `TextField`'s own tap and resigns first responder before the
-                // edit (select/copy) menu can present — so tapping a focused
-                // composer used to drop the keyboard. As a sibling gesture it's
-                // outside the eligibility set for taps the composer layer
-                // consumes, so composer taps reach the `TextField` untouched
-                // while transcript/empty-state taps still dismiss. Do not move
-                // this back below `.safeAreaInset`.
+                // Keyboard dismissal belongs to the transcript rows and empty
+                // state below, so floating navigation and composer taps retain
+                // focus. Keep the drag handoff's full content hit region here.
                 .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture().onEnded { dismissKeyboard() }
-                )
                 // Drag-anywhere on the transcript/empty-state content: a
                 // `UIPanGestureRecognizer` that scrolls the transcript until it
                 // hits an edge, then hands the same finger-drag off to resizing
@@ -419,26 +408,10 @@ public struct ChatScreen: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
                 }
-                .overlay(alignment: .bottom) {
-                    // Transient "Copied!" pill floats at the bottom edge
-                    // of the transcript area, which puts it directly
-                    // above the composer at every progress level. The
-                    // `.clipped()` that used to hide its off-screen
-                    // slide-in start is gone (see the trade-off note
-                    // below), so it now fades/slides in at the edge.
-                    if viewModel.showCopyConfirmation {
-                        CopyConfirmationPill()
-                            .padding(.bottom, 8)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            .allowsHitTesting(false)
-                    }
-                }
                 // Deliberately no `.clipped()` here: it would crop the composer's
                 // glass elevation shadow in pill mode. The transcript's own
                 // ScrollView self-clips, and the panel `.mask` rounds/contains the
-                // card in semi + expanded. Trade-off: the copy-pill loses its
-                // emerge-from-behind-the-composer clip, which is acceptable.
-                .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
+                // card in semi + expanded.
         }
         .background(panelBackground)
         // Crop the panel to a floating-card width with a mask rather than
@@ -709,6 +682,10 @@ public struct ChatScreen: View {
                             .padding(.bottom, 14)
                     }
                 }
+                // Include blank space and suggestions, while keeping this
+                // gesture outside the transcript's floating navigation overlay.
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
                 .task { viewModel.loadSuggestionsIfNeeded(fallback: suggestedChatActions) }
         } else {
             // The streaming tail observation is confined to
@@ -758,6 +735,7 @@ public struct ChatScreen: View {
                 error: viewModel.error,
                 scrollRequest: viewModel.scrollRequest,
                 interruptedResponse: viewModel.interruptedResponse,
+                showCopyConfirmation: viewModel.showCopyConfirmation,
                 verbosity: verbosity,
                 onRetry: onRetry,
                 onContentTap: onContentTap,
