@@ -2,7 +2,6 @@ import SwiftUI
 import XCTest
 @testable import SnapshotPreviewsCore
 
-/// Regression coverage for fixed viewports and the minimum intrinsic fitting contract.
 @MainActor
 final class RendererLayoutTests: XCTestCase {
     func testFixedViewportDisablesExpansionAndResetRestoresIt() {

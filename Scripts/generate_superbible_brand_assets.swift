@@ -1,35 +1,9 @@
 #!/usr/bin/env swift
-//
-// generate_superbible_brand_assets.swift
-//
-// Regenerates the brand assets for BOTH app targets — SuperBible and SuperOS —
-// from a single source of truth: the Vellum Light theme tokens, the finalized
-// 8-point Star of Bethlehem (SuperBible), and the 12-ray spark (SuperOS).
-//
-// The design (the Claude "Theme Icons & Splash" design artifact — external to
-// this repo): a flat themed ground with the centered mark, no wordmark. Each
-// app icon sits on the slightly deeper `bgSunken` paper; the launch/splash
-// ground uses the brighter `bg`. SuperBible's mark is the filled star in the
-// theme `accent` (clay, hue 52); SuperOS's mark is the stroked spark in
-// `accentDark` (the deeper clay the SwiftUI `SplashView` strokes its spark
-// with), so the icon and the launch splash read identically. The Vellum tokens
-// below mirror `Packages/Core/Sources/Core/Theme/SuperTheme.swift` (vellumLight)
-// and `docs/design/palettes.jsx`.
-//
-// Colours are produced by the SAME OKLCH → sRGB transform Core ships in
-// `Packages/Core/Sources/Core/Theme/OKLCH.swift`, so the baked PNG/colorset
-// pixels match what SwiftUI renders for `theme.background` etc. — no flash
-// between the system `UILaunchScreen` and SwiftUI's first frame.
-//
-// App-icon PNGs are rendered in an OPAQUE (`noneSkipLast`) context so the
-// exported file carries NO alpha channel — App Store Connect rejects icon PNGs
-// with alpha (ITMS-90717). The SuperBible launch image deliberately keeps its
-// alpha (it's a transparent-ground mark; the Vellum field shows through from the
-// SplashBackground colour behind it).
-//
-// Run from the repo root:  swift Scripts/generate_superbible_brand_assets.swift
-// It writes directly into App-SuperBible/Assets.xcassets/ and
-// App-SuperOS/Assets.xcassets/.
+// Regenerates both targets' brand assets from Vellum Light tokens and the star/spark geometry.
+// Match Core's OKLCH transform and SplashView colors to avoid a launch-screen flash.
+// App icons must be opaque (ITMS-90717); the SuperBible launch mark retains transparency.
+// Run from the repository root: swift Scripts/generate_superbible_brand_assets.swift
+// Writes directly into both app targets' Assets.xcassets directories.
 
 import CoreGraphics
 import Foundation
@@ -181,7 +155,6 @@ func writePNG(_ ctx: CGContext, to path: String) {
     print("  wrote \(path) (\(ctx.width)×\(ctx.height))")
 }
 
-/// Write a single-appearance sRGB colorset (`Contents.json`) for `t`.
 func writeColorset(_ t: (l: Double, c: Double, h: Double), to path: String) {
     let (r, g, b) = oklchToSRGB(t.l, t.c, t.h)
     func f(_ x: Double) -> String { String(format: "%.4f", x) }
@@ -228,7 +201,6 @@ for assets in [superBibleAssets, superOSAssets] where !FileManager.default.fileE
 
 print("SuperBible:")
 do {
-    // App icon — 1024², OPAQUE bgSunken paper, star (accent) at 66%.
     let px = 1024
     let ctx = context(px, opaque: true)
     ctx.setFillColor(color(vellumBgSunken))
@@ -236,11 +208,7 @@ do {
     drawStar(in: ctx, px: px, coverage: 0.66, fill: color(vellumAccent))
     writePNG(ctx, to: "\(superBibleAssets)/AppIcon.appiconset/AppIcon.png")
 
-    // Launch image — TRANSPARENT square, centered star (accent). The Vellum
-    // ground comes from the SplashBackground colour behind it (both the system
-    // UILaunchScreen and SuperBibleContentView paint that colour first), so the
-    // image itself is just the mark. 130pt box → ~114pt star, ≈29% of a 393pt
-    // screen, matching the design splash (s=112 on 402-wide).
+    // Keep the launch mark transparent over SplashBackground; 130pt matches the SwiftUI splash.
     let launchSet = "\(superBibleAssets)/LaunchImage.imageset"
     for (scale, lpx) in [(2, 260), (3, 390)] {  // @2x=260px, @3x=390px (130pt)
         let lctx = context(lpx)  // transparent (premultipliedLast)
@@ -277,7 +245,6 @@ do {
     try! launchContents.write(toFile: "\(launchSet)/Contents.json", atomically: true, encoding: .utf8)
     print("  wrote LaunchImage Contents.json")
 
-    // Splash ground (Vellum `bg`) + global accent (Vellum `accent`).
     writeColorset(vellumBg, to: "\(superBibleAssets)/SplashBackground.colorset/Contents.json")
     writeColorset(vellumAccent, to: "\(superBibleAssets)/AccentColor.colorset/Contents.json")
 }
@@ -297,7 +264,6 @@ do {
               stroke: color(vellumAccentDark))
     writePNG(ctx, to: "\(superOSAssets)/AppIcon.appiconset/AppIcon.png")
 
-    // Splash ground (Vellum `bg`, replacing the retired green) + global accent.
     writeColorset(vellumBg, to: "\(superOSAssets)/SplashBackground.colorset/Contents.json")
     writeColorset(vellumAccent, to: "\(superOSAssets)/AccentColor.colorset/Contents.json")
 }

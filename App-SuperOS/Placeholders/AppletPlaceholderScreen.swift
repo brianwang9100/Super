@@ -1,13 +1,6 @@
 import Chat
 import SwiftUI
 
-/// Empty-state backdrop rendered by each of the four M2 placeholder applets
-/// (Todo, Recipes, Bible, Finance). Centered icon + display name in
-/// EB Garamond + a one-line caption — enough to verify the applet
-/// switching path and to give M3's chat overlay something to sit on top of.
-///
-/// The accent strip and icon tint come from the applet's `accentColor` so
-/// each placeholder reads differently at a glance per `docs/DESIGN.md §8.2`.
 struct AppletPlaceholderScreen<Icon: View>: View {
     let displayName: String
     let accent: Color
@@ -31,18 +24,13 @@ struct AppletPlaceholderScreen<Icon: View>: View {
                         .foregroundStyle(accent)
                 }
                 Text(displayName)
-                    // `display(_:)` is the EB Garamond *italic* brand face, so
-                    // the italic reading is intrinsic — no `.italic()` modifier.
                     .font(typography.display(36))
                     .foregroundStyle(theme.ink)
                 Text("Coming soon.")
                     .font(typography.font(.callout))
                     .foregroundStyle(theme.inkSoft)
                 Spacer()
-                // Reserve bottom inset so the M3 chat overlay (minimized
-                // pill at the bottom) doesn't permanently obscure the
-                // greeting. ~68pt matches the pill + bottom safe-area
-                // reserve documented in `docs/DESIGN.md §4.3`.
+                // Reserve space for the minimized chat pill so it cannot obscure the greeting.
                 Color.clear.frame(height: 76)
             }
             .padding(.horizontal, 28)

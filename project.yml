@@ -8,12 +8,7 @@ options:
   generateEmptyDirectories: true
   groupSortPosition: top
   xcodeVersion: "26.4"
-  # xcodegen 2.45.4 cannot model SPM-package test schemes via project.yml
-  # (no `package/test-target` reference syntax). Per-package schemes are
-  # hand-maintained in Scripts/xcodegen-extras/ and copied into place after
-  # generation so `xcodebuild test -scheme <Package>` runs the iOS-runtime
-  # snapshot tests in CI. Re-run via Scripts/generate-project.sh
-  # (or in CI: `xcodegen generate && cp ...`).
+  # XcodeGen cannot model package test schemes; copy the maintained schemes after generation.
   postGenCommand: cp Scripts/xcodegen-extras/Core.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Core.xcscheme && cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme && cp Scripts/xcodegen-extras/Bible.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Bible.xcscheme && cp Scripts/xcodegen-extras/Todo.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Todo.xcscheme
 
 settings:
@@ -41,27 +36,16 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
-    # configFiles wires Config/Base.xcconfig as the target's
-    # baseConfigurationReference for both build configs. Base.xcconfig
-    # does `#include? "Local.xcconfig"` so per-developer signing values
-    # (DEVELOPMENT_TEAM, PROVISIONING_PROFILE_SPECIFIER) flow in from the
-    # gitignored Local.xcconfig — never committed. CI's testflight
-    # workflow writes Local.xcconfig from secrets before archiving.
+    # Load per-developer signing through the optional, ignored Local.xcconfig include.
     configFiles:
       Debug: Config/Base.xcconfig
       Release: Config/Base.xcconfig
     sources:
       - path: App-SuperOS
-        # Canonical AGENTS.md and compatibility CLAUDE.md alias live with the
-        # source for contributor convenience but must not ship as runtime resources.
-        # The SuperBible target has the mirror exclude on its own block.
+        # Contributor guidance must not ship as runtime resources.
         excludes:
           - "**/*.md"
-      # Shared shell files compiled into both SuperOS and SuperBible via
-      # explicit per-file entries here (was a whole-directory `App/`
-      # include before App-SuperOS/ existed). Keep this list narrow and
-      # in sync with the SuperBible `sources:` block below — any new
-      # `App/Shell/*.swift` must be added to both.
+      # Keep shared shell files in both targets' explicit source lists.
       - path: App/Shell/AppShell.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
@@ -72,43 +56,20 @@ targets:
     info:
       path: App-SuperOS/Info.plist
       properties:
-        # Custom URL scheme `super://` — lets the OS hand `super://bible/...`
-        # deep links (from Safari, Notes, Messages, Spotlight, the share
-        # sheet) to the app's `.onOpenURL` modifier in `AppShell`. The
-        # in-app `OpenURLAction` interceptor on the chat transcript
-        # already routes the same URLs through the cross-applet bus, so
-        # external and internal taps land identically.
-        #
-        # Both SuperOS and SuperBible register the same `super` scheme.
-        # On a device with both apps installed (the founder's setup),
-        # iOS routes a `super://...` URL to whichever was *installed
-        # most recently* — there is no picker. This is acceptable for
-        # v1 because (a) the only URL host today is `bible`, which both
-        # apps handle correctly, and (b) SuperOS is the founder's
-        # personal target while SuperBible is the App Store target.
-        # Per-target namespacing (`superos://` vs `superbible://`) is on
-        # the post-v1 follow-up list; see `BibleDeepLink.urlScheme`.
+        # Both apps register super:// for shared Bible links. With both installed, iOS routes
+        # to one app without a picker; per-target schemes remain a follow-up (BibleDeepLink.urlScheme).
         CFBundleURLTypes:
           - CFBundleURLName: com.brianwang.Super.deeplink
             CFBundleURLSchemes:
               - super
-        # System launch screen rendered before SwiftUI mounts. Setting
-        # UIColorName to `SplashBackground` (an asset colorset baked to
-        # Vellum Light `bg`, the same ground `SplashView` paints) avoids a
-        # white flash between Springboard and `SplashView`'s first frame.
+        # Match SplashView's background to avoid a white flash before SwiftUI mounts.
         UILaunchScreen:
           UIColorName: SplashBackground
-        # CFBundleDisplayName is the user-facing name on the home screen
-        # and in iOS Settings. It diverges from the codebase identifier
-        # (PRODUCT_NAME = "Super") because the App Store name "Super" is
-        # already taken; the public brand is "SuperOS".
+        # The user-facing SuperOS brand differs from the internal Super product name.
         CFBundleDisplayName: SuperOS
-        # iPhone: portrait only. Chat-first UX assumes a vertical
-        # composer + bubble layout; landscape would just letterbox.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # iPad: all four orientations are required for multitasking;
-        # App Store upload validation rejects builds that omit any.
+        # All four iPad orientations are required for multitasking validation.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -116,24 +77,14 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperOS uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperOS needs microphone access to capture your voice for dictation."
-        # Version keys reference the build settings (not literals) so the
-        # `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` overrides that
-        # `testflight.yml` passes at archive time actually land in the
-        # shipped Info.plist. With XcodeGen's literal `1` / `1.0` defaults
-        # the override was inert and every TestFlight build shipped as
-        # build "1" (App Store Connect rejects duplicate build numbers).
-        # Defaults for the settings live in `settings.base` below.
+        # Reference build settings so archive-time version overrides reach Info.plist;
+        # XcodeGen literals would otherwise leave every upload with the same build number.
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        # No non-exempt encryption (only standard HTTPS + Keychain); declaring
-        # it skips the per-build export-compliance prompt in App Store Connect.
+        # Standard HTTPS/Keychain encryption only; skips repeated export-compliance prompts.
         ITSAppUsesNonExemptEncryption: false
-        # ATS exemptions: scoped to loopback only so local-LLM stacks
-        # (Ollama, MLX, LM Studio, llama.cpp) can be reached over plain
-        # HTTP. All other endpoints still go through ATS. The
-        # `URLSecurity.isCleartextSafeForCredentials` helper is the
-        # belt-and-suspenders gate so a misconfigured public-host model
-        # entry can't leak its bearer token over cleartext.
+        # Allow local models over loopback HTTP only. URLSecurity separately prevents
+        # credentials from being sent to unsafe cleartext hosts.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
@@ -153,19 +104,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App-SuperOS/Info.plist
         SUPPORTS_MACCATALYST: NO
-        # Defaults for the version Info.plist keys above. `testflight.yml`
-        # overrides CURRENT_PROJECT_VERSION (= GitHub run number) at archive
-        # time; local/dev builds fall back to these.
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0"
       configs:
-        # Release-only signing config is target-scoped (not project- or
-        # command-line-scoped) so it doesn't leak into SwiftPM resource
-        # bundles like GRDB_GRDB, which don't support provisioning
-        # profiles. Per-developer values (DEVELOPMENT_TEAM,
-        # PROVISIONING_PROFILE_SPECIFIER) come in via the xcconfig wired
-        # by `configFiles:` above; standard Apple cert values stay inline
-        # since they're public-equivalent.
+        # Keep signing target-scoped; SwiftPM resource bundles cannot accept provisioning profiles.
+        # Private team/profile values come from Local.xcconfig.
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Distribution"
@@ -174,13 +117,7 @@ targets:
       - package: Chat
       - package: Bible
       - package: Todo
-  # Second App Store target. Shares Core, Chat, and Bible with SuperOS;
-  # does NOT depend on Todo (per App-SuperBible/AGENTS.md § Module identity).
-  # Plans / Memorize / Quiz / Learn are SuperBible-only and land in their
-  # own packages at SB-M2+. SB-M0 wired the target; SB-M1 wires the real
-  # composition root (Chat host + Bible) via the shared `App/Shell/*`
-  # files included below. Full design:
-  # docs/superpowers/specs/2026-05-23-superbible-fork-design.md.
+  # SuperBible shares Core, Chat, and Bible; SuperOS-only applets stay out of this target.
   SuperBible:
     type: application
     platform: iOS
@@ -190,20 +127,10 @@ targets:
       Release: Config/Base.xcconfig
     sources:
       - path: App-SuperBible
-        # Canonical AGENTS.md, compatibility CLAUDE.md alias, and PRIVACY.md
-        # live alongside the source for contributor convenience but are not
-        # runtime resources.
-        # PRIVACY.md will be re-included as a bundled resource at SB-M4
-        # when Settings → About → Privacy lands.
-        # `SuperBibleSystemPrompt.md` IS bundled — see the explicit
-        # `buildPhase: resources` entry further down.
+        # Exclude contributor/privacy documents; explicitly bundle the persona resources below.
         excludes:
           - "**/*.md"
-      # Shared shell files compiled into both SuperOS and SuperBible via
-      # project.yml file inclusion. Keep this list in sync with the
-      # SuperOS `sources:` block above — any new `App/Shell/*.swift` must
-      # be added to both. SuperOS-only placeholders (Recipes/Finance/etc.)
-      # live under `App-SuperOS/Placeholders/`, never compiled here.
+      # Keep shared shell files in both targets' explicit source lists; placeholders stay SuperOS-only.
       - path: App/Shell/AppShell.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
@@ -211,10 +138,7 @@ targets:
       - path: App/Shell/FailureScreen.swift
       - path: App/Shell/FixedHamburgerButton.swift
       - path: App/Shell/LazyConversationDriver.swift
-      # Bundled chat-briefing markdown. Excluded from the compile phase
-      # by the `**/*.md` glob above; these entries re-add it as runtime
-      # resources. `SuperBibleSystemPromptLoader` reads both via Bundle.main
-      # (the `.compact` variant serves small-context-window models).
+      # Re-add only the persona Markdown excluded above; the loader reads it from Bundle.main.
       - path: App-SuperBible/Resources/SuperBibleSystemPrompt.md
         buildPhase: resources
       - path: App-SuperBible/Resources/SuperBibleSystemPrompt.compact.md
@@ -222,25 +146,13 @@ targets:
     info:
       path: App-SuperBible/Info.plist
       properties:
-        # Custom URL scheme `super://` — mirrors the SuperOS target.
-        # See the SuperOS info block above for the full rationale and
-        # the per-target-namespacing follow-up. The short version: on
-        # a dual-install device, iOS picks the most-recently-installed
-        # app for any `super://...` URL with no system picker.
+        # Shares the SuperOS URL scheme; see the dual-install routing caveat above.
         CFBundleURLTypes:
           - CFBundleURLName: com.brianwang.SuperBible.deeplink
             CFBundleURLSchemes:
               - super
-        # SuperBible launch screen — Direction B (Star of Bethlehem).
-        # `UIColorName` backs the field behind the centered `UIImageName`
-        # mark; `SplashBackground` is baked to Vellum Light `bg` (cream),
-        # the same ground `SplashView` paints, so there's no flash and any
-        # edge bleed blends into cream. `LaunchImage` is a small TRANSPARENT
-        # star (130pt box, 390px @3x) centered on that field — not a
-        # full-bleed image. `UIImageRespectsSafeAreaInsets: false` lets the
-        # cream field extend behind the notch / Dynamic Island / home
-        # indicator so the ground is edge-to-edge on every iPhone from SE
-        # through Pro Max.
+        # Match the SwiftUI splash: a transparent centered star over the same cream field.
+        # Ignore safe-area insets so the background reaches every screen edge.
         UILaunchScreen:
           UIColorName: SplashBackground
           UIImageName: LaunchImage
@@ -255,20 +167,11 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperBible uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperBible needs microphone access to capture your voice for dictation."
-        # Version keys reference the build settings (not literals) so archive-
-        # time `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` overrides land in
-        # the shipped Info.plist. See the SuperOS block above for the full
-        # rationale (XcodeGen's literal `1` default broke build numbering).
-        # Defaults live in `settings.base` below.
+        # Use build-setting references so archive-time version overrides reach Info.plist.
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        # No non-exempt encryption (only standard HTTPS + Keychain); declaring
-        # it skips the per-build export-compliance prompt in App Store Connect.
         ITSAppUsesNonExemptEncryption: false
-        # Background bulk-annotation generation: the `processing` mode plus the
-        # permitted-identifier list let `BulkAnnotationBackgroundScheduler`
-        # register + run its `BGProcessingTask`. The identifier must match
-        # `BulkAnnotationBackgroundScheduler.taskIdentifier`.
+        # The permitted identifier must match BulkAnnotationBackgroundScheduler.taskIdentifier.
         UIBackgroundModes:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
@@ -292,8 +195,6 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App-SuperBible/Info.plist
         SUPPORTS_MACCATALYST: NO
-        # Defaults for the version Info.plist keys above; CI overrides
-        # CURRENT_PROJECT_VERSION at archive time.
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0"
       configs:

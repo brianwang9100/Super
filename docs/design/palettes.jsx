@@ -1,7 +1,4 @@
-// palettes.jsx — 4 "historical study bible" themes, each light + dark.
-// Muted, legibility-first; mostly warm (brown/orange accents) with one cool
-// indigo family (Lapis), lit by a gold accent.
-// Token shape mirrors src/theme.jsx so these drop straight in later.
+// Four study-Bible theme families, each with light and dark variants.
 
 const THEME_SET = [
   {

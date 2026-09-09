@@ -2,9 +2,7 @@ import Chat
 import Core
 import Foundation
 
-/// End-to-end smoke test that drives the Chat orchestration layer
-/// (`ChatSessionStore` → `ChatSession` → `OpenAICompatibleLLMProvider`)
-/// against a live local LLM (Large Language Model) server.
+/// Exercises Chat orchestration against a live local OpenAI-compatible server.
 ///
 /// Defaults target a local OpenAI-compatible MLX server. Override per env:
 /// - `OMLX_BASE_URL`     — base URL ending in `/v1` (default `http://127.0.0.1:1111/v1`)
@@ -77,9 +75,6 @@ struct ChatLiveLLMScript {
         await llmRegistry.register(provider)
 
         let toolRegistry = ToolRegistry()
-        // Real built-in tool from M6 — exercises the production tool path
-        // end-to-end (descriptor → LLM advertisement → tool-call dispatch
-        // → tool-result write-back).
         await toolRegistry.register(TimeNowTool.registration())
 
         let compactor = Compactor(
@@ -113,11 +108,7 @@ struct ChatLiveLLMScript {
         }
 
         if !skipCompact {
-            // Send `/compact` through the same `send(text:model:)` entry
-            // point the composer will use. With the default
-            // `keepMostRecent = 4`, this no-ops on a 1-turn run and does
-            // real work on a 2-turn run. The script tags the no-op case
-            // explicitly so an observer doesn't mistake it for failure.
+            // With keepMostRecent = 4, a one-turn history legitimately skips compaction.
             try await runTurn(
                 label: "TURN 3 — /compact",
                 session: session,
@@ -126,11 +117,7 @@ struct ChatLiveLLMScript {
                 noOpHint: "no-op: not enough history beyond keepMostRecent=4 to summarize. Run with both turns (don't set OMLX_SKIP_TOOL) to see compaction fire."
             )
 
-            // Verify the post-compaction prompt assembly works against
-            // the live LLM: the next turn's history should be
-            // {synthetic system summary} + post-checkpoint messages
-            // + new user question. If the assembler or checkpoint
-            // wiring is broken, this turn errors or produces nonsense.
+            // Exercise summary + post-checkpoint history assembly against the live provider.
             try await runTurn(
                 label: "TURN 4 — post-compaction follow-up",
                 session: session,

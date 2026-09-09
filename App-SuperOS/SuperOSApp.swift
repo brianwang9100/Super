@@ -2,19 +2,14 @@ import Chat
 import Core
 import SwiftUI
 
-/// Composition root + shell entry point. Bootstraps the dependency graph once
-/// per process and feeds it to `SuperOSContentView`. The bootstrap runs in a
-/// `.task` rather than the initializer so any GRDB or Keychain failure
-/// surfaces as UI rather than a crashed launch.
+/// Bootstrap in a task so database/Keychain failures surface as UI instead of crashing launch.
 @main
 struct SuperOSApp: App {
     @State private var state: SuperOSBootstrapState = .loading
     @State private var isBootstrapping = false
 
     init() {
-        // Register EB Garamond Italic + JetBrains Mono Regular before
-        // SwiftUI's first render — `SplashView` and the chat chrome both
-        // ask for them via `Font.custom(...)`. The call is idempotent.
+        // Register bundled fonts before the first SwiftUI render.
         Core.registerBundledFonts()
     }
 
@@ -42,17 +37,12 @@ struct SuperOSApp: App {
     }
 }
 
-/// Three-state machine for the launch sequence. The Shell shows a placeholder
-/// during `loading` and a hard-error pane during `failed`; everything else is
-/// driven from `ready(_:)`.
 enum SuperOSBootstrapState {
     case loading
     case ready(SuperOSAppDependencies)
     case failed(String)
 
-    /// Stable identity for the case (ignoring the associated value) so
-    /// `.animation(value:)` can observe state transitions without forcing
-    /// `SuperOSAppDependencies` to be `Equatable`.
+    /// Supports case-transition animation without making the dependency graph Equatable.
     var discriminant: Int {
         switch self {
         case .loading: 0

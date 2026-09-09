@@ -3,10 +3,7 @@ name: Swift Tests
 on:
   push:
     branches: [main]
-  # No path filter on purpose: this workflow is a required status check,
-  # and a path-filtered required check that doesn't fire on a PR shows
-  # as "expected but not reported" and blocks merge forever. Cheap to
-  # always run — `swift test` skips quickly when SwiftPM cache is warm.
+  # Required checks must report on every PR; a workflow-level path filter can block merging.
   pull_request:
 
 concurrency:
@@ -15,19 +12,14 @@ concurrency:
 
 jobs:
   changes:
-    # Detects whether anything other than docs changed. A docs-only PR then
-    # skips the macOS `test` legs, while the required-check gate (`swift-test`)
-    # still runs and reports — preserving the "no path filter on the workflow"
-    # property the top-of-file comment relies on. dot: true is on by default
-    # in paths-filter@v3, so a .github/ or other dotfile change runs the
-    # full matrix.
+    # Skip expensive jobs for docs-only changes while still reporting the required gate.
+    # Dotfiles must count as code changes.
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v7
-      # Third-party community action pinned to a commit SHA (not a mutable
-      # tag) so a tag force-push can't swap the code under us.
+      # Keep this third-party action pinned to an immutable commit for supply-chain safety.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -38,10 +30,7 @@ jobs:
               - '!**/*.md'
 
   discover:
-    # Emits the package matrix by globbing `Packages/*/Package.swift`, so a
-    # new SwiftPM package is tested with zero workflow edits. A GitHub
-    # Actions matrix cannot be computed inline — it must come from a prior
-    # job's output, hence this tiny job runs as a serial prefix.
+    # Discover package schemes before the matrix so adding a package needs no workflow edit.
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.find.outputs.packages }}
@@ -56,9 +45,7 @@ jobs:
           pkgs=$(for d in Packages/*/Package.swift; do
             basename "$(dirname "$d")"
           done | sort -u | jq -R . | jq -cs .)
-          # Fail loud on an empty result: an empty matrix would skip every
-          # `test` leg, and the gate could then read a vacuous success and
-          # go green having tested nothing.
+          # Reject an empty matrix so running no tests cannot produce a successful gate.
           if [ -z "$pkgs" ] || [ "$pkgs" = "[]" ]; then
             echo "::error::No SwiftPM packages found under Packages/*/Package.swift."
             exit 1
@@ -67,8 +54,6 @@ jobs:
           echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
 
   test:
-    # Gated on `changes`: docs-only PRs skip these macOS legs; the
-    # `swift-test` gate below still reports success in that case.
     needs: [changes, discover]
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
@@ -80,11 +65,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        # Repo runs Swift 6 strict concurrency; macos-26's Xcode 26.4.1
-        # toolchain enforces it. Pinned literally rather than
-        # `latest-stable` so a runner image refresh can't surprise us
-        # with a beta toolchain (Xcode 26.5 is still preview on the
-        # image as of writing).
+        # Pin the toolchain so runner-image updates cannot silently change compiler behavior.
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.4.1"
@@ -98,10 +79,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: Packages/${{ matrix.package }}/.build
-          # Cache entries are immutable. Package.resolved alone (currently
-          # untracked) left a fixed primary key, so rebuilt outputs were never
-          # saved. Hash package inputs and Core, the applets' local dependency.
-          # Keep architecture/toolchain boundaries in the fallback too.
+          # Cache entries are immutable: include source inputs so rebuilt outputs get saved.
+          # Keep architecture/toolchain boundaries in fallback keys.
           key: >-
             spm-v2-${{ runner.os }}-${{ runner.arch }}-xc26.4.1-${{ matrix.package }}-${{
               hashFiles(
@@ -118,11 +97,7 @@ jobs:
 
       - name: Run tests
         working-directory: Packages/${{ matrix.package }}
-        # `-Xswiftc -warnings-as-errors` mirrors the Xcode targets'
-        # SWIFT_TREAT_WARNINGS_AS_ERRORS (project.yml). The bare `swift test`
-        # path compiles from Package.swift and ignores that build setting, so
-        # the flag is applied here (CI-only) to keep both legs consistent
-        # without forcing warnings-as-errors on local `swift test`.
+        # SwiftPM ignores the Xcode warnings-as-errors setting, so pass it explicitly here.
         run: swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors
 
       - name: Coverage summary
@@ -144,12 +119,7 @@ jobs:
             | tail -40
 
   swift-test:
-    # Aggregation gate. The `test` job above publishes one check per
-    # discovered package (`test (Core)` …); this job re-exports a single
-    # stable `swift-test` status that depends on every leg. Branch
-    # protection requires `swift-test` alone, so adding a package never
-    # needs a branch-protection edit. A required check that never reports
-    # blocks merge forever — keep this job's name and trigger stable.
+    # Keep the required `swift-test` check stable as packages are added to the matrix.
     needs: [changes, discover, test]
     runs-on: ubuntu-latest
     if: always()
@@ -161,22 +131,16 @@ jobs:
           DISCOVER_RESULT: ${{ needs.discover.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
-          # Fail closed if the `changes` detector didn't succeed: its empty
-          # output must not be misread as "docs-only" and skip the tests.
+          # Fail closed if change detection failed; empty output is not proof of a docs-only PR.
           if [ "$CHANGES_RESULT" != "success" ]; then
             echo "::error::changes-detection job did not succeed — refusing to skip Swift tests."
             exit 1
           fi
-          # `discover` runs on every PR (incl. docs-only). Check it BEFORE the
-          # docs-only early-exit so a broken package-glob script blocks merge
-          # promptly rather than hiding until the next code-change PR. A failed
-          # discover skips the `test` matrix, which must not read as success.
+          # Check discovery even for docs-only changes; a failed discovery must not masquerade as a skipped matrix.
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::Package discovery failed — no packages were tested."
             exit 1
           fi
-          # Docs-only PR: the `test` matrix was intentionally skipped, so
-          # this required check passes without running it.
           if [ "$CODE" != "true" ]; then
             echo "Docs-only change — no Swift tests required."
             exit 0

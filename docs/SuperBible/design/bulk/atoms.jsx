@@ -1,25 +1,9 @@
-// bulk/atoms.jsx — bulk-annotation specific atoms, layered on top of
-// annotations/atoms.jsx (ANNO_THEMES, Phone, StatusBar, AnnotationBubble,
-// AI, CATEGORIES, CategoryBadge). These cover the parts the single-verse
-// flow doesn't: progress (ring + bar), per-chapter status rows, scope
-// pickers, and background job cards.
-//
-// Conventions carried over: 24×24 icon grid · 1.6 stroke · single accent,
-// no rainbow. The one exception is a dedicated *failure* hue — a muted red
-// reserved strictly for the "couldn't generate / retry" state, matching the
-// danger colour already used in annotations/sheet.jsx's card menu.
+// Extends annotation atoms: 24×24 icons, 1.6 stroke, one accent; failure states alone use muted red.
 
-// ──────────────────────────────────────────────────────────
-// Failure hue — the only colour outside the accent family. Soft tile +
-// ink, tuned per theme so it stays muted (never alarm-red).
-// ──────────────────────────────────────────────────────────
+// Failure colors stay muted across themes.
 function failInk(t)  { return t.isDark ? 'oklch(0.72 0.14 28)' : 'oklch(0.55 0.18 27)'; }
 function failSoft(t) { return t.isDark ? 'oklch(0.33 0.07 27)' : 'oklch(0.93 0.045 30)'; }
 
-// ──────────────────────────────────────────────────────────
-// Extra icons for the bulk surfaces. AI (from annotations/atoms) already
-// gives us Close, Kebab, Sparkle, Refresh, Book, Check, Send, ChevronDown.
-// ──────────────────────────────────────────────────────────
 const BI = {
   Pause: ({ s = 16, c = 'currentColor' }) => (
     <svg width={s} height={s} viewBox="0 0 24 24" fill={c} stroke="none">
@@ -78,8 +62,6 @@ const BI = {
       <path d="M15 6l-6 6 6 6" />
     </svg>
   ),
-  // Annotation glyph for the settings row — speech bubble with the
-  // three generating-dots, echoing AnnotationBubble.
   Bubble: ({ s = 20, c = 'currentColor' }) => (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none"
       stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -160,10 +142,6 @@ const BI = {
   ),
 };
 
-// ──────────────────────────────────────────────────────────
-// ProgressRing — circular determinate progress. Track in bgSunken,
-// fill in accent (or a passed colour). Optional center child.
-// ──────────────────────────────────────────────────────────
 function ProgressRing({ t, value = 0, size = 46, stroke = 4, color, track, children }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
@@ -189,10 +167,7 @@ function ProgressRing({ t, value = 0, size = 46, stroke = 4, color, track, child
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// ProgressBar — slim determinate track. Indeterminate when value is null
-// (renders a small moving segment via CSS class .bulk-indet).
-// ──────────────────────────────────────────────────────────
+// A null value renders the indeterminate CSS animation.
 function ProgressBar({ t, value = 0, height = 6, color }) {
   const col = color || t.accent;
   return (
@@ -216,15 +191,7 @@ function ProgressBar({ t, value = 0, height = 6, color }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// Status leaf — the small left-edge marker on a chapter row.
-//   queued    → empty bubble (faint)
-//   gen       → spinning ring (indeterminate)
-//   done      → solid filled bubble (accent)
-//   failed    → alert glyph in failure hue
-// Mirrors the AnnotationBubble vocabulary so a row reads the same as the
-// reader's verse-end bubble.
-// ──────────────────────────────────────────────────────────
+// Match the reader's AnnotationBubble status vocabulary.
 function StatusLeaf({ t, state, size = 22 }) {
   if (state === 'done')
     return <AnnotationBubble t={t} state="filled" size={size} />;
@@ -237,7 +204,6 @@ function StatusLeaf({ t, state, size = 22 }) {
         alignItems: 'center', justifyContent: 'center',
       }}><BI.Alert s={size - 4} c={failInk(t)} /></span>
     );
-  // gen → spinner ring
   return (
     <span className="bulk-spin" style={{
       width: size, height: size, display: 'inline-flex',
@@ -252,10 +218,7 @@ function StatusLeaf({ t, state, size = 22 }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// ChapterRow — one line in the bulk progress list.
-//   { n, state, count? }   count = annotations produced (done state)
-// ──────────────────────────────────────────────────────────
+// count is the number of annotations produced for a completed chapter.
 function ChapterRow({ t, n, state, count, onRetry }) {
   const dim = state === 'queued';
   return (
@@ -306,11 +269,8 @@ function ChapterRow({ t, n, state, count, onRetry }) {
   );
 }
 
-// Build a chapter list for Romans (16ch). doneCount chapters are complete,
-// the next is generating, the rest queued. failAt (1-based) marks one row
-// as failed instead of done.
+// Romans fixture: failAt is one-based; chapters after the active one are queued.
 function romansChapters({ doneCount = 0, failAt = null, generating = true, total = 16 }) {
-  // deterministic-ish per-chapter note counts
   const NOTES = [9, 14, 11, 16, 12, 8, 13, 18, 10, 15, 7, 12, 9, 11, 14, 6];
   const rows = [];
   for (let n = 1; n <= total; n++) {
@@ -324,16 +284,9 @@ function romansChapters({ doneCount = 0, failAt = null, generating = true, total
   return rows;
 }
 
-// ══════════════════════════════════════════════════════════
-// SETTINGS VOCABULARY — themed mirrors of the app's real SettingsModal
-// (src/settings.jsx): sheet-from-top chrome, grouped cards, rows, switch,
-// uppercase section labels. Re-implemented against the explicit `t` theme
-// so the spec stays self-contained and switchable across all three themes.
-// ══════════════════════════════════════════════════════════
+// Theme-explicit Settings primitives keep the design canvas self-contained.
 
-// SettingsScaffold — the sheet chrome inside a Phone. Peeks the reader +
-// scrim behind (matching SettingsModal's top:40 presentation). `leading`
-// is 'back' or 'close'.
+// leading accepts back or close; preserve the reader behind the sheet scrim.
 function SettingsScaffold({ t, title, leading = 'back', children, footer }) {
   return (
     <Phone t={t}>
@@ -377,7 +330,6 @@ function settingsIconBtn(t) {
   };
 }
 
-// SGroup — the rounded grouped card.
 function SGroup({ t, children, style }) {
   return (
     <div style={{
@@ -388,7 +340,6 @@ function SGroup({ t, children, style }) {
   );
 }
 
-// SectionLabel — uppercase group caption.
 function SectionLabel({ t, children, style }) {
   return (
     <div className="mono" style={{
@@ -398,7 +349,6 @@ function SectionLabel({ t, children, style }) {
   );
 }
 
-// SRow — one settings line. icon · label · value · trailing (chevron / right).
 function SRow({ t, icon, label, sub, value, right, chevron = true, danger, last, onTop }) {
   return (
     <div style={{
@@ -417,7 +367,6 @@ function SRow({ t, icon, label, sub, value, right, chevron = true, danger, last,
   );
 }
 
-// Switch — themed iOS toggle.
 function Switch({ t, on }) {
   return (
     <span style={{
@@ -433,11 +382,7 @@ function Switch({ t, on }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// CoverageCard — the synopsis at the top of the Annotations pane. Honest
-// three-level breakdown of how much of the Bible carries annotations:
-// books · chapters · verses. No invented fullness, no note counts.
-// ──────────────────────────────────────────────────────────
+// Coverage counts annotated books, chapters, and verses rather than individual annotations.
 function CoverageStat({ t, value, total, label, last }) {
   return (
     <div style={{
@@ -469,10 +414,6 @@ function CoverageCard({ t, books = 3, totalBooks = 66, chapters = 38, totalChapt
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// Selection atoms — book list that expands to chapters (no testament
-// grouping). A fully-annotated book or chapter shows a "Done" badge.
-// ──────────────────────────────────────────────────────────
 function CheckBox({ t, checked, partial }) {
   return (
     <span style={{
@@ -497,8 +438,7 @@ function DoneBadge({ t }) {
   );
 }
 
-// BookCheckRow — selectable book; chevron rotates when expanded. `done`
-// = whole book annotated; `partial` = some chapters done.
+// done means the whole book is annotated; partial means only some chapters are.
 function BookCheckRow({ t, name, chapters, checked, done, partial, expanded, last }) {
   return (
     <div style={{
@@ -521,7 +461,6 @@ function BookCheckRow({ t, name, chapters, checked, done, partial, expanded, las
   );
 }
 
-// ChapterCheckRow — indented chapter line revealed under an expanded book.
 function ChapterCheckRow({ t, n, checked, done, last }) {
   return (
     <div style={{
@@ -537,11 +476,7 @@ function ChapterCheckRow({ t, n, checked, done, last }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// JobCard — the single active generation job (one job at a time). Title
-// lists every book being annotated; progress is measured in annotations
-// added, not chapters. Tappable (chevron) to open the per-book detail.
-// ──────────────────────────────────────────────────────────
+// Only one active job; progress measures annotations added, not chapters.
 function JobCard({ t, books = [], done = 0, total = 0 }) {
   const value = total ? done / total : 0;
   const title = Array.isArray(books) ? books.join(', ') : books;
@@ -585,9 +520,6 @@ function iconGhost(t) {
   };
 }
 
-// ──────────────────────────────────────────────────────────
-// Buttons — primary, ghost, and a full-width destructive button.
-// ──────────────────────────────────────────────────────────
 function PrimaryBtn({ t, children, icon }) {
   return (
     <button style={{
@@ -609,7 +541,6 @@ function GhostBtn({ t, children }) {
   );
 }
 
-// DangerButton — full-width, red, centered. For "Delete all annotations".
 function DangerButton({ t, children, icon }) {
   return (
     <button style={{

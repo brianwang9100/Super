@@ -3,10 +3,7 @@ name: SwiftLint
 on:
   push:
     branches: [main]
-  # No path filter on purpose: SwiftLint is a required status check,
-  # and a path-filtered required check that doesn't fire on a PR shows
-  # as "expected but not reported" and blocks merge forever. SwiftLint
-  # in a Docker container runs in ~30s, so always-on is cheap.
+  # Required checks must report on every PR; a workflow-level path filter can block merging.
   pull_request:
 
 concurrency:
