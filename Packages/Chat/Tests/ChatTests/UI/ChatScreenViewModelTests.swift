@@ -1347,6 +1347,38 @@ struct ChatScreenViewModelTests {
 
     // MARK: - Voice input wiring (M11)
 
+    @Test("empty final after a pause preserves the last recognized words")
+    func emptyVoiceFinalPreservesDraftAndSpeech() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        viewModel.composerText = "draft"
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        await viewModel.handleMicTap()
+        service.emit(.partial("hello"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        service.emit(.final(""))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "draft hello")
+    }
+
+    @Test("voice appends to the current draft rather than a start-time snapshot")
+    func voiceFinalPreservesCurrentDraft() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        viewModel.composerText = "draft"
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        await viewModel.handleMicTap()
+        viewModel.composerText = "edited draft"
+        service.emit(.final("hello"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "edited draft hello")
+    }
+
     @Test("switching chats releases narration's microphone gate")
     func detachingChatStopsVoiceCapture() async {
         let activity = AudioActivity()
@@ -1356,7 +1388,7 @@ struct ChatScreenViewModelTests {
         #expect(activity.isCapturing)
 
         viewModel.detachFromLiveTurn()
-        #expect(voice.state == .idle)
+        #expect(voice.state == .stopping)
         #expect(!activity.isCapturing)
 
         let next = VoiceInputController(service: FakeVoiceInputService(), audioActivity: activity)
@@ -1387,8 +1419,8 @@ struct ChatScreenViewModelTests {
         #expect(!activity.isCapturing)
     }
 
-    @Test("micTap freezes prefix into committedComposerText and forwards to the controller")
-    func micTapFreezesPrefixAndForwardsToggle() async {
+    @Test("micTap leaves the current composer draft owned by the view model")
+    func micTapPreservesComposerOwnership() async {
         let voiceService = FakeVoiceInputService()
         let voice = VoiceInputController(service: voiceService)
         let viewModel = makeVoiceViewModel(voice: voice)
@@ -1396,7 +1428,7 @@ struct ChatScreenViewModelTests {
 
         await viewModel.handleMicTap()
 
-        #expect(viewModel.committedComposerText == "draft prefix")
+        #expect(viewModel.composerText == "draft prefix")
         #expect(voice.state == .listening)
         #expect(voiceService.startCallCount == 1)
     }
@@ -1411,13 +1443,117 @@ struct ChatScreenViewModelTests {
 
         await viewModel.handleMicTap()
         voiceService.emit(.final("hello"))
-        // The controller fires `onFinalTranscript` (which appends to the
-        // composer) inside its event handling, so draining one processed
-        // event is the deterministic signal — no voice-state poll.
         await processed.next()
+        await viewModel._waitForVoiceUpdates()
 
         #expect(viewModel.composerText == "draft hello")
-        #expect(viewModel.committedComposerText == "")
+    }
+
+    @Test("pauses append phrases while empty and revised previews leave the draft intact")
+    func voicePausesPreserveComposer() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        viewModel.composerText = "draft\n"
+        await viewModel.handleMicTap()
+        service.emit(.utterance("first"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "draft\nfirst")
+        service.emit(.partial("second"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "draft\nfirst")
+        #expect(viewModel.displayedComposerText == "draft\nfirst second")
+        service.emit(.partial(""))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.displayedComposerText == "draft\nfirst second")
+        service.emit(.utterance("Second."))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "draft\nfirst Second.")
+        viewModel.handleStopRecording()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.displayedComposerText == "draft\nfirst Second.")
+        #expect(viewModel.voiceState == .idle)
+    }
+
+    @Test("recognition failure preserves both committed and provisional speech")
+    func voiceFailurePreservesSpeech() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        await viewModel.handleMicTap()
+        service.emit(.utterance("first"))
+        await processed.next()
+        service.emit(.partial("last"))
+        await processed.next()
+        service.failNext(with: .recognizerFailed("boom"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "first last")
+        #expect(viewModel.voicePreview == "")
+        #expect(viewModel.voiceState == .failed("boom"))
+        #expect(viewModel.error?.message == "Voice input failed: boom")
+    }
+
+    @Test("detach flushes pending speech to the outgoing draft and releases capture")
+    func detachFlushesVoice() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        await viewModel.handleMicTap()
+        service.emit(.partial("keep this"))
+        await processed.next()
+        viewModel.detachFromLiveTurn()
+        #expect(!service.isCapturing)
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "keep this")
+        #expect(viewModel.voiceState == .idle)
+    }
+
+    @Test("send cannot clear the draft before buffered final speech is appended")
+    func sendWaitsForVoiceDelivery() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        viewModel.composerText = "draft"
+        await viewModel.handleMicTap()
+        service.emit(.partial("hello"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        viewModel.handleStopRecording()
+        // stop enqueues its final append synchronously; the subscriber cannot run
+        // before this send attempt on the same main-actor turn.
+        viewModel.send("draft")
+        #expect(viewModel.composerText == "draft")
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "draft hello")
+        #expect(!viewModel.isStreaming)
+    }
+
+    @Test("voice restart appends repeated phrases to the current edited draft")
+    func voiceRestartUsesCurrentDraft() async {
+        let service = FakeVoiceInputService()
+        let voice = VoiceInputController(service: service)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
+        await viewModel.handleMicTap()
+        service.emit(.utterance("yes"))
+        await processed.next()
+        viewModel.handleStopRecording()
+        await viewModel.handleMicTap()
+        await viewModel._waitForVoiceUpdates()
+        viewModel.composerText = "edited yes "
+        service.emit(.final("yes"))
+        await processed.next()
+        await viewModel._waitForVoiceUpdates()
+        #expect(viewModel.composerText == "edited yes yes")
     }
 
     @Test("voice .denied state surfaces a banner with the Settings action")
