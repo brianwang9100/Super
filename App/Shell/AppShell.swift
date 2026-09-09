@@ -690,12 +690,9 @@ struct AppShell: View {
                     // reads (notably `reduceMotion`) are fresh.
                     enqueueNavigation(.openApplet(id: reference.appletID))
                 case .bibleAnnotateRequested, .bibleAnnotateProgress, .bibleAnnotateCompleted:
-                    // Headless Bible → Chat dispatch handshake —
-                    // routed end-to-end by
-                    // `BibleAnnotateDispatcher` (request) and
-                    // `BibleScreenViewModel` (completion). The
-                    // shell has no part in the flow and explicitly
-                    // skips both envelopes.
+                    // Annotation requests, progress, and completion flow between
+                    // Chat's generator and Bible's shared dispatch state.
+                    // They do not participate in shell navigation.
                     break
                 case .credentialChanged: break
                 case .sidebarOpened:
