@@ -1,69 +1,28 @@
 import SwiftUI
 
-/// Motion (animation) design tokens shared across the Super design system,
-/// alongside ``SuperTheme`` (color/surface) and ``SuperFontScale``
-/// (typography). Picks one animation per transition concern so two
-/// concurrent animators can never race on the same property — the failure
-/// mode the chat overlay's snap spring vs. UIKit's keyboard-inset
-/// animation produced in PR #65.
-///
-/// Centralised in Core so additional applets (Bible, Todo, Home) that
-/// adopt the same bottom-sheet morph or any analogous spring transition
-/// can reach for the same tokens without re-deriving the timing curve.
+/// Shared motion tokens. Each transition concern owns one animation so
+/// concurrent animators do not race on the same property.
 public enum SuperMotion {
-    /// Default snap-to-anchor spring on drag release. Matches the 2026-05-13
-    /// design spec — `cubic-bezier(0.34, 1.4, 0.5, 1)` over 380ms. The
-    /// overshoot (`y > 1` at the curve's late phase) produces the soft
-    /// Apple-style lift on settle.
     public static let snap: Animation = .timingCurve(0.34, 1.4, 0.5, 1, duration: 0.38)
 
-    /// Reduce-Motion fallback — a short crossfade in place of the snap
-    /// spring. Used when the system `accessibilityReduceMotion` setting
-    /// is on so a vestibular-sensitive user never sees the overshoot.
     public static let reducedMotion: Animation = .easeInOut(duration: 0.2)
 
-    /// Keyboard-avoidance glide — the chat surface's height step when the
-    /// software keyboard shows or hides. A plain ease (no overshoot) at
-    /// roughly the system keyboard's own duration; `snap`'s spring overshoot
-    /// reads as a bounce against the keyboard's near-linear rise. Suppress
-    /// under Reduce Motion at the call site (pass `nil`) so the surface cuts
-    /// instantly rather than easing.
+    /// Avoids spring overshoot against keyboard movement. Pass nil under Reduce Motion.
     public static let keyboardGlide: Animation = .smooth(duration: 0.25)
 
-    /// Button-press scale spring — a quick, lightly-damped settle used by
-    /// ``SuperPressButtonStyle`` for the press feedback on inert glass control
-    /// clusters (the Bible action sheet's swatches/tiles), where the built-in
-    /// `.interactive()` Liquid Glass glow reads as a flicker on release. Short
-    /// enough to feel immediate; just enough give to feel alive.
     public static let press: Animation = .spring(response: 0.28, dampingFraction: 0.68)
 
-    /// Immersive chrome **reveal** glide — the scroll-driven slide of nav
-    /// chrome *into* view (the Bible nav bar, and the shell's hamburger +
-    /// minimized chat pill). A plain smooth ease with no overshoot, because
-    /// the bar toggles frequently as the user scrolls and `snap`'s late-phase
-    /// bounce would read as a wobble on a content-hiding bar. Suppress under
-    /// Reduce Motion at the call site (pass the ``reducedMotion`` token).
+    /// No overshoot on frequently toggled chrome; use reducedMotion for that setting.
     public static let chromeReveal: Animation = .smooth(duration: 0.4)
 
-    /// Immersive chrome **hide** glide — deliberately longer than
-    /// ``chromeReveal``. The hidden chrome travels off the screen edge (and
-    /// fades) so its *visible* portion finishes well before the curve does;
-    /// stretching the duration keeps the dismiss reading as slow as the
-    /// reveal rather than snapping away.
+    /// Longer than reveal because the visible portion exits before the animation finishes.
     public static let chromeHide: Animation = .smooth(duration: 0.6)
 
-    /// The chrome glide for the current direction + motion preference —
-    /// ``chromeHide`` when the chrome is leaving, ``chromeReveal`` when it's
-    /// returning, ``reducedMotion`` under Reduce Motion.
     public static func chrome(hiding: Bool, reduceMotion: Bool) -> Animation {
         guard !reduceMotion else { return reducedMotion }
         return hiding ? chromeHide : chromeReveal
     }
 
-    /// Returns the appropriate animation for the current motion
-    /// preference. Callers pass the environment's
-    /// `\.accessibilityReduceMotion` value; this enum stays
-    /// non-View so it can be reused outside SwiftUI bodies.
     public static func transition(reduceMotion: Bool) -> Animation {
         reduceMotion ? reducedMotion : snap
     }

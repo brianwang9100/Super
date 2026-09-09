@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for the pure `applyFilter` / `groupTasks` / `describe` logic and
-/// `LabelHuePalette` hue allocation.
 @Suite("TodoFilter")
 struct TodoFilterTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

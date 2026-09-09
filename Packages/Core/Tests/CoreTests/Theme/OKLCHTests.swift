@@ -1,10 +1,6 @@
 import Testing
 @testable import Core
 
-/// Sanity coverage on the OKLCH (Oklab Lightness-Chroma-Hue) → sRGB
-/// conversion pipeline. The transform is purely arithmetic, so a few
-/// well-known anchor values are enough to catch drift if the matrix
-/// constants ever change.
 @Suite("OKLCH → sRGB conversion")
 struct OKLCHTests {
     @Test("white round-trips to (1, 1, 1)")
@@ -40,10 +36,6 @@ struct OKLCHTests {
     }
 }
 
-/// Smoke tests on `SuperTheme.make(_:)`. Verifies that all eight variants
-/// (four families × light/dark) build without crashing, that `isDark` /
-/// `family` / `displayName` track the identifier, and that a few transcribed
-/// palette values land where the design file puts them.
 @Suite("SuperTheme construction")
 struct SuperThemeTests {
     @Test("every variant builds and isDark matches its mode")
@@ -80,7 +72,6 @@ struct SuperThemeTests {
 
     @Test("accent hue is exposed and defaults to the variant's design baseline")
     func accentHueIsExposed() {
-        // Design accent hues from `palettes.jsx`.
         #expect(SuperTheme.make(.vellumLight).accentHue == 52)
         #expect(SuperTheme.make(.vellumDark).accentHue == 60)
         #expect(SuperTheme.make(.lapisLight).accentHue == 75)
@@ -110,7 +101,6 @@ struct SuperThemeTests {
 
     @Test("Scriptorium's accent sits in the moss-olive band, replacing green")
     func scriptoriumAccentHueIsMossOlive() {
-        // The old green accent was hue 150; Scriptorium pulls it to ~128–134.
         #expect(SuperTheme.make(.scriptoriumLight).accentHue == 128)
         #expect(SuperTheme.make(.scriptoriumDark).accentHue == 134)
     }

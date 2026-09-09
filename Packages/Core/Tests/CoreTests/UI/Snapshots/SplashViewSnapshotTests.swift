@@ -6,31 +6,12 @@ import Testing
 import UIKit
 @testable import Core
 
-/// Snapshots for `SplashView` across the three themes plus a Dynamic Type
-/// XXL variant on Light. The view is constructed with
-/// `skipEntranceAnimation: true` so the captured frame is the resting pose
-/// (full opacity, pulse at peak) — animation timing isn't a thing we can
-/// hold steady in a snapshot.
-///
-/// Note on the XXL variant: `SplashView` uses `Font.custom(name, size:)`
-/// with fixed point sizes per SPEC, so `.dynamicTypeSize(.xxLarge)` does
-/// NOT scale the wordmark or version line. The XXL test is therefore a
-/// layout-stability regression check, not an accessibility-text-scaling
-/// check — the splash deliberately ignores Dynamic Type per design.
 @Suite("SplashView snapshots", .serialized)
 @MainActor
 struct SplashViewSnapshotTests {
     init() {
-        // SwiftUI snapshot tests run in a fresh xctest process that never
-        // hits `SuperOSApp.init()`, so the bundled `.ttf`s are unregistered
-        // and `Font.custom("EBGaramond-Italic", …)` silently falls
-        // back to system sans-serif. The static-let inside is idempotent,
-        // so calling per-test costs nothing after the first hit.
+        // Test hosts skip app initialization, so register fonts before rendering.
         Core.registerBundledFonts()
-        // Hard-fail if registration didn't actually land — otherwise the
-        // snapshots would silently bake the system-font fallback and lock
-        // it in as the source of truth. `UIFont(name:size:)` returns nil
-        // when the PostScript name is unresolved.
         precondition(
             UIFont(name: "EBGaramond-Italic", size: 38) != nil,
             "EBGaramond-Italic failed to register — snapshots would capture fallback faces"

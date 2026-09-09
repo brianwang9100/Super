@@ -15,8 +15,6 @@ private func line(_ p: inout Path, to pt: CGPoint, in rect: CGRect) {
     p.addLine(to: scaled(pt, in: rect))
 }
 
-/// Stroked-glyph wrapper. Defined locally so Todo doesn't import Chat for
-/// one helper view.
 struct StrokedGlyph<S: Shape>: View {
     let shape: S
     let size: CGFloat
@@ -33,7 +31,6 @@ struct StrokedGlyph<S: Shape>: View {
     }
 }
 
-/// Checkmark-in-rounded-square — the Todo applet glyph.
 struct TodoIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
@@ -54,7 +51,6 @@ struct TodoIconShape: Shape {
     }
 }
 
-/// The Todo applet icon — used by `TodoApplet.iconView(size:)`.
 public struct TodoIcon: View {
     let size: CGFloat
 

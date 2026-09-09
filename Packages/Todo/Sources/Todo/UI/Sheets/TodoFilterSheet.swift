@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// Bottom sheet for sorting and filtering the task list — sort order, state
-/// scope, and label multi-select. Mirrors `FilterSheet` in the Todo design
-/// source's `sheets.jsx`. The `Manual` sort case is intentionally not
-/// offered (deferred until a reorder UX exists).
 struct TodoFilterSheet: View {
     @Binding var filter: TodoFilter
     let labels: [LabelRecord]
@@ -13,7 +9,7 @@ struct TodoFilterSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Sort cases the sheet exposes — `.manual` is omitted per MVP scope.
+    /// `.manual` remains unavailable until the UI supports reordering.
     private let sortOptions: [(TodoFilter.Sort, String)] = [
         (.priority, "Priority"),
         (.dueDate, "Due date"),
@@ -58,10 +54,6 @@ struct TodoFilterSheet: View {
         .sheetPresentation(.expandable)
     }
 
-    /// Shared sheet nav bar: leading close, centered title, and a trailing
-    /// glass **Reset** that restores the default filter. The 44pt trailing slot
-    /// is icon-sized (the bar's convention), so Reset reads as the
-    /// counter-clockwise glyph rather than the old inline text label.
     private var header: some View {
         SheetNavBar(
             title: "Sort & filter",

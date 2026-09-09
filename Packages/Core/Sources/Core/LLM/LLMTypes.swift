@@ -1,7 +1,5 @@
 import Foundation
 
-/// Author of a chat message. Mirrors the OpenAI/Anthropic role taxonomy plus
-/// `tool` for tool-result messages sent back to the model.
 public enum LLMRole: String, Sendable, Equatable, Codable, CaseIterable {
     case system
     case user
@@ -9,65 +7,32 @@ public enum LLMRole: String, Sendable, Equatable, Codable, CaseIterable {
     case tool
 }
 
-/// One block within a message. A single `LLMMessage` may carry multiple
-/// blocks — e.g. an assistant response with both text and a tool-use call.
 public enum LLMContent: Sendable, Equatable {
     case text(String)
-    /// A replayed extended-thinking block from a prior assistant turn.
-    /// Anthropic's Messages API requires the *last* assistant message in a
-    /// tool-use loop to start with its original `thinking` block, complete
-    /// and unmodified including `signature` — omitting or rebuilding it is
-    /// a 400. `signature` is the provider's opaque integrity token streamed
-    /// via `signature_delta`; a block with a `nil` signature cannot be
-    /// replayed (the adapter skips it and disables thinking for that
-    /// request instead). Reconstructed by `ContextAssembler` from the
-    /// persisted `MessageRecord.thinkingContent`/`thinkingSignature`.
-    /// Adapters with no thinking-replay contract ignore the block.
+    /// Anthropic tool-loop replay requires original thinking content and signature.
+        /// Nil signature makes replay impossible; its adapter skips the block and
+        /// disables thinking for that request. Other adapters ignore unsupported blocks.
     case thinking(content: String, signature: String?)
-    /// Tool invocation requested by the model. `input` is conventionally a
-    /// `JSONValue.object` matching the tool's parameter schema; the type is
-    /// a single `JSONValue` (rather than `[String: JSONValue]`) so the
-    /// payload encodes/decodes through `Codable` in one hop.
-    ///
-    /// `signature` is an opaque provider continuation token (today Gemini's
-    /// `thoughtSignature`) that must be replayed verbatim on the `functionCall`
-    /// part of the next turn; thinking models 400 without it. `nil` for
-    /// providers that don't emit one. Reconstructed by `ContextAssembler`
-    /// from the persisted `ToolCallRecord.signature`.
+    /// Object input matches the tool schema. Echo signature unchanged for Gemini
+        /// continuation; its thinking calls reject missing signatures.
     case toolUse(id: String, name: String, input: JSONValue, signature: String?)
     case toolResult(toolUseID: String, content: String, isError: Bool)
-    /// Echoed prior-turn web-search results, replayed verbatim so providers
-    /// that require it (Anthropic) keep earlier citations valid across turns.
-    /// Carries the opaque per-result/per-citation echo blobs in each
-    /// `SourceCitation.providerEcho`. Providers that don't need it ignore the
-    /// block — only the Anthropic adapter re-serializes it (into a synthetic
-    /// `web_search_tool_result` content block). Reconstructed by
-    /// `ContextAssembler` from the stored `MessageAttachments.sources`.
+    /// Opaque prior search results preserve Anthropic citation validity across turns.
+        /// Other adapters ignore unsupported blocks.
     case searchResult([SourceCitation])
 }
 
-/// How an adapter may treat a message for prompt caching. `.stablePrefix`
-/// marks a message in the contiguous, rarely-changing leading run (the chat /
-/// applet briefings and native-search guidance) that an explicit-cache
-/// provider can place a cache breakpoint *after*; `.volatile` (the default) is
-/// everything that changes turn-to-turn — memories, the checkpoint summary, and
-/// the user/assistant/tool history. Non-persisted and adapter-only: only the
-/// Anthropic native adapter reads it (to split the `system` blocks and mark the
-/// stable one `cache_control`); every other provider ignores it.
+/// Non-persisted cache hint: stablePrefix marks the contiguous leading briefing
+/// run where an adapter may end a cache segment. Changing context/history is volatile.
+/// Only the Anthropic adapter currently consumes the hint.
 public enum LLMCacheHint: Sendable, Equatable {
     case stablePrefix
     case volatile
 }
 
-/// One message in a chat with an LLM (Large Language Model). Always carries
-/// at least one content block; the convenience text initializer wraps a
-/// single string in a `.text` block.
 public struct LLMMessage: Sendable, Equatable {
     public let role: LLMRole
     public let content: [LLMContent]
-    /// Prompt-cache treatment hint (see ``LLMCacheHint``). Defaults to
-    /// `.volatile`; `ContextAssembler` tags the leading stable blocks
-    /// `.stablePrefix`.
     public let cacheHint: LLMCacheHint
 
     public init(role: LLMRole, content: [LLMContent], cacheHint: LLMCacheHint = .volatile) {
@@ -76,31 +41,19 @@ public struct LLMMessage: Sendable, Equatable {
         self.cacheHint = cacheHint
     }
 
-    /// Convenience initializer for the common single-text-block case.
     public init(role: LLMRole, text: String, cacheHint: LLMCacheHint = .volatile) {
         self.init(role: role, content: [.text(text)], cacheHint: cacheHint)
     }
 }
 
-/// Identifies a model exposed by an LLM provider. `id` is the provider-side
-/// identifier sent on the wire (e.g. `"gpt-4o-mini"`); `displayName` is what
-/// the user sees in the model picker.
+/// id is the upstream wire identifier, separate from the configured provider ID.
 public struct LLMModel: Sendable, Equatable, Hashable {
     public let id: String
     public let displayName: String
     public let supportsThinking: Bool
     public let supportsTools: Bool
     public let maxContextTokens: Int
-    /// Web-search engine the user selected for this model, carried over
-    /// from its `ModelConfiguration.searchBackend`: `"native"` (the
-    /// provider's own server-side search, set only for native `kind`s), a
-    /// standalone search-provider id, or `nil` for no web search. A native
-    /// provider stamps this from its configuration so the value rides the
-    /// model the chat session is already handed via `send(...)` — the turn
-    /// loop reads it to decide per-turn search wiring without any new
-    /// `stream(...)`/`send(...)` parameter. The OpenAI-compat provider also
-    /// stamps it so a non-native model can carry the DEBUG `"debug"` mock
-    /// backend; Apple Foundation leaves it `nil`.
+    /// Selected search backend: native, a standalone provider ID, or nil for none.
     public let searchBackend: String?
 
     public init(
@@ -120,71 +73,20 @@ public struct LLMModel: Sendable, Equatable, Hashable {
     }
 }
 
-/// Wire-protocol family of an LLM provider. Discriminates which provider
-/// class (and which fields on `ModelConfiguration`) a configuration row
-/// projects through. Persisted as the row's `kind` column.
-///
-/// This is *not* a brand identifier — Gemini, OpenAI, DeepSeek, Groq, MLX,
-/// and Ollama all speak the OpenAI Chat Completions wire format and thus
-/// share `.openAICompatible`. New cases are added when a genuinely new wire
-/// format needs its own provider class (e.g. a native Anthropic Messages
-/// API provider, or a native Gemini provider).
+/// Persisted wire-protocol family, independent of the provider's brand.
 public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable {
-    /// On-device model via Apple's `FoundationModels` framework. No
-    /// `baseURL` or `apiKeyRef`; the row's `modelID` selects which
-    /// system model variant to use.
+    /// On-device: no endpoint or key reference.
     case appleFoundation
-    /// Any HTTP endpoint speaking the OpenAI Chat Completions wire format
-    /// (hosted OpenAI, Gemini's `v1beta/openai/` shim, DeepSeek, Together,
-    /// Groq, Ollama, MLX, LM Studio, llama.cpp). Requires `baseURL` and
-    /// optionally `apiKeyRef`.
+    /// Chat Completions-compatible endpoint; requires baseURL and optionally a key reference.
     case openAICompatible
-    /// Native Anthropic Messages API (`/v1/messages`) adapter. Selected at
-    /// add-time when a model opts into native web search; the OpenAI-compat
-    /// shim can't carry Anthropic's `web_search` server tool or citations.
-    /// Implemented by `AnthropicNativeLLMProvider` (web-search PR3b).
     case anthropicNative
-    /// Native Gemini `generateContent` adapter (`google_search` grounding).
-    /// Distinct from the `.openAICompatible` Google shim. Implemented by
-    /// `GeminiNativeLLMProvider` (web-search PR3c).
     case geminiNative
-    /// Native OpenAI Responses API (`/v1/responses`) adapter (`web_search`
-    /// tool + `url_citation` annotations). Distinct from the
-    /// `.openAICompatible` Chat Completions path. Implemented by
-    /// `OpenAIResponsesLLMProvider` (web-search PR3a).
     case openAIResponses
     #if DEBUG
-    /// Development-only fake provider that streams canned markdown
-    /// responses with randomized delays. Used to exercise the streaming
-    /// UI path (scroll behavior, thinking blocks, code-block rendering)
-    /// without depending on a real LLM endpoint. Gated entirely under
-    /// `#if DEBUG` — neither the enum case, the provider class, nor the
-    /// seed/registration call sites compile into Release builds.
     case debug
     #endif
 
-    /// Whether the running binary can construct a live `LLMProvider` for
-    /// this kind. As of web-search PR3c every shipping kind has an adapter
-    /// (`.openAICompatible`, `.appleFoundation`, `.openAIResponses`,
-    /// `.anthropicNative`, `.geminiNative`, and `.debug` in DEBUG), so this
-    /// currently returns `true` for all of them.
-    ///
-    /// It is **not** dead: the catalog can advertise a `nativeSearchAdapter`
-    /// and a row can carry a native `kind` *before* its adapter ships (that
-    /// was true for `.openAIResponses`/`.anthropicNative`/`.geminiNative` in
-    /// turn during the web-search rollout). When the next native provider is
-    /// added ahead of its adapter, give it a `case … return false` arm here;
-    /// callers gate on this rather than assuming every persisted kind is
-    /// buildable.
-    ///
-    /// Distinct from "is this kind decodable in this binary" (which the
-    /// repository's `knownKindRequest` covers): a not-yet-built native kind
-    /// decodes fine but has no provider to register, so a row carrying it
-    /// must not claim the active-provider slot (`selected()`), must not
-    /// trigger an unregister-without-re-register on edit, and must not be
-    /// classified by URL in the edit pane. Each arm flipped to `true` in the
-    /// PR that landed its adapter — `.openAIResponses` (PR3a),
-    /// `.anthropicNative` (PR3b), `.geminiNative` (PR3c).
+    /// Adapter availability is separate from decodability for newly introduced kinds.
     public var hasProviderAdapter: Bool {
         switch self {
         case .openAICompatible, .appleFoundation, .openAIResponses, .anthropicNative, .geminiNative:
@@ -197,15 +99,8 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     }
 }
 
-/// Persisted user-facing configuration for a model + endpoint + key triple.
-/// `apiKeyRef` is a Keychain reference, never the API (Application
-/// Programming Interface) key itself.
-///
-/// `baseURL` and `apiKeyRef` are optional because on-device kinds like
-/// `.appleFoundation` have neither — they're invariantly nil for those
-/// rows. For `.openAICompatible` rows `baseURL` is required (callers
-/// preconditionFailure on nil); `apiKeyRef` may be nil for local
-/// servers that don't require auth.
+/// apiKeyRef is a Keychain reference, never a secret. On-device rows have no
+/// endpoint/key; compatible HTTP rows require baseURL but may omit authentication.
 public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     public let id: String
     public let kind: LLMProviderKind
@@ -215,10 +110,7 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     public let modelID: String
     public let supportsThinking: Bool
     public let maxContextTokens: Int
-    /// Selected web-search engine for this model: `"native"` (the
-    /// provider's own server-side search, requires a native `kind`), a
-    /// standalone search-provider id, or `nil` for no web search. Drives
-    /// provider hydration and the per-turn tool wiring in later PRs.
+    /// native requires a native provider kind; nil disables search.
     public let searchBackend: String?
 
     public init(
@@ -244,27 +136,13 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Token counts reported by the provider at end of stream. Drives both the
-/// context meter UI and any future accounting.
-///
-/// Cache-token accounting differs by provider, and the difference is
-/// load-bearing for any cost math built on these fields:
-/// - **Anthropic** reports cached tokens *outside* `inputTokens` — the full
-///   prompt size is `inputTokens + cacheReadInputTokens + cacheCreationInputTokens`.
-/// - **OpenAI / xAI / Gemini** report cached tokens as a *subset already counted
-///   in* `inputTokens` (`cacheReadInputTokens <= inputTokens`); they have no
-///   separate write count, so `cacheCreationInputTokens` stays `nil`.
-/// Both cache fields are `nil` when the provider reported nothing (no cache
-/// activity, or a provider/endpoint that doesn't surface cache usage).
+/// Cache accounting differs by adapter: Anthropic cache counts are additional to
+/// inputTokens; OpenAI/xAI/Gemini cache reads are already included. Other adapters
+/// have no separate creation count. Nil cache fields mean no reported value.
 public struct TokenUsage: Sendable, Equatable, Codable {
     public let inputTokens: Int
     public let outputTokens: Int
-    /// Prompt tokens served from the provider's cache this request. Maps to
-    /// Anthropic `cache_read_input_tokens`, OpenAI/xAI
-    /// `prompt_tokens_details.cached_tokens`, and Gemini `cachedContentTokenCount`.
     public let cacheReadInputTokens: Int?
-    /// Prompt tokens written to the cache this request. Anthropic
-    /// (`cache_creation_input_tokens`) only; `nil` on every other provider.
     public let cacheCreationInputTokens: Int?
 
     public init(
@@ -279,16 +157,11 @@ public struct TokenUsage: Sendable, Equatable, Codable {
         self.cacheCreationInputTokens = cacheCreationInputTokens
     }
 
-    /// Sum of input and output tokens. For Anthropic, cached tokens sit *outside*
-    /// `inputTokens`, so `total` undercounts the true prompt size once native caching
-    /// is active.
-    // TODO(PR2): add a provider-aware `billedTotal` or fold cacheRead + cacheCreation
-    // in here, and audit the context-meter / compaction callers that read `total`.
+    // TODO(PR2): add provider-aware billedTotal and audit context-meter/compaction callers.
+        /// Input plus output; undercounts Anthropic prompt size when cache counts are present.
     public var total: Int { inputTokens + outputTokens }
 }
 
-/// Normalized error type so all providers surface the same cases.
-/// Wire-level error payloads map to `.providerError(code:message:)`.
 public enum LLMError: Error, Sendable, Equatable {
     case unauthorized
     case rateLimited

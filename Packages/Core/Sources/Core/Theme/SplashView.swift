@@ -1,18 +1,6 @@
 import SwiftUI
 
-/// Branded launch surface: pale-green field with the centered brand-wordmark
-/// lockup (spark + italic-serif text — `SuperOS` or `SuperBible` depending
-/// on the target's `CFBundleDisplayName`) and a pulsing footer (loading dot
-/// + version mark). Shown while the app's bootstrap is in flight; replaced
-/// by the shell once dependencies are ready.
-///
-/// Reads colors from the ambient `SuperTheme`. Per SPEC: 393×852 pt
-/// reference canvas, lockup vertically centered on the *screen* (not the
-/// safe area), footer 58 pt above the bottom safe-area inset.
-///
-/// Fonts required: `EBGaramond-Italic` and `JetBrainsMono-Regular`. The
-/// host must call `Core.registerBundledFonts()` before the first render or
-/// SwiftUI will fall back to system faces.
+/// The host must register Core's bundled fonts before rendering to avoid system fallback.
 public struct SplashView: View {
     private let name: String
     private let version: String
@@ -29,12 +17,7 @@ public struct SplashView: View {
         self.init(name: info.bundleName, version: info.version, skipEntranceAnimation: false)
     }
 
-    /// Test-only initializer. `name` and `version` let snapshot tests pin
-    /// the wordmark and version string without depending on the host
-    /// bundle's Info.plist; `skipEntranceAnimation: true` seeds both
-    /// `@State` flags at their resting values so the captured frame is
-    /// fully revealed at pulse peak, independent of `onAppear` ordering
-    /// under the snapshot host window.
+    // Pin bundle metadata and seed resting animation state independently of onAppear timing.
     init(name: String, version: String, skipEntranceAnimation: Bool) {
         self.name = name
         self.version = version
@@ -46,7 +29,7 @@ public struct SplashView: View {
         ZStack {
             theme.background.ignoresSafeArea()
 
-            // Spacers split screen height → lockup centers on screen, not safe area.
+            // Center the lockup on the screen, not the safe area.
             VStack(spacing: 0) {
                 Spacer()
                 lockup
@@ -54,7 +37,6 @@ public struct SplashView: View {
             }
             .ignoresSafeArea()
 
-            // Footer VStack respects safe area; bottom padding lifts it 58pt above.
             VStack(spacing: 0) {
                 Spacer()
                 footer
@@ -69,9 +51,7 @@ public struct SplashView: View {
                 .stroke(theme.accentDark, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
                 .frame(width: 44, height: 44)
             Text(name)
-                // Fixed brand mark: the splash wordmark deliberately ignores
-                // both axes — OS Dynamic Type (`relativeTo: nil`) and the app
-                // font-scale slider (`tracksFontScale: false`).
+                // The launch wordmark uses a fixed size.
                 .font(typography.display(38, relativeTo: nil, tracksFontScale: false))
                 .foregroundStyle(theme.ink)
                 .tracking(-0.57)

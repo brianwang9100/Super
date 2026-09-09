@@ -1,5 +1,4 @@
-/// A selection displayed between the composer's accessory buttons. The applet
-/// supplies its label and actions; the composer owns placement and disclosure.
+/// Applets supply label/actions; the composer owns placement and disclosure.
 public struct ComposerAccessorySelection {
     public let title: String
     public let accessibilityLabel: String

@@ -6,14 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoTagPicker` — the glass input field, the frosted
-/// suggestion chips, and the accent call-to-action "＋ Create" affordance.
-/// The create affordance and filtered suggestions are seeded through the
-/// `initialQuery` test seam (the field's query is otherwise internal state).
-///
-/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
-/// touch process-global recording + font-registration state, so the suites
-/// run serially to keep that setup deterministic — not to paper over a race.
 @Suite("TodoTagPicker snapshots", .serialized)
 @MainActor
 struct TodoTagPickerSnapshotTests {

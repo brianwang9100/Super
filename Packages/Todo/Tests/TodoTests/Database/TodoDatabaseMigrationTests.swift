@@ -3,8 +3,6 @@ import GRDB
 import Testing
 @testable import Todo
 
-/// Tests SQLite foreign-key cascades and case-insensitive active label uniqueness.
-/// `TodoSchemaSnapshotTests` owns the complete table, column, and index inventory.
 @Suite("TodoDatabase migrations")
 struct TodoDatabaseMigrationTests {
 

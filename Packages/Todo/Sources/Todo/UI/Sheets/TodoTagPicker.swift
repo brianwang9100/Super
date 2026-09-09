@@ -1,15 +1,8 @@
 import Core
 import SwiftUI
 
-/// Inline label picker used inside `TodoTaskEditorSheet`. Selected labels
-/// render as removable chips beside a text field; typing filters the
-/// unselected pool, and a query with no exact match surfaces a
-/// "＋ Create" affordance. Mirrors `TagPicker` in the Todo design source's
-/// `sheets.jsx`.
 struct TodoTagPicker: View {
-    /// Every active label, for resolving names/colors and filtering.
     let labels: [LabelRecord]
-    /// The draft's selected label ids.
     @Binding var selectedIds: [String]
     /// Create-or-fetch a label by name; returns its canonical id.
     let onCreate: (String) async -> String?
@@ -94,9 +87,7 @@ struct TodoTagPicker: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(minHeight: 36)
-        // Passive glass field — it hosts the text input and the removable
-        // selected-label chips, so the non-hit-asserting surface keeps those
-        // inner taps live. Replaces the old raised fill + faint stroke.
+        // Passive glass preserves the text field and chip buttons' hit regions.
         .superGlassSurface(in: RoundedRectangle(cornerRadius: 10))
     }
 
@@ -127,8 +118,6 @@ struct TodoTagPicker: View {
                     .font(typography.font(size: 12, weight: .bold))
                     .foregroundStyle(theme.accentInk)
                     .frame(width: 18, height: 18)
-                    // Accent call-to-action glass, matching the project's other
-                    // create-`+` buttons (new chat, add task, add model).
                     .superGlassCTAButton(in: Circle())
                 Text("Create \"\(trimmedQuery)\"")
                     .font(typography.font(size: 15, weight: .medium))

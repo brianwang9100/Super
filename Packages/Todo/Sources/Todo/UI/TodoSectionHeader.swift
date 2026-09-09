@@ -1,9 +1,6 @@
 import Core
 import SwiftUI
 
-/// Small uppercase group header with a monospace count chip. Rendered above
-/// each grouped section of the task list. Mirrors `SectionHeader` in the
-/// Todo design source's `components.jsx`.
 public struct TodoSectionHeader: View {
     public let title: String
     public let count: Int

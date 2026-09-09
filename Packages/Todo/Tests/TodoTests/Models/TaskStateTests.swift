@@ -1,7 +1,6 @@
 import Testing
 @testable import Todo
 
-/// Persisted identifiers and ordering for the `TaskState` and `TaskPriority` enums.
 @Suite("TaskState / TaskPriority")
 struct TaskStateTests {
     @Test func taskStateRawValuesMatchPersistedFormat() {

@@ -1,7 +1,6 @@
 import Testing
 @testable import Core
 
-/// Visibility of accessory rows with independently optional edge and selection controls.
 struct ComposerAccessoryTests {
     @Test func emptyRowHasNoControls() {
         #expect(ComposerAccessoryButtons.none.isEmpty)

@@ -1,9 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `BibleBookIndex` — full canon coverage, alias resolution,
-/// and the longest-spelling-first ordering that lets the parser match
-/// multi-word books before their single-word substrings.
 @Suite("BibleBookIndex")
 struct BibleBookIndexTests {
     @Test func canonicalContainsAllSixtySixBooks() {

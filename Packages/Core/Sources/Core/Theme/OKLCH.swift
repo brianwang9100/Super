@@ -1,18 +1,7 @@
 import SwiftUI
 
-/// OKLCH (Oklab Lightness-Chroma-Hue) color space helper.
-///
-/// The design palettes in `docs/design/palettes.jsx` are
-/// expressed in CSS `oklch(L C H)` triplets. SwiftUI has no native OKLCH
-/// constructor on iOS 18, so this type converts the three components into
-/// an sRGB `Color` at theme-build time.
-///
-/// The conversion follows the published Oklab transform (Björn Ottosson,
-/// 2020): OKLCH → Oklab → linear sRGB → gamma-encoded sRGB. The matrix
-/// constants below come from the public domain reference. Out-of-gamut
-/// values are clamped to `[0, 1]` per channel — the design palette stays
-/// safely inside the sRGB gamut, but clamping prevents an extreme accent
-/// hue from producing a negative component that SwiftUI would reject.
+/// Converts design OKLCH palettes to sRGB using Björn Ottosson's public-domain
+/// Oklab reference matrices (2020). Out-of-gamut channels clamp to 0...1.
 public struct OKLCH: Sendable, Equatable {
     /// Perceptual lightness, 0 (black) to 1 (white).
     public let l: Double
@@ -20,7 +9,6 @@ public struct OKLCH: Sendable, Equatable {
     public let c: Double
     /// Hue angle in degrees, 0…360.
     public let h: Double
-    /// Alpha, 0 (transparent) to 1 (opaque). Defaults to 1.
     public let alpha: Double
 
     public init(_ l: Double, _ c: Double, _ h: Double, alpha: Double = 1.0) {
@@ -30,16 +18,12 @@ public struct OKLCH: Sendable, Equatable {
         self.alpha = alpha
     }
 
-    /// Resolved sRGB `Color`. Computed once per call — themes cache the
-    /// result on a `Color` property rather than re-resolving every frame.
     public var color: Color {
         let (r, g, b) = Self.toSRGB(l: l, c: c, h: h)
         return Color(.sRGB, red: r, green: g, blue: b, opacity: alpha)
     }
 
-    /// OKLCH → sRGB conversion. Returns gamma-encoded sRGB components in
-    /// `[0, 1]`. Clamps each channel before returning so out-of-gamut
-    /// hues don't produce negative or super-unit values.
+    /// Returns gamma-encoded sRGB channels clamped to 0...1.
     static func toSRGB(l: Double, c: Double, h: Double) -> (r: Double, g: Double, b: Double) {
         let hRad = h * .pi / 180.0
         let a = c * cos(hRad)
@@ -66,7 +50,6 @@ public struct OKLCH: Sendable, Equatable {
         )
     }
 
-    /// Linear-sRGB → gamma-encoded sRGB transfer function.
     private static func srgbEncode(_ x: Double) -> Double {
         if x <= 0 { return 0 }
         if x >= 1 { return 1 }

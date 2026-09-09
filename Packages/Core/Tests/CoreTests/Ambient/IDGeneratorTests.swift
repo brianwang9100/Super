@@ -1,8 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `UUIDGenerator` uniqueness and `DeterministicIDGenerator`
-/// counter behavior.
 @Suite("IDGenerator")
 struct IDGeneratorTests {
     @Test func uuidGeneratorReturnsUniqueValues() {

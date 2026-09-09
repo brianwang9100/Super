@@ -8,12 +8,7 @@ import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request that observes every non-deleted task joined with its
-/// labels, newest first. `@Query(ActiveTasksRequest())` in a SwiftUI view
-/// re-renders automatically on any write to `task`, `taskLabel`, or
-/// `label` — including writes from other applets (e.g. Chat creating a
-/// task). This is the sanctioned GRDB→SwiftUI bridge; the view model does
-/// not hand-roll observation.
+/// Observes non-deleted tasks and their labels, newest first.
 public struct ActiveTasksRequest: ValueObservationQueryable {
     public static var defaultValue: [TaskWithLabels] { [] }
 
@@ -31,8 +26,6 @@ public struct ActiveTasksRequest: ValueObservationQueryable {
             .filter(Column("deletedAt") == nil)
             .filter(taskIDs.contains(Column("taskId")))
             .fetchAll(db)
-        // Fetch only the labels actually referenced by the in-view tasks'
-        // join rows, not every active label.
         let labelIDs = Set(joinRows.map(\.labelId))
         let labelsByID = try Dictionary(
             uniqueKeysWithValues: LabelRecord

@@ -1,9 +1,6 @@
 import Core
 import SwiftUI
 
-/// Tappable pill showing the active filter summary. Tapping opens the
-/// filter sheet. Mirrors `FilterPill` in the Todo design source's
-/// `components.jsx`.
 public struct TodoFilterPill: View {
     public let summary: String
     public let onTap: () -> Void
@@ -33,9 +30,6 @@ public struct TodoFilterPill: View {
             .foregroundStyle(theme.inkSoft)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            // Whole pill is the tap target, so the hit-region-asserting glass
-            // button is right; it supplies its own frosted edge in place of
-            // the old raised fill + faint stroke.
             .superGlassButton(in: Capsule())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))

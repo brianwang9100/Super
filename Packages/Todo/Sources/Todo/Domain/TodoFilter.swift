@@ -1,12 +1,6 @@
 import Foundation
 
-/// The user's active sort and filter across the task list. State is
-/// in-memory only for the MVP; persisting it across launches is a
-/// follow-up.
 public struct TodoFilter: Sendable, Equatable {
-    /// Sort order. `.manual` stays in the enum so a future reorder UX can
-    /// adopt it without a schema change, but the filter sheet does not
-    /// expose it yet.
     public enum Sort: String, Sendable, Equatable, CaseIterable {
         case priority
         case dueDate
@@ -23,7 +17,6 @@ public struct TodoFilter: Sendable, Equatable {
         }
     }
 
-    /// Which task states the list shows.
     public enum StateScope: Sendable, Equatable {
         case open
         case done
@@ -167,7 +160,6 @@ public func groupTasks(
     return [TodoListGroup(id: "_ungrouped", title: nil, tasks: tasks)]
 }
 
-/// One-line human summary of the filter, rendered in the filter pill.
 public func describe(_ filter: TodoFilter, labelLookup: [String: LabelRecord]) -> String {
     var parts: [String] = [filter.state.displayName]
     if !filter.labelIds.isEmpty {
