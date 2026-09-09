@@ -209,7 +209,8 @@ struct BibleChapterPreviewTests {
         var preview: BibleChapterPreviewViewModel? = BibleChapterPreviewViewModel(
             reader: full.makePreviewReader(for: link), onFinish: { _ in }
         )
-        weak var releasedReader = preview?.reader
+        weak var releasedReader: BibleScreenViewModel?
+        releasedReader = preview?.reader
         let target = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
         preview?.reader.triggerAnnotationGeneration(for: target)
         guard case .running(let requestId) = full.dispatchStatus(for: target) else {
