@@ -15,6 +15,13 @@ import SwiftUI
 ///   release with SwiftUI's predicted-end translation (the velocity proxy);
 ///   the overlay computes the snap target from height + velocity.
 public struct ChatDragHandle: View {
+    /// Visible dimensions shared with the composer's minimize affordance.
+    static let barWidth: CGFloat = 36
+    static let barHeight: CGFloat = 4.5
+
+    /// Both handles use the same continuous capsule ends.
+    static var barShape: Capsule { Capsule(style: .continuous) }
+
     /// Resting tone is shown in the steady state. Active tone is shown
     /// while the user is dragging the handle.
     public enum Tone: Sendable, Equatable {
@@ -58,9 +65,9 @@ public struct ChatDragHandle: View {
         // doesn't shift horizontally when the parent container's width
         // changes between presentation states.
         VStack {
-            Capsule(style: .continuous)
+            Self.barShape
                 .fill(fillColor)
-                .frame(width: 36, height: 4.5)
+                .frame(width: Self.barWidth, height: Self.barHeight)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -103,7 +110,7 @@ public struct ChatDragHandle: View {
     /// speed. `.global` reports true screen-pixel displacement, so the
     /// chat tracks the finger 1:1.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+        Self.resizeGesture()
             .onChanged { value in
                 if !isDragging { isDragging = true }
                 onDragChanged?(value.translation)
@@ -112,5 +119,10 @@ public struct ChatDragHandle: View {
                 isDragging = false
                 onDragEnded?(value.translation, value.predictedEndTranslation)
             }
+    }
+
+    /// Both handles report displacement in screen coordinates as the panel moves.
+    static func resizeGesture(minimumDistance: CGFloat = 0) -> DragGesture {
+        DragGesture(minimumDistance: minimumDistance, coordinateSpace: .global)
     }
 }
