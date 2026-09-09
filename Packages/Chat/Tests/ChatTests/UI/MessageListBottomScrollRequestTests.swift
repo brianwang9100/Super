@@ -1,8 +1,44 @@
+import Foundation
 import Testing
 @testable import Chat
 
 /// Protects the explicit jump's lifetime from later streaming and user navigation.
 struct MessageListBottomScrollRequestTests {
+    @Test("tokens and persistence keep a jump alive until rendered arrival")
+    @MainActor
+    func activeResponseReachesRenderedBottom() {
+        let user = MessageList.Item.userBubble(id: "turn", text: "Question", references: [])
+        let saved = MessageList.Item.assistantText(
+            id: "answer", thinking: nil, thinkingDurationMs: nil, text: "Saved response",
+            toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
+        )
+        func content(_ items: [MessageList.Item]) -> MessageList.BottomScrollContext {
+            MessageList.BottomScrollContext(
+                turnID: MessageListTurn.group(items).last?.id, viewport: CGSize(width: 402, height: 600),
+                verbosity: .simple, thinkingExpansion: [:]
+            )
+        }
+        let initial = content([user])
+        var request = MessageListBottomScrollRequest<MessageList.BottomScrollContext>()
+        request.begin(content: initial)
+        let provisional = request.shouldRefine(distanceToBottom: 0, isRendered: false, content: initial)
+        #expect(!provisional)
+        // Streaming text is not part of the turn/layout request identity.
+        let tokenCorrection = request.shouldRefine(
+            distanceToBottom: 200, isRendered: false, content: content([user])
+        )
+        #expect(tokenCorrection)
+        let persisted = content([user, saved])
+        let renderedCorrection = request.shouldRefine(distanceToBottom: 120, isRendered: true, content: persisted)
+        #expect(renderedCorrection)
+        let arrival = request.shouldRefine(distanceToBottom: 0, isRendered: true, content: persisted)
+        #expect(!arrival)
+        let laterGrowth = request.shouldRefine(
+            distanceToBottom: 300, isRendered: true, content: content([user, saved])
+        )
+        #expect(!laterGrowth)
+    }
+
     @Test("a provisional bottom does not discard later lazy-layout correction")
     func provisionalBottomKeepsCorrection() {
         var request = MessageListBottomScrollRequest<String>()
@@ -53,12 +89,12 @@ struct MessageListBottomScrollRequestTests {
         expectRefinement(false, request: &request, distance: 200)
     }
 
-    @Test("changed content cancels before completion or correction", arguments: [0.0, 300])
-    func changedContentCancels(distance: Double) {
+    @Test("changed turn or layout cancels before completion or correction", arguments: [0.0, 300])
+    func changedContextCancels(distance: Double) {
         var request = MessageListBottomScrollRequest<String>()
         request.begin(content: "tap")
         expectRefinement(false, request: &request, distance: 0)
-        expectRefinement(false, request: &request, distance: distance, isRendered: true, content: "new tokens")
+        expectRefinement(false, request: &request, distance: distance, isRendered: true, content: "another turn or layout")
         expectRefinement(false, request: &request, distance: 300, isRendered: true)
     }
 

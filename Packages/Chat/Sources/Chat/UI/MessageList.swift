@@ -107,7 +107,7 @@ public struct MessageList: View {
     private static let bottomID = "__transcript_bottom"
 
     /// The live response and its saved row share the same logical slot.
-    private struct ThinkingKey: Hashable {
+    struct ThinkingKey: Hashable {
         let turnID: String
         let responseIndex: Int
     }
@@ -126,15 +126,12 @@ public struct MessageList: View {
 
     /// Geometry callbacks mutate the request without invalidating layout.
     private final class BottomScrollState {
-        var request = MessageListBottomScrollRequest<BottomContent>()
+        var request = MessageListBottomScrollRequest<BottomScrollContext>()
     }
 
-    /// Corrections belong to the content present at the tap, never later tokens.
-    private struct BottomContent: Equatable {
-        let items: [Item]
-        let streamingTail: StreamingState?
-        let interruptedResponse: StreamingState?
-        let error: ErrorState?
+    /// Same-turn tokens and persistence keep the tap alive until rendered arrival.
+    struct BottomScrollContext: Equatable {
+        let turnID: String?
         let viewport: CGSize
         let verbosity: ChatVerbosity
         let thinkingExpansion: [ThinkingKey: Bool]
@@ -142,7 +139,7 @@ public struct MessageList: View {
 
     private struct BottomGeometry: Equatable {
         let bottomY: CGFloat
-        let content: BottomContent
+        let content: BottomScrollContext
     }
 
     public var body: some View {
@@ -153,11 +150,11 @@ public struct MessageList: View {
 
     private func transcript(containerSize: CGSize) -> some View {
         let containerHeight = containerSize.height
-        let bottomContent = BottomContent(
-            items: items, streamingTail: streamingTail, interruptedResponse: interruptedResponse,
-            error: error, viewport: containerSize, verbosity: verbosity, thinkingExpansion: thinkingExpansion
-        )
         let turns = MessageListTurn.group(items)
+        let bottomScrollContext = BottomScrollContext(
+            turnID: turns.last?.id, viewport: containerSize,
+            verbosity: verbosity, thinkingExpansion: thinkingExpansion
+        )
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -194,7 +191,7 @@ public struct MessageList: View {
                             guard turn.id == turns.last?.id else { return nil }
                             return BottomGeometry(
                                 bottomY: geometry.frame(in: .named("transcript-viewport")).maxY + 8,
-                                content: bottomContent
+                                content: bottomScrollContext
                             )
                         } action: { geometry in
                             guard let geometry else { return }
@@ -219,7 +216,7 @@ public struct MessageList: View {
                 .onGeometryChange(for: BottomGeometry.self) { geometry in
                     BottomGeometry(
                         bottomY: geometry.frame(in: .named("transcript-viewport")).maxY,
-                        content: bottomContent
+                        content: bottomScrollContext
                     )
                 } action: { geometry in
                     // The stack can seek using estimates, but the rendered last
@@ -257,14 +254,14 @@ public struct MessageList: View {
                     // the confirmation never moves across its hit target.
                     ScrollToBottomButton(visibility: bottomVisibility) {
                         focus.cancel()
-                        bottomScroll.request.begin(content: bottomContent)
+                        bottomScroll.request.begin(content: bottomScrollContext)
                         proxy.scrollTo(Self.bottomID, anchor: .bottom)
                     }
                 }
                 .padding(.bottom, ScrollToBottomButton.bottomPadding)
                 .animation(.easeInOut(duration: 0.18), value: showCopyConfirmation)
             }
-            .onChange(of: bottomContent) { _, _ in
+            .onChange(of: bottomScrollContext) { _, _ in
                 bottomScroll.request.cancel()
             }
             .onChange(of: scrollRequest, initial: true) { previous, request in

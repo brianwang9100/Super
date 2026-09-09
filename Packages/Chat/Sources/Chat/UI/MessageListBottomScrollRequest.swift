@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bounds lazy-layout corrections to an explicit tap, without following later tokens.
+/// Bounds correction to the tapped turn/layout context and stops at rendered arrival.
 struct MessageListBottomScrollRequest<Content: Equatable> {
     private var requestedContent: Content?
     private var attempts = 0
