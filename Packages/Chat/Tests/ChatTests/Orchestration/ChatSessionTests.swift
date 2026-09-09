@@ -158,58 +158,62 @@ struct ChatSessionTests {
         #expect(stored?.attachments == nil)
     }
 
-    @Test func textDeltasAccumulateAndAssistantSavesOnceOnMessageComplete() async throws {
-        let setup = try await makeSetup(scripts: [
-            [
-                .messageStart(id: "m1", model: "fake-model-1"),
-                .textDelta(index: 0, text: "Hello "),
-                .textDelta(index: 0, text: "world"),
-                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 2)),
-            ],
-        ])
+    @Test func streamingBuffersStayOutOfDatabaseUntilCompletedAssistantIsPublished() async throws {
+        let setup = try await makeSetup(registerProvider: false)
+        let provider = PausableLLMProvider(model: setup.model)
+        await setup.llmRegistry.register(provider)
         let stream = await setup.session.send(text: "Hi", model: setup.model)
-        let events = await collect(stream)
+        var iterator = stream.makeAsyncIterator()
+        var events: [ChatEvent] = []
+        if let first = await iterator.next() { events.append(first) }
+
+        let deltas: [(LLMStreamEvent, ChatEvent)] = [
+            (.thinkingDelta(index: 0, text: "Reasoning "), .thinkingDelta("Reasoning ")),
+            (.thinkingDelta(index: 0, text: "trace"), .thinkingDelta("trace")),
+            (.textDelta(index: 0, text: "Hello "), .textDelta("Hello ")),
+            (.textDelta(index: 0, text: "world"), .textDelta("world")),
+        ]
+        do {
+            for (delta, expected) in deltas {
+                await provider.yield(delta)
+                // The broadcast proves the session processed this delta. The
+                // provider stays open, so completion cannot race this read.
+                let received = await iterator.next()
+                #expect(received == expected)
+                if let received { events.append(received) }
+                let buffered = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+                #expect(buffered.map(\.role) == [.user])
+                #expect(buffered.first?.content == "Hi")
+            }
+        } catch {
+            await provider.finish()
+            await setup.session.waitUntilFinished()
+            throw error
+        }
+
+        await provider.yield(.messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 2)))
+        await provider.finish()
+        while let event = await iterator.next() { events.append(event) }
         await setup.session.waitUntilFinished()
 
-        // Two textDelta events surface to the view.
-        let textDeltas = events.compactMap { event -> String? in
+        #expect(events.compactMap { event -> String? in
             if case .textDelta(let text) = event { return text }
             return nil
+        } == ["Hello ", "world"])
+        let saved = events.compactMap { event -> MessageRecord? in
+            if case .assistantMessageSaved(let record) = event { return record }
+            return nil
         }
-        #expect(textDeltas == ["Hello ", "world"])
-
-        // Exactly one assistant message lands in the database, with
-        // the accumulated text and the usage's output token count.
-        let assistantSavedCount = events.filter {
-            if case .assistantMessageSaved = $0 { return true }
-            return false
-        }.count
-        #expect(assistantSavedCount == 1)
-
+        #expect(saved.count == 1)
+        let assistant = try #require(saved.first)
+        #expect(events.last == .assistantMessageSaved(assistant))
         let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
         #expect(stored.map(\.role) == [.user, .assistant])
-        #expect(stored.last?.content == "Hello world")
-        #expect(stored.last?.tokenCount == 2)
-    }
-
-    @Test func intermediateTextDeltasNeverWriteToDatabase() async throws {
-        let setup = try await makeSetup(scripts: [
-            [
-                .messageStart(id: "m1", model: "fake-model-1"),
-                .textDelta(index: 0, text: "a"),
-                .textDelta(index: 0, text: "b"),
-                .textDelta(index: 0, text: "c"),
-                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
-            ],
-        ])
-        let stream = await setup.session.send(text: "ping", model: setup.model)
-        _ = await collect(stream)
-        await setup.session.waitUntilFinished()
-
-        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
-        // 1 user + 1 assistant only — no per-delta intermediate rows.
-        #expect(stored.count == 2)
-        #expect(stored.last?.content == "abc")
+        #expect(stored.last == assistant)
+        #expect(assistant.content == "Hello world")
+        #expect(assistant.thinkingContent == "Reasoning trace")
+        #expect(assistant.tokenCount == 2)
+        #expect(await setup.session.isStreaming == false)
     }
 
     @Test func providerErrorEventEndsTurnWithErrorAndNoAssistantRow() async throws {
@@ -458,44 +462,6 @@ struct ChatSessionTests {
         let stored = try await setup.messageRepo.fetch(id: record.id)
         #expect(stored?.thinkingContent == nil)
         #expect(stored?.thinkingDurationMs == nil)
-    }
-
-    @Test func assistantMessageSavedEventCarriesPersistedRow() async throws {
-        let setup = try await makeSetup(scripts: [
-            [
-                .messageStart(id: "m1", model: "fake-model-1"),
-                .textDelta(index: 0, text: "done"),
-                .messageComplete(usage: TokenUsage(inputTokens: 3, outputTokens: 4)),
-            ],
-        ])
-        let stream = await setup.session.send(text: "Hi", model: setup.model)
-        let events = await collect(stream)
-        await setup.session.waitUntilFinished()
-
-        guard case .assistantMessageSaved(let record) = events.last else {
-            Issue.record("expected trailing .assistantMessageSaved, got \(String(describing: events.last))")
-            return
-        }
-        let stored = try await setup.messageRepo.fetch(id: record.id)
-        #expect(stored?.id == record.id)
-        #expect(stored?.role == record.role)
-        #expect(stored?.content == record.content)
-        #expect(stored?.tokenCount == 4)
-    }
-
-    @Test func isStreamingFlipsBackToFalseAfterTurnCompletes() async throws {
-        let setup = try await makeSetup(scripts: [
-            [
-                .messageStart(id: "m1", model: "fake-model-1"),
-                .textDelta(index: 0, text: "ok"),
-                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
-            ],
-        ])
-        let stream = await setup.session.send(text: "Hi", model: setup.model)
-        _ = await collect(stream)
-        await setup.session.waitUntilFinished()
-        let active = await setup.session.isStreaming
-        #expect(active == false)
     }
 
     @Test func emptyTurnDoesNotPersistAssistantRow() async throws {

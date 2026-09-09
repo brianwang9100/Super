@@ -3,52 +3,10 @@ import GRDB
 import Testing
 @testable import Todo
 
-/// Tests for `TodoDatabase`'s v1 migration: every table and index exists,
-/// foreign-key cascades fire, and the partial unique index on label names
-/// is case-insensitive while still allowing soft-deleted-name reuse.
+/// Tests SQLite foreign-key cascades and case-insensitive active label uniqueness.
+/// `TodoSchemaSnapshotTests` owns the complete table, column, and index inventory.
 @Suite("TodoDatabase migrations")
 struct TodoDatabaseMigrationTests {
-
-    @Test func v1CreatesEverySchemaTable() async throws {
-        let db = try TodoDatabase.makeInMemory()
-        let names = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name NOT LIKE 'sqlite_%'
-                  AND name NOT LIKE 'grdb_%'
-                ORDER BY name
-            """)
-        }
-        #expect(names == ["label", "task", "taskLabel"])
-    }
-
-    @Test func v1CreatesExpectedIndexes() async throws {
-        let db = try TodoDatabase.makeInMemory()
-        let names = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='index' AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-            """)
-        }
-        #expect(names.contains("task_on_state_priority"))
-        #expect(names.contains("task_on_dueAt"))
-        #expect(names.contains("task_on_updatedAt"))
-        #expect(names.contains("label_unique_name_active"))
-        #expect(names.contains("taskLabel_on_labelId"))
-    }
-
-    @Test func v1TaskLabelCarriesSyncColumns() async throws {
-        let db = try TodoDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try String.fetchAll(db, sql: "SELECT name FROM pragma_table_info('taskLabel')")
-        }
-        // Sync-readiness per docs/SYNC.md §6.2 — the v1 migration is
-        // immutable, so the tombstone columns must ship in it.
-        #expect(columns.contains("createdAt"))
-        #expect(columns.contains("updatedAt"))
-        #expect(columns.contains("deletedAt"))
-    }
 
     @Test func taskDeleteCascadesToTaskLabel() async throws {
         let db = try TodoDatabase.makeInMemory()

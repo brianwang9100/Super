@@ -56,6 +56,22 @@ struct TodoQueriesTests {
         #expect(rows.first?.labels.isEmpty == true)
     }
 
+    @Test func activeTasksRequestExcludesTombstonedJoinsButKeepsTheirTasks() async throws {
+        let db = try TodoDatabase.makeInMemory()
+        try await db.queue.write { db in
+            try task("T1", at: now).save(db)
+            try label("live", "Work").save(db)
+            try label("detached", "Home").save(db)
+            try TaskLabelRecord(taskId: "T1", labelId: "live", createdAt: now, updatedAt: now).save(db)
+            try TaskLabelRecord(
+                taskId: "T1", labelId: "detached", createdAt: now, updatedAt: now, deletedAt: now
+            ).save(db)
+        }
+        let rows = try await db.queue.read { try ActiveTasksRequest().fetch($0) }
+        #expect(rows.map(\.id) == ["T1"])
+        #expect(rows.first?.labels.map(\.id) == ["live"])
+    }
+
     @Test func activeLabelsRequestReturnsActiveLabelsSortedCaseInsensitive() async throws {
         let db = try TodoDatabase.makeInMemory()
         try await db.queue.write { db in

@@ -14,11 +14,13 @@ final class URLProtocolStub: URLProtocol {
         let statusCode: Int
         let chunks: [Data]
         let error: Error?
+        let finishes: Bool
 
-        init(statusCode: Int = 200, chunks: [Data] = [], error: Error? = nil) {
+        init(statusCode: Int = 200, chunks: [Data] = [], error: Error? = nil, finishes: Bool = true) {
             self.statusCode = statusCode
             self.chunks = chunks
             self.error = error
+            self.finishes = finishes
         }
     }
 
@@ -26,6 +28,8 @@ final class URLProtocolStub: URLProtocol {
     /// of requests the protocol has observed so far.
     private struct Registration: Sendable {
         let stub: @Sendable (URLRequest) -> Response
+        let onStart: (@Sendable () -> Void)?
+        let onStop: (@Sendable () -> Void)?
         var observedRequests: [URLRequest] = []
     }
 
@@ -35,9 +39,14 @@ final class URLProtocolStub: URLProtocol {
 
     static func newStubID() -> String { UUID().uuidString }
 
-    static func register(stubID: String, _ stub: @escaping @Sendable (URLRequest) -> Response) {
+    static func register(
+        stubID: String,
+        onStart: (@Sendable () -> Void)? = nil,
+        onStop: (@Sendable () -> Void)? = nil,
+        _ stub: @escaping @Sendable (URLRequest) -> Response
+    ) {
         registry.withLock { state in
-            state[stubID] = Registration(stub: stub)
+            state[stubID] = Registration(stub: stub, onStart: onStart, onStop: onStop)
         }
     }
 
@@ -97,8 +106,13 @@ final class URLProtocolStub: URLProtocol {
         for chunk in response.chunks {
             client?.urlProtocol(self, didLoad: chunk)
         }
-        client?.urlProtocolDidFinishLoading(self)
+        if response.finishes { client?.urlProtocolDidFinishLoading(self) }
+        registration.onStart?()
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        guard let stubID = request.value(forHTTPHeaderField: Self.stubHeader) else { return }
+        let onStop = Self.registry.withLock { $0[stubID]?.onStop }
+        onStop?()
+    }
 }
