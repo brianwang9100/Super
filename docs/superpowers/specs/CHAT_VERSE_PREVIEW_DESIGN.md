@@ -31,10 +31,12 @@ Its readable-background behavior keeps the chapter interactive. Tapping selected
 verses deselects them; tapping other verses changes the selection using the
 reader's existing multiple-selection behavior. Empty selection dismisses actions.
 Closing actions retains selection. A small selection citation control at the
-bottom of the modal reopens actions and includes the existing clear-selection
-affordance; this
+bottom of the modal floats in front of the scrollable chapter, reopens actions,
+and includes the existing clear-selection affordance; this
 avoids stranding actions after their close button is used. This control provides
-selection management only, never chapter navigation.
+selection management only, never chapter navigation. The chapter scrolls behind
+the pill; trailing scroll content clearance allows the final verse to move above
+it without reducing the viewport or introducing an opaque footer.
 
 Preserve the existing action sheet's Highlight, Clear highlight, Copy, Share,
 Annotate, Add note, Add to chat, and New chat actions. Notes, annotations, and

@@ -254,3 +254,32 @@ action reopening, clear-to-chapter title, and the entire final verse scrolling
 above the reserved control area. No new model state, formatting logic, captures,
 or generated image files were added. This view-only follow-up reuses existing
 selection-formatting tests rather than adding tests that mirror the layout.
+
+
+## Design clarification — floating selection pill
+
+The user's clarification supersedes the reserved bottom-row layout: the pill must
+float in front of the chapter, with text scrolling behind it. Keep the existing
+verse-aware header. Move SelectionPill into a bottom-aligned overlay on the chapter
+content; keep the overlay's hit area limited to the pill so surrounding text stays
+interactive. Add trailing scroll content clearance while selected, sufficient for
+the fixed 44-point pill and its spacing, so the final verse can scroll above it.
+Do not shrink the ScrollView viewport or add a full-width opaque footer. Native
+study sheets keep their existing presentation order.
+
+Validation: independent bounded review, full Bible suite, the existing light/dark/
+XXL preview captures with unchanged inventory, and native scrolling behind the
+pill, bottom-verse reachability, action reopening, and clearing. Update the top PR
+and request renewed Codex review, with auto-merge disabled.
+
+### Incorporate the repository snapshot rollback
+
+- Checkpoint the reviewed floating-pill correction, then preserve recovery refs for all three current stack heads.
+- Rebase the foundation onto fetched `origin/main`, then replay preview and Chat integration in dependency order with explicit old parent boundaries. Keep the native stack and PR bases intact; do not sync against another checkout's local main.
+- Preserve the restored repository baseline workflow, simulator/renderer pins and existing PNGs. Resolve overlapping inventory documentation to include the three distinct modal fixtures (623 → 626 total).
+- Run default comparisons before explicitly recording the three intentional modal baselines. Inspect PNGs, commit them on the preview branch, then update the three on the integration branch for the final verse-aware floating-pill design. Recompare each changed baseline set.
+- Run affected Core, Bible and Chat suites, build both app schemes, and check the rebase diff. Push each owned branch with an explicit lease matching its pre-rebase remote head, request fresh Codex review, and update the ten-minute monitor to use repository snapshot checks with no Argos dependency.
+
+Risks: retain each PR's independently valid baselines; do not accidentally flatten the stack, replay parent commits twice, or accept unrelated visual changes. All PRs are draft with auto-merge disabled before rewriting. Fresh approval and required checks apply to every rewritten head.
+
+Floating-pill validation: Bible passed 884 tests in 89 suites; all three existing preview captures passed and were inspected (light, dark, XXL at 120%). Super and SuperBible both built on the pinned simulator. Native SuperBible at Lapis Dark/120% confirmed text behind the fixed pill, a verse tap beside the pill updating both citations, and the complete final verse scrolling above the pill. Independent plan and code reviews approved the correction. Capture count is unchanged by this layout adjustment.

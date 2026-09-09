@@ -30,7 +30,7 @@ struct BibleChapterPreviewSheet: View {
 
             BibleChapterContent(
                 viewModel: viewModel.reader,
-                layout: .preview,
+                layout: viewModel.reader.selectedVerses.isEmpty ? .preview : .previewWithSelection,
                 overlayKind: viewModel.reader.isActionSheetPresented ? .selection : nil,
                 onAnnotationBubbleTap: { viewModel.reader.presentAnnotationSheet(for: $0) },
                 onRequestChapterAnnotation: { viewModel.reader.triggerAnnotationGeneration(for: $0) },
@@ -39,12 +39,14 @@ struct BibleChapterPreviewSheet: View {
             )
             .allowsHitTesting(viewModel.isReady)
 
-            if let citation = viewModel.reader.selectionCitation {
-                SelectionPill(title: citation, accessibilityLabel: "Actions for \(citation)",
-                              onAction: { viewModel.reopenActions() },
-                              onClear: { viewModel.reader.clearSelection() })
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 14)
+            .overlay(alignment: .bottom) {
+                if let citation = viewModel.reader.selectionCitation {
+                    SelectionPill(title: citation, accessibilityLabel: "Actions for \(citation)",
+                                  onAction: { viewModel.reopenActions() },
+                                  onClear: { viewModel.reader.clearSelection() })
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                }
             }
         }
         .background(theme.background)
