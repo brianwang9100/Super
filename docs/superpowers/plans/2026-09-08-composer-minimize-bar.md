@@ -16,7 +16,7 @@ Ship the simulator prototype accepted by the user on September 8, 2026. Add a 6-
 - Glass composition and alignment: inspect actual simulator rendering and the existing native previews in light/dark, scaled text, editing, and morph states. The bar must use the same material as the model selector, with no custom fill, border, or shadow.
 - Touch routing: verify the visible bar and expanded touch region, adjacent model selection and editor focus, and absence of the minimize action in the minimized accessibility tree.
 - Presentation/focus: exercise expanded and semi-expanded chat with the software keyboard visible; minimize, reopen, and confirm the draft survives with focus cleared.
-- Run Chat's full macOS package suite and the Chat visual capture driver on the registered iPhone 17, Xcode 26.4.1 / 17E202, iOS 26.4.1 / 23E254a. Inspect the affected overlay captures and retain all fixture and behavioral coverage. Argos owns baselines; do not commit generated images.
+- Run Chat's full macOS package suite and the Chat visual capture driver on the registered iPhone 17, Xcode 26.4.1 / 17E202, iOS 26.4.1 / 23E254a. Inspect the affected overlay captures and retain all fixture and behavioral coverage. Compare repository PNG baselines by default; explicitly record, inspect, commit, and recompare intentional changes per `docs/SNAPSHOT_TESTING.md`.
 - Capture the full existing 41-image native preview inventory, checking the 21 composer images relevant to this change. Native capture count stays 41→41; package image count stays 582→582 (623 total).
 - Build and launch SuperOS in the same simulator. Run SwiftLint on changed Swift files and `git diff --check`.
 
@@ -27,7 +27,7 @@ Ship the simulator prototype accepted by the user on September 8, 2026. Add a 6-
 - Create a draft PR using the repository template, with test results and visual evidence.
 - Monitor CI and Codex review together every ten minutes. After explicit Codex approval of the current revision and passing required checks, mark ready, enable auto-merge with protections intact, and verify the merge. Disable auto-merge before any additional push and repeat the gates for the new revision.
 
-## Verification
+## Original implementation verification
 
 - Prototype accepted: final 6-point bar built and shown on the dedicated simulator.
 - Integrated main through `95e50574`, including the completed Argos migration; production validation uses its capture drivers.
@@ -39,4 +39,12 @@ Ship the simulator prototype accepted by the user on September 8, 2026. Add a 6-
 - Inspected light/dark overlay captures and native light/dark, maximum scale plus XXL, reference-pill, morph, and minimized captures. No capture cases added or removed: 623→623 total.
 - Manual simulator checks: direct bar tap in semi-expanded chat and lower-gutter tap at y=832 in expanded chat minimize successfully; model selection remains usable; minimized accessibility contains “Open chat” and no “Minimize chat”; a typed draft survives reopening with no caret/focus.
 - Live software-keyboard interaction could not be completed because the Mac locked and Simulator's connected hardware keyboard suppresses the software keyboard. The keyboard-visible light/dark layout fixtures passed. An unlock request is pending; this limitation is reported in the PR.
-- Independent final source/inventory/test review found no serious actionable issues. Remote CI, Argos comparison, and current-revision Codex approval remain merge gates.
+- Independent final source/inventory/test review found no serious actionable issues. Remote CI, repository snapshot comparison, and current-revision Codex approval remain merge gates.
+
+## Repository snapshot rollback integration
+
+PR #354 restored the repository snapshot workflow at `ba1161b1`. Rebase the published implementation onto that revision, preserving the uncommitted design comparisons in a retained recovery stash until published-head validation and the safe-lease push complete. Keep PR #346 draft and auto-merge disabled while the user evaluates the local design. The ten-minute delivery monitor now follows repository PNG comparisons and remains paused. Do not restore Argos uploads or approval requirements.
+
+Record only the inspected composer/overlay baseline differences for this published implementation; retain all 623 capture identities and renderer pins. The initial comparison must fail on the intended differences, and a fresh default comparison must pass after recording. Restore the local design comparison after the maintenance commit, preserving its narrower draggable handle, matching top-handle dimensions, and tighter spacing without including it in this maintenance push.
+
+Published-head validation passes after the rollback: 1,103 Chat tests in 83 suites, all 244 Chat snapshot comparisons, all 41 native preview comparisons, 38 preview guard tests, and the SuperOS simulator build. Explicit recording changed seven overlay and nineteen composer PNGs. Fourteen unrelated native images retain their original baselines and pass the existing rounding policy (96 channel-level pixels total). Inventory remains 623 images. Independent rebase/source/baseline-scope review found no serious actionable issues. Evidence: `.build/rollback-chat-compare/`, `.build/PreviewPilot/run-5qqvqdsd/`, and `/tmp/f585-rollback-chat-tests.log`.
