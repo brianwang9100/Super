@@ -220,9 +220,9 @@ The implementation is split into reusable reader foundation (PR #348), isolated
 chapter preview (PR #349), and Chat/shell integration (top PR), linked through native
 GitHub stack #350. Both lower PRs have explicit Codex approval of their current
 heads and passing builds, lint, secret scan, package tests, and iOS capture tests.
-Their required `native-previews` upload fails because Argos reports the account's
-Free Plan screenshot capacity is exhausted. Required checks remain enforced; no
-baseline deletion, check bypass, or paid plan change is part of this work.
+At that historical revision, the required upload was blocked by Argos quota.
+PR #354 subsequently restored repository snapshots and removed the Argos gate;
+the stack rebase and current baseline validation below supersede that blocker.
 
 
 ## Design feedback — selection location and title
@@ -283,3 +283,8 @@ and request renewed Codex review, with auto-merge disabled.
 Risks: retain each PR's independently valid baselines; do not accidentally flatten the stack, replay parent commits twice, or accept unrelated visual changes. All PRs are draft with auto-merge disabled before rewriting. Fresh approval and required checks apply to every rewritten head.
 
 Floating-pill validation: Bible passed 884 tests in 89 suites; all three existing preview captures passed and were inspected (light, dark, XXL at 120%). Super and SuperBible both built on the pinned simulator. Native SuperBible at Lapis Dark/120% confirmed text behind the fixed pill, a verse tap beside the pill updating both citations, and the complete final verse scrolling above the pill. Independent plan and code reviews approved the correction. Capture count is unchanged by this layout adjustment.
+
+
+Post-rebase validation: Core 326/41, Bible 884/89 and Chat 1106/83 pass. All 623 restored main PNGs, original inventory rows, snapshot scripts, workflows and renderer pins remain byte-identical to main. The three preview-layer images were explicitly recorded, inspected and compared successfully. The integration layer changes those same three images to show the verse-aware title and floating bottom selection; default comparison rejected exactly those intentional differences before recording. No extra capture was added. Independent rebase review found no source regression.
+
+The final three floating-pill comparisons pass with recording disabled. Both Super and SuperBible build after the rebase. The separate reviewer approved the final three PNGs in light, dark and XXL/120% with no actionable visual findings.
