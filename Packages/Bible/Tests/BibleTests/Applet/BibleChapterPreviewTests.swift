@@ -200,28 +200,61 @@ struct BibleChapterPreviewTests {
         #expect(full.selectedVerses.isEmpty)
     }
 
-    @Test("preview cancellation preserves shared annotation dispatch and suppresses duplicate requests")
-    func sharedAnnotationLifetime() async throws {
+    @Test("preview release preserves shared streamed annotation work and request identity", arguments: [false, true])
+    func sharedAnnotationLifetime(succeeds: Bool) async throws {
         let bus = SuperEventBus()
         let full = source()
         await full.attach(to: bus)
-        let preview = BibleChapterPreviewViewModel(reader: full.makePreviewReader(for: link), onFinish: { _ in })
+        let events = await bus.events()
+        var preview: BibleChapterPreviewViewModel? = BibleChapterPreviewViewModel(
+            reader: full.makePreviewReader(for: link), onFinish: { _ in }
+        )
+        weak var releasedReader = preview?.reader
         let target = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
-        preview.reader.triggerAnnotationGeneration(for: target)
+        preview?.reader.triggerAnnotationGeneration(for: target)
         guard case .running(let requestId) = full.dispatchStatus(for: target) else {
             Issue.record("Preview must use the applet's shared dispatcher")
             return
         }
-        preview.invalidate()
+        await full.annotationDispatchViewModel._waitForPendingPublish()
+        func progress(_ text: String) async {
+            await withCheckedContinuation { continuation in
+                full._onNextDispatchProgress { continuation.resume() }
+                Task { await bus.publish(.bibleAnnotateProgress(requestId: requestId, text: text)) }
+            }
+        }
+        await progress("Shared partial text")
+        #expect(preview?.reader.annotationDraft(for: target) == full.annotationDraft(for: target))
+        #expect(full.annotationDraft(for: target)?.text == "Shared partial text")
+        preview?.invalidate()
+        preview = nil
+        #expect(releasedReader == nil)
+        await progress("Continued after preview closed")
         let reopened = full.makePreviewReader(for: link)
         reopened.triggerAnnotationGeneration(for: target)
+        await full.annotationDispatchViewModel._waitForPendingPublish()
         #expect(reopened.dispatchStatus(for: target) == .running(requestId: requestId))
+        #expect(reopened.annotationDraft(for: target)?.text == "Continued after preview closed")
         await withCheckedContinuation { continuation in
             full._onNextDispatchCompletion { continuation.resume() }
-            Task { await bus.publish(.bibleAnnotateCompleted(requestId: requestId, result: .failure(message: "Retry later"))) }
+            Task {
+                await bus.publish(.bibleAnnotateCompleted(
+                    requestId: requestId,
+                    result: succeeds ? .success(annotationCount: 1) : .failure(message: "Retry later")
+                ))
+            }
         }
-        #expect(reopened.dispatchStatus(for: target) == .failed(message: "Retry later"))
-        #expect(full.dispatchStatus(for: target) == .failed(message: "Retry later"))
+        let draft = BibleAnnotationDraft(requestID: requestId, text: "Continued after preview closed", isComplete: succeeds)
+        #expect(full.annotationDraft(for: target) == draft)
+        #expect(reopened.annotationDraft(for: target) == draft)
+        #expect(full.dispatchStatus(for: target) == (succeeds ? nil : .failed(message: "Retry later")))
+        #expect(reopened.dispatchStatus(for: target) == full.dispatchStatus(for: target))
+        var requests: [String] = []
+        for await event in events {
+            if case .bibleAnnotateRequested(let reference) = event { requests.append(reference.id) }
+            if case .bibleAnnotateCompleted(let id, _) = event, id == requestId { break }
+        }
+        #expect(requests == [requestId])
     }
 
     @Test("chapter citations and clipped ranges never manufacture selection", arguments: [
