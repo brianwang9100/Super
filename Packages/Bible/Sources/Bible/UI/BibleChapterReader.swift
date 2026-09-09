@@ -8,7 +8,7 @@ import SwiftUI
 /// Verse highlights are bound reactively here through GRDBQuery's `@Query`,
 /// which observes the chapter's `bibleHighlight` rows: a highlight written
 /// from the action sheet — or, later, restored by sync — repaints the verse
-/// without this view reloading. `BibleScreen` gives the reader a fresh
+/// without this view reloading. `BibleChapterContent` gives the reader a fresh
 /// identity per chapter, so the constant `@Query` request always carries the
 /// on-screen position.
 struct BibleChapterReader: View {
@@ -47,15 +47,13 @@ struct BibleChapterReader: View {
     private let bookId: String
     private let bookName: String
     private let selectedVerses: Set<Int>
-    private let previousLabel: String?
-    private let nextLabel: String?
+    private let navigation: BibleChapterNavigation?
+    private let layout: BibleChapterReaderLayout
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
     private let bottomOverlayKind: BibleBottomOverlayKind?
     private let onTapVerse: (Int) -> Void
-    private let onPrevious: () -> Void
-    private let onNext: () -> Void
     private let onBackgroundTap: () -> Void
     private let onConsumeScroll: () -> Void
     private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
@@ -65,7 +63,6 @@ struct BibleChapterReader: View {
     private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
-    private let topReserve: CGFloat
 
     /// Whether the latest scroll phase is one the *user* drove
     /// (`.interacting` / `.decelerating`) versus a programmatic `scrollTo`
@@ -124,15 +121,13 @@ struct BibleChapterReader: View {
         bookId: String,
         bookName: String,
         selectedVerses: Set<Int>,
-        previousLabel: String?,
-        nextLabel: String?,
+        navigation: BibleChapterNavigation? = nil,
+        layout: BibleChapterReaderLayout = .fullReader,
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
         bottomOverlayKind: BibleBottomOverlayKind? = nil,
         onTapVerse: @escaping (Int) -> Void,
-        onPrevious: @escaping () -> Void,
-        onNext: @escaping () -> Void,
         onBackgroundTap: @escaping () -> Void,
         onConsumeScroll: @escaping () -> Void = {},
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
@@ -141,8 +136,7 @@ struct BibleChapterReader: View {
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
         onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
-        onFooterVisible: @escaping (Bool) -> Void = { _ in },
-        topReserve: CGFloat = 68
+        onFooterVisible: @escaping (Bool) -> Void = { _ in }
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -164,15 +158,13 @@ struct BibleChapterReader: View {
         self.bookId = bookId
         self.bookName = bookName
         self.selectedVerses = selectedVerses
-        self.previousLabel = previousLabel
-        self.nextLabel = nextLabel
+        self.navigation = navigation
+        self.layout = layout
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
         self.bottomOverlayKind = bottomOverlayKind
         self.onTapVerse = onTapVerse
-        self.onPrevious = onPrevious
-        self.onNext = onNext
         self.onBackgroundTap = onBackgroundTap
         self.onConsumeScroll = onConsumeScroll
         self.onAnnotationBubbleTap = onAnnotationBubbleTap
@@ -182,7 +174,6 @@ struct BibleChapterReader: View {
         self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
-        self.topReserve = topReserve
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -290,24 +281,26 @@ struct BibleChapterReader: View {
                         )
                     }
 
-                    BibleChapterFooter(
-                        previousLabel: previousLabel,
-                        nextLabel: nextLabel,
-                        onPrevious: onPrevious,
-                        onNext: onNext
-                    )
+                    if let navigation {
+                        BibleChapterFooter(
+                            previousLabel: navigation.previousLabel,
+                            nextLabel: navigation.nextLabel,
+                            onPrevious: navigation.onPrevious,
+                            onNext: navigation.onNext
+                        )
+                    }
 
                     // Clear the minimized chat pill and floating accessory row
                     // so neither can obscure the chapter footer at the scroll end.
                     // While a floating action / narration sheet is up this grows
                     // to that sheet's height plus a margin so the last verses can
                     // scroll clear of it instead of staying stuck behind it.
-                    Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind))
+                    Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind, layout: layout))
                 }
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
                 // fades over the first lines as they scroll up beneath it.
-                .padding(.top, topReserve)
+                .padding(.top, layout.topInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // A tap that misses every verse word dismisses the action sheet.
                 .contentShape(Rectangle())
@@ -341,8 +334,12 @@ struct BibleChapterReader: View {
             // bottom. Unlike immersive, it's not gated on user-driven scrolling —
             // a programmatic landing at the chapter end should hide them too.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                let maxY = geometry.contentSize.height - geometry.containerSize.height
-                return maxY > 0 && geometry.contentOffset.y >= maxY - Self.footerRevealThreshold
+                Self.isFooterVisible(
+                    hasNavigation: navigation != nil,
+                    contentHeight: geometry.contentSize.height,
+                    containerHeight: geometry.containerSize.height,
+                    offsetY: geometry.contentOffset.y
+                )
             } action: { _, footerVisible in
                 onFooterVisible(footerVisible)
             }
@@ -581,9 +578,20 @@ struct BibleChapterReader: View {
     /// still-interactive page with no scrim, so the reader must make the room).
     /// Factored out as a pure function so a unit test can cover it without a
     /// SwiftUI host.
-    static func bottomClearHeight(for kind: BibleBottomOverlayKind?) -> CGFloat {
-        guard let kind else { return bottomChromeClearance }
-        return kind.estimatedSheetHeight + overlayBottomReserve
+    static func bottomClearHeight(
+        for kind: BibleBottomOverlayKind?,
+        layout: BibleChapterReaderLayout = .fullReader
+    ) -> CGFloat {
+        guard let kind else { return layout.bottomInset }
+        return max(layout.bottomInset, kind.estimatedSheetHeight + overlayBottomReserve)
+    }
+
+    /// Footer visibility is meaningful only when the host contributes navigation.
+    static func isFooterVisible(
+        hasNavigation: Bool, contentHeight: CGFloat, containerHeight: CGFloat, offsetY: CGFloat
+    ) -> Bool {
+        let maxY = contentHeight - containerHeight
+        return hasNavigation && maxY > 0 && offsetY >= maxY - footerRevealThreshold
     }
 
     /// Decide whether a narration advance should auto-scroll. Factored

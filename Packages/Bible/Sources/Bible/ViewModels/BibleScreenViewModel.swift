@@ -93,13 +93,10 @@ public final class BibleScreenViewModel {
     /// drag-down dismiss.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
-    /// Per-target generation status, independent from transient text and stored rows.
-    /// Success removes the running status while retaining a completed draft until
-    /// the sheet acknowledges a query started after the persistence write.
-    public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
-
-    /// Transient text stays independent of rows observed by the sheet.
-    private var annotationDraftsByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDraft] = [:]
+    /// Shared per-target dispatch state forwarded from the applet-lifetime dispatcher.
+    public var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] {
+        annotationDispatchViewModel.statusByTargetSnapshot
+    }
 
     /// The note range whose list sheet is presented, or `nil` when no sheet
     /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Setting it to a
@@ -127,6 +124,7 @@ public final class BibleScreenViewModel {
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
+    let annotationDispatchViewModel: BibleAnnotationDispatchViewModel
     /// Shared app-wide haptics engine. Fires `.selection` when a verse is
     /// selected and `.deselection` when one is removed. Defaults to a no-op
     /// so tests/previews stay silent.
@@ -138,6 +136,7 @@ public final class BibleScreenViewModel {
 
     private enum QueuedNavigationIntent {
         case reference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?)
+        case exactReference(BibleReaderReference)
         case translation(BibleTranslation)
     }
 
@@ -152,28 +151,8 @@ public final class BibleScreenViewModel {
     private var latestExplicitTranslation: BibleTranslation?
     private var latestPersistSequence = 0
 
-    /// The shared event bus, set when `attach(to:)` is called once at
-    /// applet bootstrap. `nil` for tests that don't exercise the
-    /// headless dispatch path — those keep getting the PR 3 toast
-    /// fallback so view-model tests written against the disclaimer
-    /// gate stay green without a bus fixture.
-    private var eventBus: SuperEventBus?
-
-    /// Subscription task draining `bibleAnnotateCompleted` envelopes.
-    /// Owned so a future tear-down can cancel it.
-    private var dispatchSubscriptionTask: Task<Void, Never>?
-
-    /// One-shot callbacks fired after the dispatch-subscription task
-    /// processes a `bibleAnnotateCompleted` envelope. Test seam — kept
-    /// specific to *completion* envelopes because the view model also
-    /// receives its own `bibleAnnotateRequested` echo through the bus;
-    /// a "next event" seam would fire on that echo before the actual
-    /// completion arrives, racing assertions ahead of the state
-    /// update. Never observed in production.
-    private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
-
-    /// Processed-progress callbacks for deterministic event-bus tests.
-    private var dispatchProgressCallbacks: [@MainActor () -> Void] = []
+    /// Subscription task draining shell sidebar events for this reader only.
+    private var sidebarSubscriptionTask: Task<Void, Never>?
 
     /// One-shot callbacks fired after the dispatch-subscription task
     /// processes a `sidebarOpened` envelope (and the resulting sheet
@@ -211,6 +190,8 @@ public final class BibleScreenViewModel {
     ///     glyph and sheet still render from the reactive `@Query`s).
     ///   - initialPosition: the position before `load()` reads persisted
     ///     state — defaults to `defaultPosition`.
+    ///   - annotationDispatchViewModel: applet-lifetime annotation request state
+    ///     shared with any other reader model.
     public init(
         textLoader: any BibleTextLoader,
         catalog: BibleBookCatalog = .standard,
@@ -223,8 +204,10 @@ public final class BibleScreenViewModel {
         idGenerator: any IDGenerator = UUIDGenerator(),
         disclaimerStore: any AnnotationDisclaimerStore = UserDefaultsAnnotationDisclaimerStore(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition,
+        initialTranslation: BibleTranslation = .defaultTranslation,
         narration: NarrationController? = nil,
-        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
+        annotationDispatchViewModel: BibleAnnotationDispatchViewModel = BibleAnnotationDispatchViewModel()
     ) {
         self.textLoader = textLoader
         self.catalog = catalog
@@ -239,7 +222,9 @@ public final class BibleScreenViewModel {
         self.hapticsEngine = hapticsEngine
         self.initialPosition = initialPosition
         self.navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+        self.annotationDispatchViewModel = annotationDispatchViewModel
         self.position = initialPosition
+        self.translation = initialTranslation
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
         // Default to the production synth-backed controller so tests that
         // don't exercise narration don't need to construct one. Tests
@@ -400,10 +385,8 @@ public final class BibleScreenViewModel {
     /// if needed, then pre-selects the verses so the reader lands with
     /// them highlighted (the same look as having just tapped them).
     ///
-    /// Driven by Bible-citation taps inside the Chat transcript and by
-    /// `super://bible/...` URLs at the scene root. Both paths go
-    /// through `SuperEvent.openRecord(reference:)` → the Bible applet's
-    /// event-bus subscriber → this method.
+    /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
+    /// and the applet's inbox. Internal preview handoffs use the exact-selection overload.
     ///
     /// - Parameters:
     ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).
@@ -437,15 +420,48 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Opens an internal handoff with its captured translation and exact, potentially disjoint selection.
+    func openReference(_ reference: BibleReaderReference) {
+        guard isValidPosition(reference.position) else { return }
+        // Retry snapshots explicit translation before its read. Register the
+        // handoff now, including when initial restoration has already failed.
+        latestExplicitTranslation = reference.translation
+        if isRestoringNavigation {
+            queuedNavigationIntents.append(.exactReference(reference))
+            return
+        }
+        applyReference(reference)
+    }
+
+    private func applyReference(_ reference: BibleReaderReference) {
+        applyReference(position: reference.position, translation: reference.translation) {
+            reference.selectedVerses.contains($0)
+        }
+    }
+
     private func applyReference(
         bookId: String,
         chapterNumber: Int,
         verseStart: Int?,
         verseEnd: Int?
     ) {
+        // Public ranges use the active translation when the queued intent executes.
+        applyReference(
+            position: BiblePosition(bookId: bookId, chapterNumber: chapterNumber),
+            translation: translation
+        ) { verse in
+            guard let verseStart else { return false }
+            return verse >= verseStart && verse <= (verseEnd ?? verseStart)
+        }
+    }
+
+    private func applyReference(
+        position destination: BiblePosition,
+        translation targetTranslation: BibleTranslation,
+        selectsVerse: (Int) -> Bool
+    ) {
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
 
-        let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         if destination == position {
             narration.stop()
         } else {
@@ -453,24 +469,16 @@ public final class BibleScreenViewModel {
             navigationHistory.visit(destination)
             position = destination
         }
+        translation = targetTranslation
         applyCurrentChapter()
-        if let verseStart {
-            let upper = verseEnd ?? verseStart
-            selectedVerses = Set(verseTextsByNumber().keys.filter {
-                $0 >= verseStart && $0 <= upper
-            })
-        } else {
-            selectedVerses.removeAll()
-        }
+        // Iterate only real chapter verses, bounding both huge ranges and exact sets.
+        selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
         // Flag the first selected verse for the reader to scroll into
         // view once it mounts (or, for a same-chapter deep link, on the
         // next `pendingScrollVerse` change). Chapter-only navigation
         // leaves this `nil` so the new chapter just snaps to its top
         // like a manual nav.
-        pendingScrollVerse = verseStart
-        if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
-            pendingScrollVerse = selectedVerses.min()
-        }
+        pendingScrollVerse = selectedVerses.min()
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
         bookSheet = nil
@@ -981,109 +989,40 @@ public final class BibleScreenViewModel {
         publishDispatchRequest(for: spec)
     }
 
-    /// Core dispatch publish — extracted so both the initial trigger
-    /// and retry path share one wire site. When a `SuperEventBus` is
-    /// wired through `attach(to:)`, publishes
-    /// `SuperEvent.bibleAnnotateRequested(reference:)`, marks the
-    /// target running in `dispatchStatusByTarget`, and presents the
-    /// annotation sheet so the user sees the generating state. The
-    /// matching `bibleAnnotateCompleted` envelope flips the entry to
-    /// either gone (success — rows arrive through `@Query`) or
-    /// `.failed(message)` (retry button appears).
-    ///
-    /// When no bus is wired (test fixtures pre-PR4), falls back to the
-    /// PR 3 stub toast so existing view-model tests stay green without
-    /// constructing a bus.
+    /// Forward a request into the shared dispatcher while retaining this reader's presentation.
     private func publishDispatchRequest(for spec: BibleAnnotationTargetSpec) {
-        guard let bus = eventBus else {
-            toast = "Annotation generation ships in a later update."
-            return
-        }
-        if case .running = dispatchStatusByTarget[spec] {
+        if case .running = annotationDispatchViewModel.status(for: spec) {
             presentedAnnotationTarget = spec
             return
         }
         let reference = makeAnnotateRequestReference(for: spec)
-        annotationDraftsByTarget[spec] = BibleAnnotationDraft(requestID: reference.id)
-        dispatchStatusByTarget[spec] = .running(requestId: reference.id)
-        presentedAnnotationTarget = spec
-        Task { await bus.publish(.bibleAnnotateRequested(reference: reference)) }
+        switch annotationDispatchViewModel.request(reference: reference, for: spec) {
+        case .started, .alreadyRunning:
+            presentedAnnotationTarget = spec
+        case .unavailable:
+            toast = "Annotation generation ships in a later update."
+        }
     }
 
-    /// Subscribe the view model to the shared event bus so headless
-    /// `bibleAnnotateCompleted` envelopes flip the per-target dispatch
-    /// status. Symmetric with how `BibleApplet.attach(to:)` wires the
-    /// `BibleReferenceInbox` — call once after the bus is constructed.
-    /// Idempotent.
+    /// Attach the shared dispatcher and this reader's independent sidebar subscriber.
     public func attach(to bus: SuperEventBus) async {
-        guard dispatchSubscriptionTask == nil else { return }
-        eventBus = bus
+        await annotationDispatchViewModel.attach(to: bus)
+        await attachSidebar(to: bus)
+    }
+
+    func attachSidebar(to bus: SuperEventBus) async {
+        guard sidebarSubscriptionTask == nil else { return }
         let stream = await bus.events()
-        dispatchSubscriptionTask = Task { [weak self] in
+        sidebarSubscriptionTask = Task { [weak self] in
             for await event in stream {
                 guard let self else { return }
-                self.handleBusEvent(event)
+                guard case .sidebarOpened = event else { continue }
+                self.dismissPresentedSheets()
+                let callbacks = self.sidebarDismissCallbacks
+                self.sidebarDismissCallbacks.removeAll()
+                for callback in callbacks { callback() }
             }
         }
-    }
-
-    private func handleBusEvent(_ event: SuperEvent) {
-        switch event {
-        case .bibleAnnotateProgress(let requestId, let text):
-            handleAnnotateProgress(requestId: requestId, text: text)
-        case .bibleAnnotateCompleted(let requestId, let result):
-            handleAnnotateCompleted(requestId: requestId, result: result)
-        case .sidebarOpened:
-            // The shell's navigation drawer is opening. Any native sheet
-            // we're presenting sits in its own window above the in-view
-            // drawer, so the menu would slide in behind it — dismiss them
-            // all so the drawer is the topmost surface.
-            dismissPresentedSheets()
-            let callbacks = sidebarDismissCallbacks
-            sidebarDismissCallbacks.removeAll()
-            for callback in callbacks { callback() }
-        default:
-            break
-        }
-    }
-
-    private func handleAnnotateProgress(requestId: String, text: String) {
-        let matching = dispatchStatusByTarget.first { _, status in
-            if case .running(let id) = status { return id == requestId }
-            return false
-        }
-        if let spec = matching?.key, annotationDraftsByTarget[spec]?.requestID == requestId {
-            annotationDraftsByTarget[spec]?.text = text
-        }
-        let callbacks = dispatchProgressCallbacks
-        dispatchProgressCallbacks.removeAll()
-        for callback in callbacks { callback() }
-    }
-
-    private func handleAnnotateCompleted(requestId: String, result: BibleAnnotateResult) {
-        // Find the target whose running status carries this id. The
-        // map is small (one entry per in-flight target) so a linear
-        // scan is fine and avoids a parallel reverse map.
-        let matching = dispatchStatusByTarget.first { _, status in
-            if case .running(let id) = status, id == requestId { return true }
-            return false
-        }
-        if let spec = matching?.key {
-            switch result {
-            case .success:
-                annotationDraftsByTarget[spec]?.isComplete = true
-                dispatchStatusByTarget.removeValue(forKey: spec)
-            case .failure(let message):
-                dispatchStatusByTarget[spec] = .failed(message: message)
-            }
-        }
-        // Callbacks fire *after* the state update and only on
-        // completion envelopes — see `dispatchCompletionCallbacks`'s
-        // doc for why a "next event" seam would race the request echo
-        // ahead of the actual completion.
-        let callbacks = dispatchCompletionCallbacks
-        dispatchCompletionCallbacks.removeAll()
-        for callback in callbacks { callback() }
     }
 
     /// Close the native sheets this screen presents so the shell's drawer
@@ -1114,43 +1053,37 @@ public final class BibleScreenViewModel {
         sidebarDismissCallbacks.append(callback)
     }
 
-    /// Test seam: register a one-shot callback fired after the
-    /// dispatch subscription processes a `bibleAnnotateCompleted`
-    /// envelope. Lets tests await completion-processing
+    /// Test seam forwarded to the shared dispatcher after it processes a
+    /// `bibleAnnotateCompleted` envelope. Lets tests await completion processing
     /// deterministically without `Task.yield()` polling (AGENTS.md
     /// §2). Scoped to completion events only — the request echo would
     /// otherwise race the callback ahead of the actual state update.
     /// Underscored because it's not stable API.
     func _onNextDispatchCompletion(_ callback: @escaping @MainActor () -> Void) {
-        dispatchCompletionCallbacks.append(callback)
+        annotationDispatchViewModel._onNextCompletionProcessed(callback)
     }
 
     /// Registers a callback after the next progress envelope has been processed.
     func _onNextDispatchProgress(_ callback: @escaping @MainActor () -> Void) {
-        dispatchProgressCallbacks.append(callback)
+        annotationDispatchViewModel._onNextProgressProcessed(callback)
     }
 
     /// Current accumulated text for the target, including a completed query bridge.
     public func annotationDraft(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDraft? {
-        annotationDraftsByTarget[spec]
+        annotationDispatchViewModel.draft(for: spec)
     }
 
     /// Clears only a matching settled request after query acknowledgement, deletion,
     /// or an explicit return to the saved response. Late callbacks cannot erase retries.
     public func clearAnnotationDraft(for spec: BibleAnnotationTargetSpec, requestID: String) {
-        guard annotationDraftsByTarget[spec]?.requestID == requestID else { return }
-        if case .running = dispatchStatusByTarget[spec] { return }
-        annotationDraftsByTarget.removeValue(forKey: spec)
-        if case .failed = dispatchStatusByTarget[spec] {
-            dispatchStatusByTarget.removeValue(forKey: spec)
-        }
+        annotationDispatchViewModel.clearDraft(for: spec, requestID: requestID)
     }
 
     /// Dispatch status for `spec`, or `nil` when no headless dispatch
     /// is running or failed for it. `AnnotationSheetContainer` reads
     /// this to drive its generating / failed / populated layouts.
     public func dispatchStatus(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
-        dispatchStatusByTarget[spec]
+        annotationDispatchViewModel.status(for: spec)
     }
 
     /// Raise the toast shown when a per-card delete write fails — the
@@ -1170,8 +1103,7 @@ public final class BibleScreenViewModel {
     /// the failed target still has rows. Raises no toast by design — a
     /// regenerate that fails over a present card is silent (the card stays).
     public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
-        guard case .failed = dispatchStatusByTarget[spec] else { return }
-        dispatchStatusByTarget.removeValue(forKey: spec)
+        annotationDispatchViewModel.clearFailure(for: spec)
     }
 
     /// Human-readable citation for an annotation target, used as the
@@ -1804,6 +1736,8 @@ public final class BibleScreenViewModel {
                     verseStart: verseStart,
                     verseEnd: verseEnd
                 )
+            case .exactReference(let reference):
+                applyReference(reference)
             case .translation(let selected):
                 applyTranslationSelection(selected)
             }

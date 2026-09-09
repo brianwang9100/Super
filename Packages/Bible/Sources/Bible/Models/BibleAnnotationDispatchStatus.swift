@@ -3,8 +3,8 @@ import Foundation
 /// In-flight or terminal state of a headless `bible.annotate` dispatch
 /// for a given target.
 ///
-/// `BibleScreenViewModel` keeps a `[BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus]`
-/// map so the annotation sheet can show a generating indicator while a
+/// `BibleAnnotationDispatchViewModel` keeps a per-target map so every reader's
+/// annotation sheet can show a generating indicator while a
 /// turn is in progress and a retry button when the turn failed.
 /// Successful dispatches drop their entry — rows arrive through the
 /// reactive `@Query`, so the sheet flips from "generating" to "populated"

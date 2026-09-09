@@ -34,6 +34,7 @@ public struct MarkdownText: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.markdownBodyMetrics) private var metrics
+    @Environment(\.markdownBibleCitationPolicy) private var bibleCitationPolicy
     @State private var cachedTheme: MarkdownUI.Theme?
 
     public init(_ text: String, bodyStyleOverride: BodyStyle? = nil, treatAsPartial: Bool = false) {
@@ -44,10 +45,9 @@ public struct MarkdownText: View {
 
     /// Test-only seam exposing the string that will be handed to
     /// MarkdownUI — i.e. the autocloser-processed text when
-    /// `treatAsPartial` is set, followed by the verse-reference
-    /// linkifier that wraps Bible citations in `super://bible/...`
-    /// markdown links the chat-side `OpenURLAction` interceptor can
-    /// route to the Bible applet. Underscore prefix marks it as not
+    /// `treatAsPartial` is set, followed by the scoped citation policy.
+    /// The default linkifies Bible citations; temporary previews opt
+    /// into inert labels. Underscore prefix marks it as not
     /// part of the stable API, per the codebase convention for test
     /// seams (e.g. `_waitForPendingTitleTask`).
     ///
@@ -62,7 +62,7 @@ public struct MarkdownText: View {
     /// shape.
     var _resolvedText: String {
         let autoclosed = treatAsPartial ? MarkdownAutocloser.close(text) : text
-        return BibleReferenceLinkifier.linkify(autoclosed)
+        return bibleCitationPolicy.resolve(autoclosed)
     }
 
     /// Per-call-site overrides for the default `Theme.text` style.
