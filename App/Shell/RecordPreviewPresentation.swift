@@ -132,7 +132,7 @@ enum ShellNavigation: Equatable {
     case openConversation(id: String)
     case newConversation
     case openApplet(id: String)
-    case composerAttention(startNew: Bool)
+    case composerAttention(ComposerAttentionRequest)
     case settings(root: SettingsSheet.Pane, pushed: SettingsSheet.Pane?)
     case sidebar
 }

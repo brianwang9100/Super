@@ -92,8 +92,8 @@ struct ChatReferenceInboxTests {
             on: bus, inbox: inbox
         )
 
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true))
-        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: true))
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("a")]))
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("a")]))
         #expect(inbox.pendingAttention == nil)
         #expect(inbox.consumeAttention() == nil)
     }
@@ -120,7 +120,27 @@ struct ChatReferenceInboxTests {
             .recordAddedToChat(reference: reference("b"), startNewConversation: true),
             on: bus, inbox: inbox
         )
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true))
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("b")]))
+    }
+
+    @Test func unconsumedNewChatReferencesSurviveLaterHandoffs() async throws {
+        let bus = SuperEventBus()
+        let inbox = ChatReferenceInbox()
+        await inbox.attach(to: bus)
+        for id in ["a", "b", "a"] {
+            await publishAndWait(
+                .recordAddedToChat(reference: reference(id), startNewConversation: true),
+                on: bus, inbox: inbox
+            )
+        }
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("c"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        #expect(inbox.drainPending() == [reference("c")])
+        let request = try #require(inbox.consumeAttention())
+        #expect(request.startNew)
+        #expect(request.newConversationReferences == [reference("a"), reference("b")])
     }
 
     @Test func attachIsIdempotent() async {

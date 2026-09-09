@@ -1708,6 +1708,48 @@ struct ChatScreenViewModelTests {
         #expect(inbox.pending.isEmpty)
     }
 
+    @Test("New chat references reach only the destination composer", arguments: [false, true])
+    func newChatReferenceIsReservedForDestination(alreadyAttached: Bool) async throws {
+        let (outgoing, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        let reference = verseReference("16")
+        if alreadyAttached {
+            await publishAndWait(
+                .recordAddedToChat(reference: reference, startNewConversation: false),
+                on: bus, inbox: inbox
+            )
+            outgoing.adoptPendingReferences()
+            _ = inbox.consumeAttention()
+        }
+        await publishAndWait(
+            .recordAddedToChat(reference: reference, startNewConversation: true),
+            on: bus, inbox: inbox
+        )
+
+        // The mounted old ChatScreen can drain both before the shell consumes
+        // attention and while its asynchronous destination rebuild is suspended.
+        outgoing.adoptPendingReferences()
+        #expect(outgoing.pendingReferences == (alreadyAttached ? [reference] : []))
+        let request = try #require(inbox.consumeAttention())
+        #expect(request.startNew)
+        outgoing.adoptPendingReferences()
+        let driver = RecordingDriver()
+        let destination = ChatScreenViewModel(
+            conversationId: "new-conversation", conversationTitle: "New chat",
+            driver: driver, messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [SelectableModel(model)], referenceInbox: inbox,
+            initialReferences: request.newConversationReferences
+        )
+        destination.adoptPendingReferences()
+        #expect(destination.pendingReferences == [reference])
+        #expect(inbox.pending.isEmpty)
+        destination.send("Explain this verse")
+        await driver.waitForSend()
+        #expect(await driver.sentReferences == [[reference]])
+    }
+
     @Test("adoptPendingReferences dedupes a doubled bus delivery by id")
     func adoptPendingReferencesDedupesByID() async {
         let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))

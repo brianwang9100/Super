@@ -407,7 +407,7 @@ struct AppShell: View {
         // owns the semi-expand-from-minimized + composer focus.
         .onChange(of: referenceInbox.pendingAttention) { _, _ in
             guard let request = referenceInbox.consumeAttention() else { return }
-            route(.composerAttention(startNew: request.startNew))
+            route(.composerAttention(request))
         }
         // Owner-side keyboard dismissal: every minimize-like transition
         // clears the shell's `@FocusState` *directly*, rather than
@@ -493,7 +493,7 @@ struct AppShell: View {
         case .openConversation(let id): Task { await selectConversation(id: id) }
         case .newConversation: Task { await startNewChat() }
         case .openApplet(let id): selectApplet(id: id)
-        case .composerAttention(let startNew): Task { await handleComposerAttention(isNewChat: startNew) }
+        case .composerAttention(let request): Task { await handleComposerAttention(request) }
         case .settings(let root, let pushed): presentSettings(rootedAt: root, pushing: pushed)
         case .sidebar: presentSidebar()
         }
@@ -776,7 +776,10 @@ struct AppShell: View {
         await sidebar.refresh()
     }
 
-    private func rebuildChatViewModel(for conversation: ConversationRecord) async {
+    private func rebuildChatViewModel(
+        for conversation: ConversationRecord,
+        initialReferences: [RecordReference] = []
+    ) async {
         // Detach (don't cancel) the outgoing view model. Its iteration
         // task stops draining events so it can deinit promptly, but the
         // underlying `ChatSession` (owned by `ChatSessionStore`) keeps
@@ -865,6 +868,7 @@ struct AppShell: View {
             titleGenerator: titleGenerator,
             voice: voice,
             referenceInbox: referenceInbox,
+            initialReferences: initialReferences,
             toolDisplayNames: toolDisplayNames,
             suggestionsProvider: suggestionsProvider,
             hapticsEngine: dependencies.hapticsEngine
@@ -946,7 +950,10 @@ struct AppShell: View {
     /// passes the default (`.expanded`); the Bible hand-off passes
     /// `.semiExpanded` so the just-attached verse pill is visible
     /// against the applet backdrop behind the floating panel.
-    private func startNewChat(targetChatState: ChatPresentationState = .expanded) async {
+    private func startNewChat(
+        targetChatState: ChatPresentationState = .expanded,
+        initialReferences: [RecordReference] = []
+    ) async {
         sidebarOpen = false
         // Starting a fresh chat is a context shift — drop the prior
         // composer's focus so the keyboard doesn't carry into the empty
@@ -967,7 +974,7 @@ struct AppShell: View {
         // Rebuild *before* the animation so the new view model is in
         // place when the overlay slides up — the user never sees a flash
         // of the previous conversation's content during the transition.
-        await rebuildChatViewModel(for: row)
+        await rebuildChatViewModel(for: row, initialReferences: initialReferences)
         await animateChatState(to: targetChatState)
         composerIsFocused = true
     }
@@ -1015,10 +1022,10 @@ struct AppShell: View {
     /// at `.expanded` today (the backdrop is hidden), but the spark menu
     /// could be wired from a future surface, and "snapping down" would
     /// be a regression.
-    private func handleComposerAttention(isNewChat: Bool) async {
-        if isNewChat {
+    private func handleComposerAttention(_ request: ComposerAttentionRequest) async {
+        if request.startNew {
             let target: ChatPresentationState = chatState == .expanded ? .expanded : .semiExpanded
-            await startNewChat(targetChatState: target)
+            await startNewChat(targetChatState: target, initialReferences: request.newConversationReferences)
             return
         }
         if chatState == .minimized {

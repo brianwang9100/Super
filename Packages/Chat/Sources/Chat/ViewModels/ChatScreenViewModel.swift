@@ -230,6 +230,7 @@ public final class ChatScreenViewModel {
         titleGenerator: TitleGenerator? = nil,
         voice: VoiceInputController? = nil,
         referenceInbox: ChatReferenceInbox? = nil,
+        initialReferences: [RecordReference] = [],
         toolDisplayNames: [String: String] = [:],
         suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
         hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
@@ -245,6 +246,7 @@ public final class ChatScreenViewModel {
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
         self.referenceInbox = referenceInbox
+        self.pendingReferences = initialReferences
         self.toolDisplayNames = toolDisplayNames
         self.suggestionsProvider = suggestionsProvider
         self.hapticsEngine = hapticsEngine

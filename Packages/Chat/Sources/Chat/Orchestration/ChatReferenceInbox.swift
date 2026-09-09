@@ -7,8 +7,13 @@ import Observation
 /// whether the dispatch lands in a fresh conversation or the current one.
 public struct ComposerAttentionRequest: Sendable, Equatable {
     public let startNew: Bool
-    public init(startNew: Bool) {
+    /// References reserved for the destination of a New chat handoff. Keeping
+    /// them out of the shared pending buffer prevents the old composer draining them.
+    public let newConversationReferences: [RecordReference]
+
+    public init(startNew: Bool, newConversationReferences: [RecordReference] = []) {
         self.startNew = startNew
+        self.newConversationReferences = newConversationReferences
     }
 }
 
@@ -77,8 +82,20 @@ public final class ChatReferenceInbox {
 
     private func handle(_ event: SuperEvent) {
         if case .recordAddedToChat(let reference, let startNew) = event {
-            pending.append(reference)
-            pendingAttention = ComposerAttentionRequest(startNew: startNew)
+            if startNew {
+                var references = pendingAttention?.newConversationReferences ?? []
+                if !references.contains(where: { $0.id == reference.id }) {
+                    references.append(reference)
+                }
+                pendingAttention = ComposerAttentionRequest(startNew: true, newConversationReferences: references)
+            } else {
+                pending.append(reference)
+                // A later Add to chat must not discard a New chat destination
+                // that the shell has not yet consumed.
+                if pendingAttention?.startNew != true {
+                    pendingAttention = ComposerAttentionRequest(startNew: false)
+                }
+            }
         }
         let callbacks = eventCallbacks
         eventCallbacks.removeAll()
