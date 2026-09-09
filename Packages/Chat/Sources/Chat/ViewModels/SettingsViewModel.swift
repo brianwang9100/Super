@@ -1170,12 +1170,19 @@ public final class SettingsViewModel {
         guard modelMutationIDs.insert(id).inserted else { return false }
         defer { modelMutationIDs.remove(id) }
         publishModelEditError(nil, formSession: formSession)
+        let retainsAppleProvider: Bool
+        do {
+            retainsAppleProvider = try await modelRepository.fetch(id: id)?.kind == .appleFoundation
+        } catch {
+            // A failed read cannot establish whether invalidating this provider is safe.
+            publishModelEditError("Could not remove the model. Try again.", formSession: formSession)
+            return false
+        }
         if lastSavedModel?.id == id { lastSavedModel = nil }
         // An opaque deletion failure may follow successful Keychain removal. Discard the
         // live provider's cached secret before deletion, even if its row must remain for retry.
         // Apple configurations carry no cached Keychain secret. Keep their exact
         // selection until persistence succeeds, including unavailable PCC rows.
-        let retainsAppleProvider = (try? await modelRepository.fetch(id: id))?.kind == .appleFoundation
         if !retainsAppleProvider { await llmProviderRegistry?.unregister(id: id) }
         var succeeded = true
         do {

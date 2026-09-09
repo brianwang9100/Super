@@ -2346,6 +2346,48 @@ struct SettingsViewModelTests {
         #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
     }
 
+    @Test("A failed deletion classification read preserves selection and has no mutation side effects",
+          arguments: ["apple-system-default", "apple-private-cloud-compute", "m1"], [false, true])
+    func failedDeletionClassificationPreservesConfigurationAndProvider(id: String, deleteWouldFail: Bool) async throws {
+        // Swallowing the fetch error would invalidate the active provider and proceed with deletion.
+        let rows = (makeAppleModelRecords() + [Self.keyRotationRow]).map { row in
+            var selected = row
+            selected.isSelected = row.id == id
+            return selected
+        }
+        let repository = StubModelRepository(rows: rows)
+        repository.storedKeys["ref-1"] = "sk-original"
+        repository.fetchError = KeyRotationTestError.saveFailed
+        if deleteWouldFail { repository.deleteRowError = KeyRotationTestError.saveFailed }
+        let registry = LLMProviderRegistry()
+        let existing = try #require(rows.first { $0.id == id })
+        let provider = FakeLLMProvider(id: id, model: LLMModel(id: existing.modelId, displayName: existing.name))
+        await registry.register(provider)
+        await registry.register(FakeLLMProvider(id: "fallback", model: LLMModel(id: "fallback", displayName: "Fallback")))
+        try await registry.setActive(id: id)
+        let bus = SuperEventBus()
+        let events = await bus.events()
+        let vm = makeViewModel(modelRepository: repository, llmProviderRegistry: registry, eventBus: bus)
+        await vm.load()
+        var changes = 0
+        vm.onModelsChanged = { changes += 1 }
+
+        let succeeded = await vm.deleteModel(id: id)
+
+        #expect(!succeeded)
+        #expect(vm.modelEditError == "Could not remove the model. Try again.")
+        #expect(repository.rows == rows)
+        #expect(Set(vm.models.map(\.id)) == Set(rows.map(\.id)))
+        #expect(await registry.provider(id: id) as? FakeLLMProvider === provider)
+        #expect(await registry.activeID() == id)
+        #expect(repository.storedKeys == ["ref-1": "sk-original"])
+        #expect(repository.deleteAttempts == 0)
+        #expect(repository.deleteAPIKeyAttempts == 0)
+        #expect(changes == 0)
+        #expect(await credentialChanges(in: events, bus: bus).isEmpty)
+        #expect(!vm.isModelMutationInFlight(id: id))
+    }
+
     @Test("Deleting one Apple variant keeps its sibling registered and selectable",
           arguments: AppleFoundationModel.allCases)
     func deletingAppleVariantPreservesItsSibling(model: AppleFoundationModel) async throws {
@@ -3068,6 +3110,8 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     var storeAPIKeyError: Error?
     var storeAPIKeyAttempts = 0
     var deleteAPIKeyError: Error?
+    var deleteAPIKeyAttempts = 0
+    var deleteAttempts = 0
     var deleteRowError: Error?
     /// When non-nil, `save` throws this. Lets a test drive
     /// `createAppleFoundationModel` through the persistence-failure
@@ -3075,6 +3119,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
     var fetchGate: KeyRotationSaveGate?
+    var fetchError: Error?
     var saveGate: KeyRotationSaveGate?
     var deleteGate: KeyRotationSaveGate?
     var retiredKeyCleanupGate: KeyRotationSaveGate?
@@ -3088,6 +3133,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     func all() async throws -> [ModelConfigurationRecord] { rows }
     func fetch(id: String) async throws -> ModelConfigurationRecord? {
         await fetchGate?.suspend()
+        if let error = fetchError { throw error }
         return rows.first { $0.id == id }
     }
     /// Mirrors `GRDBModelConfigurationRepository.selected()`, which filters
@@ -3140,6 +3186,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         return record
     }
     func delete(id: String) async throws {
+        deleteAttempts += 1
         guard let row = rows.first(where: { $0.id == id }) else { return }
         await deleteGate?.suspend()
         if let ref = row.apiKeyRef { try await deleteAPIKey(ref: ref) }
@@ -3172,6 +3219,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     }
     func loadAPIKey(ref: String) async throws -> String? { storedKeys[ref] }
     func deleteAPIKey(ref: String) async throws {
+        deleteAPIKeyAttempts += 1
         if let error = deleteAPIKeyError { throw error }
         storedKeys[ref] = nil
     }
