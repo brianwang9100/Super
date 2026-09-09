@@ -49,9 +49,9 @@ class InventoryTests(unittest.TestCase):
 
     def test_fractional_intrinsic_height_contract(self):
         name = 'Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png'
-        verify_dimensions(name, 1206, 376)
+        verify_dimensions(name, 1206, 352)
         with self.assertRaises(ValueError):
-            verify_dimensions(name, 1206, 378)
+            verify_dimensions(name, 1206, 354)
 
     def test_fixed_viewport_dimension_contract(self):
         verify_dimensions(UIKIT, 1206, 540)

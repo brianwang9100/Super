@@ -42,14 +42,14 @@ public struct ChatScreen: View {
     /// Requests the minimized presentation from the overlay host.
     public let onMinimize: (() -> Void)?
 
-    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
-    /// body-drag overlay. Fires on every drag-changed tick with the live
+    /// Forwarded to both drag handles and the transcript body-drag gesture.
+    /// Fires on every drag-changed tick with the live
     /// translation so the overlay can update its chat-surface height in
     /// real time.
     public let onDragChanged: ((_ translation: CGSize) -> Void)?
 
-    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
-    /// body-drag overlay. Fires on drag-end with the gesture's translation
+    /// Forwarded to both drag handles and the transcript body-drag gesture.
+    /// Fires on drag-end with the gesture's translation
     /// and SwiftUI's predicted-end-translation (a velocity proxy). Wired by
     /// `ChatOverlay` to snap to the nearest presentation state on release.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
@@ -578,6 +578,8 @@ public struct ChatScreen: View {
                     action()
                 }
             },
+            onDragChanged: onDragChanged,
+            onDragEnded: onDragEnded,
             progress: progress,
             references: viewModel.pendingReferences.map {
                 VerseReferencePillModel(id: $0.id, label: $0.displayLabel)

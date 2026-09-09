@@ -4,11 +4,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light_xxl.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -39,11 +39,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_dark.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -74,11 +74,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -109,11 +109,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -144,11 +144,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_dark.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -179,11 +179,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png",
     "pixels": [
       1206,
-      376
+      352
     ],
     "points": [
       402,
-      125.33333333333333
+      117.33333333333333
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -214,11 +214,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_mic_unavailable_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -284,11 +284,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pills_multiple_light.png",
     "pixels": [
       1206,
-      457
+      433
     ],
     "points": [
       402,
-      152.33333333333334
+      144.33333333333334
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -328,11 +328,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_near_max_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -363,11 +363,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_dark.png",
     "pixels": [
       1206,
-      457
+      433
     ],
     "points": [
       402,
-      152.33333333333334
+      144.33333333333334
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -403,11 +403,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light.png",
     "pixels": [
       1206,
-      457
+      433
     ],
     "points": [
       402,
-      152.33333333333334
+      144.33333333333334
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -443,11 +443,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light_xxl.png",
     "pixels": [
       1206,
-      471
+      447
     ],
     "points": [
       402,
-      157.0
+      149.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -553,11 +553,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_dark.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -600,11 +600,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -647,11 +647,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_reduce_motion.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -694,11 +694,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_xxl.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -741,11 +741,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_streaming_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -776,11 +776,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light.png",
     "pixels": [
       1206,
-      366
+      342
     ],
     "points": [
       402,
-      122.0
+      114.0
     ],
     "scale": 3,
     "theme": "vellumLight",
