@@ -17,7 +17,7 @@ final class RecordPreviewPresentation {
 
     enum AfterDismissal {
         case completion(RecordPreviewCompletion)
-        case navigation(ShellNavigation)
+        case navigation([ShellNavigation])
     }
 
     private enum Phase {
@@ -73,16 +73,11 @@ final class RecordPreviewPresentation {
 
     /// Authoritative intent wins even after a preview queued Open/Add to chat.
     /// Called directly from bus receipt so an intervening onDismiss cannot emit it.
-    func invalidateCompletion(preservingNavigation: Bool = false) {
-        // ChatReferenceInbox may already have dispatched this same handoff from
-        // its subscriber. Preserve that transition while cancelling preview work.
-        if preservingNavigation {
-            switch phase {
-            case .presenting(_, .navigation), .dismissing(_, .navigation): return
-            default: break
-            }
-        }
+    func invalidateCompletion() {
         switch phase {
+        // A newer bus event may arrive before its visible transition is routed.
+        // Cancel preview completion without dropping earlier ordered navigation.
+        case .presenting(_, .navigation), .dismissing(_, .navigation): break
         case .idle: break
         case .presenting(let item, _): phase = .presenting(item, .completion(.cancel))
         case .presented(let item), .dismissing(let item, _):
@@ -95,13 +90,23 @@ final class RecordPreviewPresentation {
     func deferNavigation(_ navigation: ShellNavigation) -> Bool {
         switch phase {
         case .idle: return false
-        case .presenting(let item, _):
-            phase = .presenting(item, .navigation(navigation))
+        case .presenting(let item, let pending):
+            phase = .presenting(item, appending(navigation, to: pending))
             return true
-        case .presented(let item), .dismissing(let item, _):
-            phase = .dismissing(item, .navigation(navigation))
+        case .presented(let item):
+            phase = .dismissing(item, .navigation([navigation]))
+            return true
+        case .dismissing(let item, let pending):
+            phase = .dismissing(item, appending(navigation, to: pending))
             return true
         }
+    }
+
+    private func appending(_ navigation: ShellNavigation, to pending: AfterDismissal?) -> AfterDismissal {
+        if case .navigation(let actions) = pending {
+            return .navigation(actions + [navigation])
+        }
+        return .navigation([navigation])
     }
 
     /// Keep the item alive until UIKit has actually presented it. Otherwise an

@@ -49,9 +49,8 @@ public final class ChatScreenViewModel {
     public var composerText: String = ""
 
     /// Verse-reference pills attached in the composer, pending send.
-    /// Drained from the shell-owned `ChatReferenceInbox` via
-    /// `adoptPendingReferences()` and folded into the outgoing message by
-    /// `send(_:)`.
+    /// Delivered explicitly by the shell and folded into the outgoing message
+    /// by `send(_:)`.
     public private(set) var pendingReferences: [RecordReference] = []
 
     /// Record id (`SelectableModel.recordId` == `ModelConfigurationRecord.id`)
@@ -152,10 +151,6 @@ public final class ChatScreenViewModel {
     private let checkpointRepository: any CompactionCheckpointRepository
     private let conversationRepository: (any ConversationRepository)?
     private let titleGenerator: TitleGenerator?
-    /// Shell-owned inbox of cross-applet references awaiting a composer.
-    /// Optional so previews, snapshot tests, and view-model unit tests
-    /// without cross-applet wiring keep working.
-    private let referenceInbox: ChatReferenceInbox?
 
     /// Tool function-name → friendly display name, resolved from the tool
     /// registry at the composition root. Used to label tool-call cards in the
@@ -229,7 +224,6 @@ public final class ChatScreenViewModel {
         conversationRepository: (any ConversationRepository)? = nil,
         titleGenerator: TitleGenerator? = nil,
         voice: VoiceInputController? = nil,
-        referenceInbox: ChatReferenceInbox? = nil,
         initialReferences: [RecordReference] = [],
         toolDisplayNames: [String: String] = [:],
         suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
@@ -245,7 +239,6 @@ public final class ChatScreenViewModel {
         self.checkpointRepository = checkpointRepository
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
-        self.referenceInbox = referenceInbox
         self.pendingReferences = initialReferences
         self.toolDisplayNames = toolDisplayNames
         self.suggestionsProvider = suggestionsProvider
@@ -530,15 +523,12 @@ public final class ChatScreenViewModel {
         startStreaming(text: text, references: references, model: model)
     }
 
-    /// Drain the shell-owned `ChatReferenceInbox` into `pendingReferences`,
-    /// deduping by reference id so a doubled bus delivery doesn't double a
-    /// pill. Called by `ChatScreen` on mount and whenever the inbox grows.
-    public func adoptPendingReferences() {
-        guard let referenceInbox else { return }
+    /// Attach a batch addressed to this composer, deduplicating reference ids.
+    public func addReferences(_ references: [RecordReference]) {
         var seenIDs = Set(pendingReferences.map(\.id))
         // `insert(_:).inserted` dedupes against both the already-attached
-        // pills and repeats within this drained batch.
-        for reference in referenceInbox.drainPending() where seenIDs.insert(reference.id).inserted {
+        // pills and repeats within this batch.
+        for reference in references where seenIDs.insert(reference.id).inserted {
             pendingReferences.append(reference)
         }
     }
@@ -546,13 +536,6 @@ public final class ChatScreenViewModel {
     /// Remove an attached verse pill (composer × button) before send.
     public func removeReference(id: String) {
         pendingReferences.removeAll { $0.id == id }
-    }
-
-    /// Count of references waiting in the shell-owned inbox. The view
-    /// observes this — the inbox is `@Observable` — to know when to call
-    /// `adoptPendingReferences()` for a verse added while already mounted.
-    public var inboxPendingCount: Int {
-        referenceInbox?.pending.count ?? 0
     }
 
     /// Cancel the in-flight turn (composer stop button). Routes through

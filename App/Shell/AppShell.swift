@@ -406,14 +406,12 @@ struct AppShell: View {
             // when the user opens the next chat.
             viewModel?.applyExternalVerbosity(newValue)
         }
-        // Bible hand-off: a verse (or whole chapter) was published on
-        // the bus. Single observable carrying both intents — request
-        // shape (`startNew`) and presence — so the two paths can't race
-        // and double-animate the chrome. `handleComposerAttention`
-        // owns the semi-expand-from-minimized + composer focus.
-        .onChange(of: referenceInbox.pendingAttention) { _, _ in
-            guard let request = referenceInbox.consumeAttention() else { return }
-            route(.composerAttention(request))
+        // Move complete handoffs into the serial navigation queue together.
+        // Composer mounting never consumes or changes their destinations.
+        .onChange(of: referenceInbox.attentionRevision) { _, _ in
+            while let request = referenceInbox.consumeAttention() {
+                route(.composerAttention(request))
+            }
         }
         // Owner-side keyboard dismissal: every minimize-like transition
         // clears the shell's `@FocusState` *directly*, rather than
@@ -515,7 +513,8 @@ struct AppShell: View {
     private func previewDidDismiss() {
         guard let action = recordPreview.didDismiss() else { return }
         switch action {
-        case .navigation(let navigation): route(navigation)
+        case .navigation(let actions):
+            for navigation in actions { route(navigation) }
         case .completion(let completion):
             let event: SuperEvent
             switch completion {
@@ -690,7 +689,7 @@ struct AppShell: View {
                 case .recordAddedToChat:
                     // Attention is routed by ChatReferenceInbox; invalidate here
                     // immediately without also routing the same handoff.
-                    recordPreview.invalidateCompletion(preservingNavigation: true)
+                    recordPreview.invalidateCompletion()
                     pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
                 case .previewRecord(let reference):
                     guard !navigationQueue.isBusy, !recordPreview.isActive,
@@ -886,7 +885,6 @@ struct AppShell: View {
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
             voice: voice,
-            referenceInbox: referenceInbox,
             initialReferences: initialReferences,
             toolDisplayNames: toolDisplayNames,
             suggestionsProvider: suggestionsProvider,
@@ -1044,9 +1042,10 @@ struct AppShell: View {
     private func handleComposerAttention(_ request: ComposerAttentionRequest) async {
         if request.startNew {
             let target: ChatPresentationState = chatState == .expanded ? .expanded : .semiExpanded
-            await startNewChat(targetChatState: target, initialReferences: request.newConversationReferences)
+            await startNewChat(targetChatState: target, initialReferences: request.references)
             return
         }
+        viewModel?.addReferences(request.references)
         if chatState == .minimized {
             await animateChatState(to: .semiExpanded)
         }

@@ -1,19 +1,17 @@
 import Core
 import Observation
 
-/// Carries the shell's "Bible just handed a reference to chat" intent —
-/// the single observable signal `AppShell` reads to semi-expand the chat
-/// overlay from minimized and focus the composer. `startNew` decides
-/// whether the dispatch lands in a fresh conversation or the current one.
+/// An ordered reference handoff for the current composer or a new conversation.
 public struct ComposerAttentionRequest: Sendable, Equatable {
+    /// Whether to create a conversation before attaching this batch.
     public let startNew: Bool
-    /// References reserved for the destination of a New chat handoff. Keeping
-    /// them out of the shared pending buffer prevents the old composer draining them.
-    public let newConversationReferences: [RecordReference]
+    /// References owned by this request, never drained by an unrelated composer.
+    public let references: [RecordReference]
 
-    public init(startNew: Bool, newConversationReferences: [RecordReference] = []) {
+    /// Creates a destination-bound reference batch.
+    public init(startNew: Bool, references: [RecordReference]) {
         self.startNew = startNew
-        self.newConversationReferences = newConversationReferences
+        self.references = references
     }
 }
 
@@ -21,30 +19,25 @@ public struct ComposerAttentionRequest: Sendable, Equatable {
 /// (Bible verse ranges today). Lives for the whole app session — owned by
 /// the shell, not the per-conversation `ChatScreenViewModel` — so a
 /// reference added while the chat screen is unmounted is still delivered
-/// when a composer next mounts and drains it.
+/// when the shell processes the queued handoff.
 ///
 /// `attach(to:)` subscribes to the `SuperEventBus` once. The bus itself is
 /// fire-and-forget, so this buffer is what makes delivery guaranteed.
 @MainActor
 @Observable
 public final class ChatReferenceInbox {
-    /// References waiting to be shown in a composer. The mounted
-    /// `ChatScreenViewModel` drains these via `drainPending()`.
-    public private(set) var pending: [RecordReference] = []
+    private var requests: [ComposerAttentionRequest] = []
 
-    /// The latest unconsumed composer-attention request from a Bible →
-    /// Chat hand-off, or `nil` if there's nothing to react to. The shell
-    /// observes this as a single signal and reads `startNew` to pick the
-    /// dispatch path; one observable replaces the prior two-flag /
-    /// two-consume dance and makes "attention is requested" + "new chat is
-    /// requested" a compile-checked invariant rather than a convention.
-    public private(set) var pendingAttention: ComposerAttentionRequest?
+    /// Changes on every handoff, including identical events between view updates.
+    /// The shell observes this signal and drains all queued requests in order.
+    public private(set) var attentionRevision: UInt64 = 0
 
     private var subscriptionTask: Task<Void, Never>?
     /// One-shot callbacks fired after the next processed event — the
     /// `_onNextEvent` test seam. Not observed in production.
     private var eventCallbacks: [@MainActor () -> Void] = []
 
+    /// Creates an empty session-scoped inbox.
     public init() {}
 
     // No `deinit` cancel: the inbox is shell-owned and lives for the whole
@@ -66,36 +59,25 @@ public final class ChatReferenceInbox {
         }
     }
 
-    /// Move every pending reference out for a composer to adopt, leaving
-    /// the inbox empty.
-    public func drainPending() -> [RecordReference] {
-        defer { pending.removeAll() }
-        return pending
-    }
-
-    /// Read and clear the pending composer-attention request, returning
+    /// Remove the oldest complete composer-attention request, returning
     /// `nil` when there's nothing to act on.
     public func consumeAttention() -> ComposerAttentionRequest? {
-        defer { pendingAttention = nil }
-        return pendingAttention
+        guard !requests.isEmpty else { return nil }
+        return requests.removeFirst()
     }
 
     private func handle(_ event: SuperEvent) {
         if case .recordAddedToChat(let reference, let startNew) = event {
-            if startNew {
-                var references = pendingAttention?.newConversationReferences ?? []
+            if let last = requests.last, last.startNew == startNew {
+                var references = last.references
                 if !references.contains(where: { $0.id == reference.id }) {
                     references.append(reference)
                 }
-                pendingAttention = ComposerAttentionRequest(startNew: true, newConversationReferences: references)
+                requests[requests.count - 1] = ComposerAttentionRequest(startNew: startNew, references: references)
             } else {
-                pending.append(reference)
-                // A later Add to chat must not discard a New chat destination
-                // that the shell has not yet consumed.
-                if pendingAttention?.startNew != true {
-                    pendingAttention = ComposerAttentionRequest(startNew: false)
-                }
+                requests.append(ComposerAttentionRequest(startNew: startNew, references: [reference]))
             }
+            attentionRevision &+= 1
         }
         let callbacks = eventCallbacks
         eventCallbacks.removeAll()

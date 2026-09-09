@@ -3,7 +3,7 @@ import Testing
 @testable import Chat
 
 /// Tests for `ChatReferenceInbox` — the shell-owned buffer that subscribes
-/// to the `SuperEventBus` and holds verse references until a composer
+/// to the `SuperEventBus` and holds complete reference handoffs until the shell
 /// drains them. Event delivery is synchronized through the `_onNextEvent`
 /// seam (registered before publishing), never `sleep`.
 @MainActor
@@ -30,117 +30,96 @@ struct ChatReferenceInboxTests {
         }
     }
 
-    @Test func busEventPopulatesPending() async {
+    @Test func everyEventCarriesReferencesAndAdvancesRevision() async {
         let bus = SuperEventBus()
         let inbox = ChatReferenceInbox()
         await inbox.attach(to: bus)
-        let ref = reference("a")
-
-        await publishAndWait(
-            .recordAddedToChat(reference: ref, startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-
-        #expect(inbox.pending == [ref])
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: false))
+        for startNew in [false, true, true] {
+            let previousRevision = inbox.attentionRevision
+            await publishAndWait(
+                .recordAddedToChat(reference: reference("a"), startNewConversation: startNew),
+                on: bus, inbox: inbox
+            )
+            #expect(inbox.attentionRevision == previousRevision + 1)
+            #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: startNew, references: [reference("a")]))
+            #expect(inbox.consumeAttention() == nil)
+        }
     }
 
-    @Test func drainPendingEmptiesTheInbox() async {
-        let bus = SuperEventBus()
-        let inbox = ChatReferenceInbox()
-        await inbox.attach(to: bus)
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("a"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-
-        let drained = inbox.drainPending()
-
-        #expect(drained == [reference("a")])
-        #expect(inbox.pending.isEmpty)
-        #expect(inbox.drainPending().isEmpty)
-    }
-
-    @Test func referenceBufferedBeforeDrainIsStillDelivered() async {
-        // The inbox buffers regardless of whether a composer exists yet —
-        // this is what makes delivery guaranteed across an unmounted
-        // chat screen. Two references accumulate, then a single drain
-        // hands both over.
-        let bus = SuperEventBus()
-        let inbox = ChatReferenceInbox()
-        await inbox.attach(to: bus)
-
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("a"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("b"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-
-        #expect(inbox.drainPending() == [reference("a"), reference("b")])
-    }
-
-    @Test func startNewConversationEventCarriesStartNewIntent() async {
-        let bus = SuperEventBus()
-        let inbox = ChatReferenceInbox()
-        await inbox.attach(to: bus)
-
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("a"), startNewConversation: true),
-            on: bus, inbox: inbox
-        )
-
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("a")]))
-        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("a")]))
-        #expect(inbox.pendingAttention == nil)
-        #expect(inbox.consumeAttention() == nil)
-    }
-
-    @Test func everyEventPopulatesPendingAttention() async {
-        // `pendingAttention` fires regardless of `startNewConversation` —
-        // it's the single "Bible just handed a reference to chat" signal
-        // the shell observes to semi-expand the overlay and focus the
-        // composer. The `startNew` field decides which dispatch path
-        // runs; `consumeAttention()` is the read-and-clear seam.
-        let bus = SuperEventBus()
-        let inbox = ChatReferenceInbox()
-        await inbox.attach(to: bus)
-
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("a"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: false))
-        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: false))
-        #expect(inbox.pendingAttention == nil)
-
-        await publishAndWait(
-            .recordAddedToChat(reference: reference("b"), startNewConversation: true),
-            on: bus, inbox: inbox
-        )
-        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true, newConversationReferences: [reference("b")]))
-    }
-
-    @Test func unconsumedNewChatReferencesSurviveLaterHandoffs() async throws {
+    @Test(arguments: [false, true])
+    func adjacentMatchingIntentsCoalesceAndDeduplicate(startNew: Bool) async {
         let bus = SuperEventBus()
         let inbox = ChatReferenceInbox()
         await inbox.attach(to: bus)
         for id in ["a", "b", "a"] {
             await publishAndWait(
-                .recordAddedToChat(reference: reference(id), startNewConversation: true),
+                .recordAddedToChat(reference: reference(id), startNewConversation: startNew),
                 on: bus, inbox: inbox
             )
         }
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(
+            startNew: startNew, references: [reference("a"), reference("b")]
+        ))
+        #expect(inbox.consumeAttention() == nil)
+        #expect(inbox.attentionRevision == 3)
+    }
+
+    @Test func currentChatHandoffSurvivesNewChatBeforeConsumption() async throws {
+        let bus = SuperEventBus()
+        let inbox = ChatReferenceInbox()
+        await inbox.attach(to: bus)
         await publishAndWait(
-            .recordAddedToChat(reference: reference("c"), startNewConversation: false),
+            .recordAddedToChat(reference: reference("current"), startNewConversation: false),
             on: bus, inbox: inbox
         )
-        #expect(inbox.drainPending() == [reference("c")])
-        let request = try #require(inbox.consumeAttention())
-        #expect(request.startNew)
-        #expect(request.newConversationReferences == [reference("a"), reference("b")])
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("new"), startNewConversation: true),
+            on: bus, inbox: inbox
+        )
+
+        let first = try #require(inbox.consumeAttention())
+        #expect(!first.startNew)
+        #expect(first.references == [reference("current")])
+        let second = try #require(inbox.consumeAttention())
+        #expect(second.startNew)
+        #expect(second.references == [reference("new")])
+        #expect(inbox.consumeAttention() == nil)
+    }
+
+    @Test func alternatingDestinationsStayOrderedBeforeConsumption() async {
+        let bus = SuperEventBus()
+        let inbox = ChatReferenceInbox()
+        await inbox.attach(to: bus)
+        let intents = [false, true, false, true, false]
+        for (index, startNew) in intents.enumerated() {
+            await publishAndWait(
+                .recordAddedToChat(reference: reference(String(index)), startNewConversation: startNew),
+                on: bus, inbox: inbox
+            )
+        }
+        for (index, startNew) in intents.enumerated() {
+            #expect(inbox.consumeAttention() == ComposerAttentionRequest(
+                startNew: startNew, references: [reference(String(index))]
+            ))
+        }
+        #expect(inbox.consumeAttention() == nil)
+    }
+
+    @Test func consumedRequestKeepsItsOwnReferencesDuringLaterDelivery() async throws {
+        let bus = SuperEventBus()
+        let inbox = ChatReferenceInbox()
+        await inbox.attach(to: bus)
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("new"), startNewConversation: true),
+            on: bus, inbox: inbox
+        )
+        let reserved = try #require(inbox.consumeAttention())
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("later"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        #expect(reserved == ComposerAttentionRequest(startNew: true, references: [reference("new")]))
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: false, references: [reference("later")]))
     }
 
     @Test func attachIsIdempotent() async {
@@ -148,13 +127,12 @@ struct ChatReferenceInboxTests {
         let inbox = ChatReferenceInbox()
         await inbox.attach(to: bus)
         await inbox.attach(to: bus)
-
         await publishAndWait(
             .recordAddedToChat(reference: reference("a"), startNewConversation: false),
             on: bus, inbox: inbox
         )
-
-        // A second subscription would have appended the reference twice.
-        #expect(inbox.pending == [reference("a")])
+        #expect(inbox.attentionRevision == 1)
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: false, references: [reference("a")]))
+        #expect(inbox.consumeAttention() == nil)
     }
 }
