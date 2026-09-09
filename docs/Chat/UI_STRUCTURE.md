@@ -56,7 +56,7 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
 │       │   ├── ToolCallBlock        ⟵ collapsible, with INPUT/RESULT panels
 │       │   ├── MarkdownText         ⟵ MarkdownUI + Splash code highlighting
 │       │   │                            (Chat/UI/Markdown/)
-│       │   └── MessageActionButton  ⟵ Copy / Regenerate row
+│       │   └── Core.ResponseActions  ⟵ Copy / Regenerate row
 │       ├── CompactionBanner       — "COMPACTED" divider + summary
 │       ├── StreamingTail          — in-flight assistant text + caret + spark
 │       └── ErrorBanner            — transport/provider error with Retry
@@ -76,7 +76,7 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
                                 · stop.fill     (streaming or recording — cancels)
 ```
 
-The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `WaitingSpark`, `TypingCaret`, `MessageActionButton`) each live in their own file under `Chat/UI/Messages/`.
+The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `TypingCaret`) each live in their own file under `Chat/UI/Messages/`.
 
 The composer's optional `onMinimize` action is supplied by `ChatOverlay` through `ChatScreen`. Its centered bar matches the top drag handle's width and the model selector's glass, and fades/collapses with the footer. Tapping it clears keyboard focus and animates the overlay to `.minimized`, preserving the draft and in-flight work. Dragging feeds the same `onDragChanged`/`onDragEnded` callbacks as the top handle, including its velocity-based snap resolver. The lower handle uses a 5pt drag threshold to distinguish a drag from a tap. Its gesture stays mounted through the footer morph; cancellation settles without velocity, while its accessibility action exists only when the bar is visible. Hosts without the minimize action retain the original footer layout.
 
@@ -221,3 +221,5 @@ See [`../NAMING_CONVENTIONS.md` Part 4](../NAMING_CONVENTIONS.md#part-4--swiftui
 ---
 
 *Last updated: 2026-05-11*
+
+`AssistantMessage` and `StreamingTail` render prose through Core’s `ResponseTextBlock`; saved replies use `ResponseActions` for Copy/Regenerate. Core owns the shared Markdown body, activity spark, and action buttons under `Core/UI/Responses/`. Bible annotations use those same components in a composer-free native sheet. `Chat.SparkIcon` remains a compatibility alias.

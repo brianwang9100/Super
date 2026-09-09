@@ -20,12 +20,8 @@ private let bibleAnnotateLog = Logger(
 /// `SuperEvent.bibleAnnotateRequested` envelopes off the bus, and
 /// publishes one `SuperEvent.bibleAnnotateCompleted` per request.
 ///
-/// Each dispatch creates a *transient* `ConversationRecord` (filtered
-/// out of the Chats list by `ActiveConversationsRequest`), runs one
-/// `ChatSession.send(...)` turn against it with a one-tool
-/// `ToolRegistry` exposing only `bible.annotate`, and hard-deletes the
-/// transient row (cascading to its `messages` and `toolCalls`) when the
-/// turn terminates. Net chat-DB cost at rest: zero.
+/// Foreground requests stream Markdown without a conversation. The bulk
+/// `generate(reference:)` API retains its transient tool-loop conversation.
 @MainActor
 @Observable
 public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
@@ -94,7 +90,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
 
     private func handle(_ event: SuperEvent, bus: SuperEventBus) {
         guard case .bibleAnnotateRequested(let reference) = event else { return }
-        inFlightRequestIDs.insert(reference.id)
+        guard inFlightRequestIDs.insert(reference.id).inserted else { return }
         // Inherits @MainActor from the dispatcher so updates to
         // `inFlightRequestIDs` after the await happen on the main
         // actor without a nested `MainActor.run`. The Task isn't
@@ -102,7 +98,13 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         // their LLM turns concurrently.
         Task { [weak self] in
             guard let self else { return }
-            let outcome = await self.generate(reference: reference)
+            let generator = BibleAnnotationStreamGenerator(
+                providerRegistry: self.llmProviderRegistry,
+                toolRegistry: self.toolRegistry
+            )
+            let outcome = await generator.generate(reference: reference) { text in
+                await bus.publish(.bibleAnnotateProgress(requestId: reference.id, text: text))
+            }
             self.inFlightRequestIDs.remove(reference.id)
             await bus.publish(.bibleAnnotateCompleted(
                 requestId: reference.id,
@@ -298,7 +300,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     /// network/decoding failures, an unsupported model, a generic provider
     /// error — is retryable, and a persistent retryable trips the run's
     /// consecutive-failure breaker instead.
-    private static func classify(_ error: LLMError) -> BibleAnnotateFailure {
+    nonisolated static func classify(_ error: LLMError) -> BibleAnnotateFailure {
         switch error {
         case .unauthorized:
             .fatalAuth
@@ -318,7 +320,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     /// doesn't need to import Bible to read `AnnotateBibleTool.toolID`
     /// — Chat already references `bible.annotate` by name in the
     /// AppletBriefing aggregation path.
-    static let bibleAnnotateToolID = "bible.annotate"
+    nonisolated static let bibleAnnotateToolID = "bible.annotate"
 
     /// Test seam: register a one-shot callback fired after the
     /// dispatcher processes a `bibleAnnotateRequested` envelope
@@ -346,6 +348,9 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     any other tool, do not ask follow-up questions. After the tool call \
     completes, end your turn.
 
+    """ + "\n\n" + annotationWritingGuidance
+
+    nonisolated static let annotationWritingGuidance = """
     When the target's exact verse text is provided, base the summary on \
     that text — reason from it, and never reference words it does not \
     contain. Do NOT repeat the target's verse text verbatim in the \
@@ -467,7 +472,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     /// model picks). Returns `nil` for an unrecognised kind so the prompt
     /// falls back to the generic briefing rather than asserting a wrong
     /// structure.
-    static func sectionGuidance(forKind kind: String) -> String? {
+    nonisolated static func sectionGuidance(forKind kind: String) -> String? {
         switch kind {
         case "book":
             """

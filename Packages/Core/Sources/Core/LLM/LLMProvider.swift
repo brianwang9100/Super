@@ -37,21 +37,15 @@ public protocol LLMProvider: Sendable {
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error>
 
-    /// Begin a streaming completion, carrying per-request `options` (cache
-    /// routing keys, etc.). Semantics are identical to the 4-arg `stream(...)`;
-    /// `options` only ever tunes provider-side optimizations, never the prompt.
+    /// Begin a streaming completion with per-request normalization and cache
+    /// routing options. Options never change the prompt. Built-in remote
+    /// adapters honor `requiresCompleteResponse` by reporting an error for
+    /// unverified or unsuccessful native completion before terminal completion.
+    /// Consumers must reject any stream error even if `.messageComplete` follows.
     ///
-    /// A protocol-extension default forwards to the 4-arg method and ignores
-    /// `options`, so the ~dozen conformers need no change. The OpenAI Chat and
-    /// Responses adapters override it to attach their host-gated routing keys.
-    /// (Providers are registry-shared singletons, so the key must travel
-    /// per-request rather than via the initializer.)
-    ///
-    /// Delegation contract for an options-aware conformer: override **this**
-    /// 5-arg method as the real implementation and have its 4-arg method
-    /// forward *here* — not the other way around. Callers that want caching use
-    /// the 5-arg path (e.g. `ChatSession`), so a conformer whose 4-arg held the
-    /// real logic would silently drop `options`.
+    /// The default forwards to the four-argument method and ignores options.
+    /// Options-aware conformers implement this overload and forward their
+    /// four-argument method here with `.none` to preserve default behavior.
     func stream(
         messages: [LLMMessage],
         model: LLMModel,

@@ -118,7 +118,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = OpenAIResponsesStreamReducer()
+                var reducer = OpenAIResponsesStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
                 // OpenAI restricts tool names to `[A-Za-z0-9_-]`; Super's IDs
                 // are dot-namespaced. Encode the sanitized wire name and
                 // restore the registry name on every decoded event.
@@ -193,13 +193,19 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     /// large vocabulary of event types, and an unmodeled-but-harmless shape
     /// must not abort the turn. Genuine provider failures arrive as a typed
     /// `error`/`response.error` event, which the reducer maps to `.error`.
+    /// Strict completion mode reports malformed frames instead of dropping them.
     private func consume(
         _ data: String,
         into reducer: inout OpenAIResponsesStreamReducer,
         with decoder: JSONDecoder
     ) -> [LLMStreamEvent] {
         guard let parsed = try? decoder.decode(OpenAIResponsesStreamEvent.self, from: Data(data.utf8)) else {
-            return []
+            guard reducer.requiresCompleteResponse, !reducer.hasErrored else { return [] }
+            var events = reducer.flushPendingStart()
+            events.append(contentsOf: reducer.closeOpenBlocks())
+            reducer.markErrored()
+            events.append(.error(.decodingFailed("Malformed streaming response frame.")))
+            return events
         }
         return reducer.consume(parsed)
     }

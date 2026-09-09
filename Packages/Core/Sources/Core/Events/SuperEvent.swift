@@ -28,16 +28,13 @@ public enum SuperEvent: Sendable, Equatable {
     /// (and from `super://bible/...` deep links at the scene root).
     case openRecord(reference: RecordReference)
 
-    /// Bible → Chat (headless): the user tapped a generation entry
-    /// point (spark button on a verse selection, the Annotate action
-    /// tile, an empty book-picker bubble) and Chat should fire a
-    /// one-off LLM turn that calls the `bible.annotate` tool against
-    /// the target encoded in `reference`. The turn must not be
-    /// visible in the Chats list — the dispatcher creates a transient
-    /// conversation, runs the turn, and cleans up the conversation
-    /// rows when finished. `reference.id` is the request id the
-    /// completion event will echo back.
+    /// Bible requests a foreground annotation for this target. Chat streams
+    /// Markdown and saves the completed response through `bible.annotate`.
+    /// `reference.id` correlates progress and completion; no chat rows are created.
     case bibleAnnotateRequested(reference: RecordReference)
+
+    /// Cumulative Markdown for a running foreground annotation request.
+    case bibleAnnotateProgress(requestId: String, text: String)
 
     /// Chat → Bible (headless): a `bibleAnnotateRequested` dispatch
     /// terminated. `requestId` is the originating `RecordReference.id`.

@@ -93,9 +93,7 @@ struct AssistantMessage: View {
                 )
             }
             if hasText {
-                MarkdownText(text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                ResponseTextBlock(text: text)
             }
             // Google's required Search-Suggestions strip sits directly under a
             // grounded Gemini answer (always visible, unmodified). It precedes
@@ -113,19 +111,11 @@ struct AssistantMessage: View {
             // (tool-call-only or thinking-only turns have nothing to copy, and
             // the next turn carries the real reply).
             if hasText {
-                HStack(spacing: 4) {
-                    MessageActionButton(
-                        systemName: "doc.on.doc",
-                        label: "Copy",
-                        action: onCopyTapped
-                    )
-                    MessageActionButton(
-                        systemName: "arrow.clockwise",
-                        label: "Regenerate",
-                        action: onRegenerateRequested,
-                        disabled: isStreaming
-                    )
-                }
+                ResponseActions(
+                    onCopy: onCopyTapped,
+                    onRegenerate: onRegenerateRequested,
+                    isRegenerateDisabled: isStreaming
+                )
             }
         }
         .padding(.vertical, appearance.assistantRowVerticalPadding)

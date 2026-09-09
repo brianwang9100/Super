@@ -645,7 +645,7 @@ struct AppShell: View {
                     // inside a body re-eval and `@Environment`
                     // reads (notably `reduceMotion`) are fresh.
                     pendingNavigation = .openApplet(id: reference.appletID)
-                case .bibleAnnotateRequested, .bibleAnnotateCompleted:
+                case .bibleAnnotateRequested, .bibleAnnotateProgress, .bibleAnnotateCompleted:
                     // Headless Bible → Chat dispatch handshake —
                     // routed end-to-end by
                     // `BibleAnnotateDispatcher` (request) and

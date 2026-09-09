@@ -167,6 +167,7 @@ struct OpenAIResponsesStreamEvent: Decodable {
 
     /// The response object on `created` (id/model) and `completed` (usage).
     struct ResponseEnvelope: Decodable {
+        let status: String?
         let id: String?
         let model: String?
         let usage: Usage?

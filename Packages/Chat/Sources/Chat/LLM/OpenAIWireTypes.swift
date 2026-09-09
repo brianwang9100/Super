@@ -140,6 +140,7 @@ struct OpenAIDelta: Decodable {
     let reasoningContent: String?
     let reasoning: String?
     let toolCalls: [OpenAIToolCallDelta]?
+    var refusal: String?
 }
 
 /// Streamed tool-call fragment. `index` identifies which tool call this
