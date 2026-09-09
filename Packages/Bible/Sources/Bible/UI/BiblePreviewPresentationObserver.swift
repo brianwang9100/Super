@@ -47,9 +47,14 @@ struct BiblePreviewPresentationObserver: UIViewControllerRepresentable {
             while let parent = presenter.parent { presenter = parent }
             guard presenter.presentingViewController != nil, !presenter.isBeingDismissed else { return }
             if let transition = presenter.transitionCoordinator {
-                transition.animate(alongsideTransition: nil) { [weak self, weak presenter] context in
+                let registered = transition.animate(alongsideTransition: nil) { [weak self, weak presenter] context in
                     guard !context.isCancelled, let presenter, !presenter.isBeingDismissed else { return }
                     self?.emitReady()
+                }
+                // UIKit may reject registration after native appearance. It may
+                // still call completion later; emitReady consumes its callback once.
+                if !registered, !transition.isCancelled, !presenter.isBeingDismissed {
+                    emitReady()
                 }
             } else {
                 emitReady()
