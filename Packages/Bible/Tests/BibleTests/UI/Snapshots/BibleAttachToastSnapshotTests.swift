@@ -6,11 +6,7 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleAttachToast` — the chat-attach "coming soon" toast.
-///
-/// The toast is a fixed dark card regardless of theme; the baselines confirm
-/// it reads against the light, dark, and sepia page backgrounds. The card
-/// uses fixed type sizes, so no Dynamic Type variant is captured.
+/// Light/dark galleries of dismissible reader messages and persistent read-error recovery.
 @Suite("BibleAttachToast snapshots", .serialized)
 @MainActor
 struct BibleAttachToastSnapshotTests {
@@ -42,7 +38,7 @@ struct BibleAttachToastSnapshotTests {
                 )
                 BibleAttachToast(
                     message: "Navigation history couldn't be loaded.",
-                    onDismiss: {}, onRetry: {}, systemImage: "clock.arrow.circlepath"
+                    onDismiss: nil, onRetry: {}, systemImage: "clock.arrow.circlepath"
                 )
             }
             .padding(.horizontal, 12)

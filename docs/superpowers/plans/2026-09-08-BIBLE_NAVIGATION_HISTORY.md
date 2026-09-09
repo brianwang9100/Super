@@ -131,3 +131,14 @@ await model._waitForPendingPersist()
 ## Production plan review
 
 Fresh subagent review identified two required tests: intents received before the first load, and intents received during a suspended restoration retry. The restore gate starts at initialization; both initial load and retries are single-flight. Queued absolute reference and translation intents drain after restoration. Retain the approved full-label/wrapping fallback, with no compact-citation formatter. Main was refreshed to dac76b09; the new migration is v13_navigationHistory, with a v12 upgrade fixture.
+
+## PR 352 recovery follow-up
+
+Codex identified two missed recovery cases on ac7a57aa:
+
+1. If the saved row's chapter is invalid, discard its entire history payload and seed a single entry at the configured fallback. Never validate that payload against a substituted chapter. Extend the invalid-row regression with a multi-entry payload whose cursor matches the fallback, and verify the repaired stored row.
+2. A failed read suppresses writes until Retry succeeds. Keep that recovery affordance present: expose whether the persistence message may be dismissed, guard dismissal in the model, and render a passive message plus Retry (without a dismiss control) for unresolved read failures. Write errors remain dismissible because later navigation/flush already retries writes. Allow the existing toast's dismissal callback to be optional and preserve its padded tap region when present. Add model regressions for attempted read-error dismissal, subsequent Retry, and dismissible write errors; update the existing two toast galleries to render the persistent read-error state without adding capture IDs.
+
+Risks: accidentally making write errors permanent, retaining a misleading close control, or collapsing the toast's existing tap regions. Validation: focused red/green regressions, full Bible package suite, targeted pinned simulator toast captures, integrated app build, and separate code re-review before push. No navigation-spacing change. Obtain renewed current-head Codex approval and passing CI before enabling auto-merge.
+
+Follow-up validation: both review findings reproduced in the red run (21 tests, six failed assertions); all 21 history tests then passed. Full Bible package suite passed 874 tests/86 suites. Targeted pinned simulator history and toast suites passed 23 tests/2 suites, with the persistent Retry gallery visually inspected. Capture inventory remains625 total, Bible278. Plan review and separate implementation re-review both passed without actionable findings. Both app host builds passed. Renewed current-head CI/Codex review remains required before merge.

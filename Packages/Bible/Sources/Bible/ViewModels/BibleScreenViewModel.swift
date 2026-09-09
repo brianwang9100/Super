@@ -1613,8 +1613,12 @@ public final class BibleScreenViewModel {
         clearRestorationTask(ifCurrent: generation)
     }
 
-    /// Dismiss the transient navigation persistence error.
+    /// Read failures keep their only recovery action visible until restoration succeeds.
+    public var canDismissNavigationPersistenceError: Bool { !didReadingPositionLoadFail }
+
+    /// Dismiss a save error; unresolved read failures retain their Retry affordance.
     public func dismissNavigationPersistenceError() {
+        guard canDismissNavigationPersistenceError else { return }
         navigationPersistenceError = nil
     }
 
@@ -1723,14 +1727,18 @@ public final class BibleScreenViewModel {
             bookId: saved.bookId,
             chapterNumber: saved.chapterNumber
         )
-        let resolvedPosition = isValidPosition(storedPosition) ? storedPosition : initialPosition
-        position = resolvedPosition
         translation = BibleTranslation.named(saved.translationId)
-        navigationHistory = BibleNavigationHistoryPayload.restore(
-            from: saved.navigationHistoryJSON,
-            position: resolvedPosition,
-            catalog: catalog
-        )
+        if isValidPosition(storedPosition) {
+            position = storedPosition
+            navigationHistory = BibleNavigationHistoryPayload.restore(
+                from: saved.navigationHistoryJSON,
+                position: storedPosition,
+                catalog: catalog
+            )
+        } else {
+            position = initialPosition
+            navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+        }
         applyCurrentChapter()
     }
 

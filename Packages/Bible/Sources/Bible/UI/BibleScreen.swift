@@ -143,7 +143,8 @@ public struct BibleScreen: View {
             if let message = viewModel.navigationPersistenceError {
                 BibleAttachToast(
                     message: message,
-                    onDismiss: { viewModel.dismissNavigationPersistenceError() },
+                    onDismiss: viewModel.canDismissNavigationPersistenceError
+                        ? { viewModel.dismissNavigationPersistenceError() } : nil,
                     onRetry: { Task { await viewModel.retryNavigationPersistence() } },
                     systemImage: "clock.arrow.circlepath"
                 )

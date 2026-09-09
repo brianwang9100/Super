@@ -151,6 +151,38 @@ struct BibleScreenViewModelHistoryTests {
         #expect(await repository.saveAttempts.isEmpty)
     }
 
+    @Test("a failed read keeps recovery available after dismissal and resumes saving after retry")
+    func readFailureCannotDismissRecovery() async throws {
+        let repository = GatedBibleReadingPositionRepository()
+        let model = makeViewModel(repository: repository)
+        let load = Task { await model.load() }
+        await repository.waitForLoadCall(count: 1)
+        await repository.releaseNextLoad(.failure)
+        await load.value
+
+        #expect(!model.canDismissNavigationPersistenceError)
+        model.dismissNavigationPersistenceError()
+        #expect(model.navigationPersistenceError != nil)
+        model.selectChapter(bookId: "JHN", chapterNumber: 3)
+        await model.flushNavigationPersistence()
+        #expect(await repository.saveAttempts.isEmpty)
+        #expect(model.navigationPersistenceError != nil)
+
+        let retry = Task { await model.retryNavigationPersistence() }
+        await repository.waitForLoadCall(count: 2)
+        await repository.releaseNextLoad(.success(nil))
+        await retry.value
+        #expect(model.navigationPersistenceError == nil)
+        #expect(model.canDismissNavigationPersistenceError)
+        let saved = try #require(await repository.currentRecord())
+        #expect(saved.bookId == "JHN")
+        #expect(saved.chapterNumber == 3)
+        #expect(restoredHistory(from: saved).entries == [
+            BibleScreenViewModel.defaultPosition,
+            BiblePosition(bookId: "JHN", chapterNumber: 3),
+        ])
+    }
+
     @Test("retry recovers disk history and appends only the final provisional destination")
     func retryKeepsFinalProvisionalDestination() async throws {
         let repository = GatedBibleReadingPositionRepository()
@@ -355,17 +387,21 @@ struct BibleScreenViewModelHistoryTests {
         #expect(model.forwardDestination == BiblePosition(bookId: "PSA", chapterNumber: 23))
     }
 
-    @Test("an invalid saved chapter falls back while preserving translation and repairing history")
-    func invalidSavedChapterFallsBackAndRepairs() async throws {
+    @Test("an invalid saved chapter discards even a payload matching the fallback", arguments: ["ZZZ", "GEN"])
+    func invalidSavedChapterFallsBackAndRepairs(bookId: String) async throws {
         let repository = GRDBBibleReadingPositionRepository(
             database: try BibleDatabase.makeInMemory()
         )
+        var inconsistentHistory = BibleNavigationHistory(
+            initialPosition: BiblePosition(bookId: "JHN", chapterNumber: 3)
+        )
+        inconsistentHistory.visit(BibleScreenViewModel.defaultPosition)
         try await repository.save(BibleReadingPositionRecord(
-            bookId: "ZZZ",
+            bookId: bookId,
             chapterNumber: 99,
             translationId: "WEB",
             updatedAt: now,
-            navigationHistoryJSON: "{malformed"
+            navigationHistoryJSON: try BibleNavigationHistoryPayload.encode(inconsistentHistory)
         ))
         let model = makeViewModel(repository: repository)
         await model.load()
@@ -376,6 +412,8 @@ struct BibleScreenViewModelHistoryTests {
         let saved = try #require(try await repository.load())
         #expect(restoredHistory(from: saved).entries == [BibleScreenViewModel.defaultPosition])
         #expect(saved.translationId == "WEB")
+        #expect(!model.canGoBack)
+        #expect(!model.canGoForward)
     }
 
     @Test("a text-unavailable destination remains in traversable history")
@@ -451,6 +489,9 @@ struct BibleScreenViewModelHistoryTests {
         model.selectChapter(bookId: "JHN", chapterNumber: 3)
         await model._waitForPendingPersist()
         #expect(model.navigationPersistenceError != nil)
+        #expect(model.canDismissNavigationPersistenceError)
+        model.dismissNavigationPersistenceError()
+        #expect(model.navigationPersistenceError == nil)
 
         model.selectChapter(bookId: "PSA", chapterNumber: 23)
         await model.retryNavigationPersistence()
