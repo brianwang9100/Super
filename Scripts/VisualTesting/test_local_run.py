@@ -1,4 +1,4 @@
-"""A failed local capture must leave no stale or partial upload folder."""
+"""A failed snapshot run must leave no stale or partial capture folder."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -6,11 +6,17 @@ import unittest
 from unittest.mock import patch
 
 import run
+import sys
 
 
 class LocalCaptureTests(unittest.TestCase):
+    def setUp(self):
+        self.argv = patch.object(sys, 'argv', ['run.py'])
+        self.argv.start()
+        self.addCleanup(self.argv.stop)
+
     def test_failed_guard_native_or_package_capture_removes_previous_upload(self):
-        for failure_at in (1, 2, 3):
+        for failure_at in (1, 2, 3, 4):
             with self.subTest(failure_at=failure_at), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 output = root / 'screenshots'

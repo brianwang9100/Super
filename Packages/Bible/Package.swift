@@ -45,11 +45,12 @@ let package = Package(
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],
-            // Database snapshots are read from the source tree at test time
+            // Database and image snapshots are read from the source tree at test time
             // via `#filePath`, not the bundle — exclude them from resource
             // processing.
             exclude: [
                 "Database/__Snapshots__",
+                "UI/Snapshots/__Snapshots__",
             ],
             // `Fixtures/Text/` holds the 264 per-book `<CODE>-<bookID>.json`
             // (the parity oracle the shipped sqlite is generated from), and

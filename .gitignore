@@ -1,11 +1,10 @@
 # macOS
 .DS_Store
 
-# Native visual-testing CLI and generated Argos captures
+# Visual testing convenience commands and generated captures
 node_modules/
 screenshots/
-# Argos owns visual baselines; database/text snapshots remain tracked.
-Packages/*/Tests/*Tests/UI/Snapshots/__Snapshots__/
+# Reviewed image baselines in __Snapshots__ are tracked.
 
 # Design reference (extracted prototype, not deliverable)
 .design-tmp/

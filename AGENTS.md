@@ -51,7 +51,7 @@ Questions and trivial documentation edits do not require the full process unless
 
 ## Testing
 
-Visual changes follow [VISUAL_TESTING_POLICY.md](docs/VISUAL_TESTING_POLICY.md): reuse representative screen/gallery coverage, add captures only for distinct visual risks, and report the count change and rationale in the PR. Argos is the sole image baseline store; preserve fixture and behavioral coverage, track the expected capture inventory, and never commit generated visual PNGs.
+Visual changes follow [VISUAL_TESTING_POLICY.md](docs/VISUAL_TESTING_POLICY.md): reuse representative screen/gallery coverage, add captures only for distinct visual risks, and report the count change and rationale in the PR. Repository PNG baselines are reviewed and committed with intentional visual changes; preserve fixture and behavioral coverage and the expected capture inventory. Default local and CI runs compare baselines, and missing or changed images fail. Never record automatically to make tests pass; scratch captures and diffs stay ignored. See [SNAPSHOT_TESTING.md](docs/SNAPSHOT_TESTING.md).
 
 Follow [TESTING.md](docs/TESTING.md) for required coverage, snapshot scaffolding, async seams, and the exact CI simulator environment. Run each affected package's suite before opening a PR; UIKit snapshots require simulator tests in addition to `swift test`. App-target verification has a documented exception there.
 

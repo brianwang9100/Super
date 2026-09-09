@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover and validate native captures locally; Argos owns visual comparison."""
+"""Capture native previews and compare them with repository snapshots."""
 import argparse
 import json
 import os
@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from worktree_simulator import read_pin
 from prepare_renderer import prepare
 from verify import verify_exports
+from comparison import compare, record, require_local_recording
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -24,22 +25,16 @@ def output(*command):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('simulator', nargs='?', help='Dedicated simulator UUID; otherwise find or create it')
-    parser.add_argument('--argos', action='store_true',
-                        help='Stage verified PNGs in screenshots for a separate Argos CLI upload')
-    parser.add_argument('--output', type=Path, help='Fresh PNG directory; requires --argos')
+    parser.add_argument('--output', type=Path, help='Optional fresh directory for validated PNG captures')
+    parser.add_argument('--record', action='store_true', help='Explicitly replace local repository baselines; forbidden in CI')
     args = parser.parse_args()
-    if args.output is not None and not args.argos:
-        parser.error('--output requires --argos')
+    if args.record:
+        require_local_recording()
+    screenshots = args.output
+    if screenshots is not None and (screenshots.exists() or screenshots.is_symlink()):
+        sys.exit('Explicit capture output already exists; choose a fresh directory')
     pins = read_pin(ROOT)
     runtime_suffix = 'iOS-' + '-'.join(pins['ios_version'].split('.')[:2])
-    screenshots = args.output if args.output is not None else ROOT / 'screenshots'
-    if args.argos:
-        if screenshots.is_symlink():
-            sys.exit('Refusing to replace a symlink at screenshots')
-        if screenshots.exists():
-            if args.output is not None:
-                sys.exit('Explicit capture output already exists; choose a fresh directory')
-            shutil.rmtree(screenshots)
     if output('xcodebuild', '-version').strip() != f'Xcode {pins["xcode_version"]}\nBuild version {pins["xcode_build"]}':
         sys.exit('Refusing capture: Xcode does not match simulator-pins.json')
     if output('xcodegen', '--version').strip() != f'Version: {pins["xcodegen_version"]}':
@@ -55,7 +50,7 @@ def main():
         sys.exit('Refusing capture: ambiguous or stale pinned runtime disk images')
     simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'),
                        'ensure', '--repo', str(ROOT)).strip()
-    requested = args.simulator or os.environ.get('ARGOS_SIMULATOR_UDID')
+    requested = args.simulator or os.environ.get('VISUAL_SIMULATOR_UDID')
     if requested and requested != simulator:
         sys.exit('Expected the registered worktree simulator; use Scripts/worktree_simulator.py ensure')
     devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
@@ -100,15 +95,18 @@ def main():
                         '--names' if mode == 'discovery' else '--exports', str(path)], check=True)
     subprocess.run(['swift', str(HERE / 'ValidatePreviewImages.swift'),
                     str(run / 'images')], cwd=ROOT, check=True)
-    if args.argos:
-        verify_exports(run / 'images')
-        images = sorted((run / 'images').glob('*.png'))
-        if any(path.stat().st_size > 50_000_000 for path in images):
-            sys.exit('Argos screenshot exceeds 50 MB; refusing a partial upload set')
-        screenshots.mkdir(parents=True)
-        for path in images:
+    verify_exports(run / 'images')
+    if screenshots is not None:
+        screenshots.mkdir(parents=True, exist_ok=False)
+        for path in sorted((run / 'images').glob('*.png')):
             shutil.copy2(path, screenshots / path.name)
-        print(f'Prepared {len(images)} native screenshots in {screenshots}; evidence: {run}')
+        print(f'Staged native screenshots in {screenshots}; evidence: {run}', flush=True)
+    operation = record if args.record else compare
+    summary = operation(run / 'images', run / 'comparison')
+    if summary.get('acceptedRoundingImages'):
+        print(f'Accepted bounded RGB rounding in {summary["acceptedRoundingPixels"]} pixels '
+              f'across {summary["acceptedRoundingImages"]} images; diff evidence: {run / "comparison"}')
+    print(f'{"Recorded" if args.record else "Compared"} {len(summary["images"])} native snapshots; evidence: {run}')
 
 
 if __name__ == '__main__':

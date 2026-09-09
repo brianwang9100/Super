@@ -1,27 +1,32 @@
-"""Keep image baselines in Argos and test renderers out of app products."""
+"""Keep repository image baselines complete and production fixtures comparing."""
 from pathlib import Path
-import re
 import unittest
 
-from pipeline import ROOT, PACKAGES, inventories
+from pipeline import ROOT, PACKAGES, inventories, validate_images
 
 
 class MigrationPolicyTests(unittest.TestCase):
-    def test_no_repository_ui_image_baselines_or_comparison_calls(self):
-        violations = []
-        for package in PACKAGES:
-            folder = ROOT / f'Packages/{package}/Tests/{package}Tests/UI'
-            violations.extend(str(path.relative_to(ROOT)) for path in folder.rglob('*.png'))
-            for path in folder.rglob('*.swift'):
-                if re.search(r'\b(?:verifySnapshot|assertSnapshot|assertSnapshots)\s*\(', path.read_text()):
-                    violations.append(str(path.relative_to(ROOT)))
-        self.assertEqual(violations, [], 'Use capture-only exports and reviewed Argos baselines')
-
-    def test_each_capture_inventory_owner_has_a_migrated_fixture(self):
+    def test_each_inventory_owner_has_a_comparing_fixture(self):
         for package, rows in inventories().items():
             if package == 'native':
                 continue
             for suite in {row['suite'] for row in rows}:
                 path = ROOT / f'Packages/{package}/Tests/{package}Tests/UI/Snapshots/{suite}.swift'
                 self.assertTrue(path.is_file(), str(path))
-                self.assertIn('verifyVisualSnapshot(', path.read_text(), str(path))
+                source = path.read_text()
+                self.assertIn('verifyVisualSnapshot(', source, str(path))
+                self.assertNotIn('directory:', source, 'Production fixtures must not override baseline storage')
+
+    def test_repository_baselines_match_complete_inventory(self):
+        for package, rows in inventories().items():
+            if package == 'native':
+                validate_images(ROOT / 'Scripts/PreviewPilot/__Snapshots__', rows)
+                continue
+            base = ROOT / f'Packages/{package}/Tests/{package}Tests/UI/Snapshots/__Snapshots__'
+            suites = {row['suite'] for row in rows}
+            self.assertEqual({p.name for p in base.iterdir() if not p.is_dir() or any(p.iterdir())}, suites)
+            for suite in suites:
+                prefix = f'{package}_{suite}_'
+                expected = [{**row, 'image': row['image'].removeprefix(prefix)}
+                            for row in rows if row['suite'] == suite]
+                validate_images(base / suite, expected)

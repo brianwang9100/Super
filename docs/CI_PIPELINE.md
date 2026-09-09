@@ -25,15 +25,17 @@ records the delivery check, not a replacement for repository settings.
 
 ---
 
-## Argos visual workflow
+## Repository snapshot workflow
 
-[argos.yml](../.github/workflows/argos.yml) captures the complete 623-image inventory on every PR and main push, including documentation-only changes. Four package shards export 582 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+[snapshots.yml](../.github/workflows/snapshots.yml) compares the complete 623-image inventory on every PR and main push, including documentation-only changes. Four package shards compare and export 582 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard compares 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
 
-Each shard publishes an `images/` directory and a `capture.json` manifest. Aggregation validates the exact inventory, image decoding and dimensions, hashes and commit/run/attempt identity before uploading the complete set once. A missing or failed shard cannot produce a partial green visual build. `ios-test` aggregates the four package capture jobs; `native-previews` covers the complete aggregation and OIDC upload. Main requires both checks and Argos's `argos` review status alongside `build`, `lint`, `gitleaks`, and `swift-test`. Fork PRs remain blocked until their authenticated Argos path is available and verified.
+Each shard publishes image and manifest evidence. Exact inventory validation checks image identities, decoding, dimensions, hashes, and commit/run/attempt identity. Missing or failed shards cannot produce a partial green visual build. `ios-test` aggregates the four package comparison jobs; `native-previews` requires native and package comparisons and validates their complete combined inventory. Failures retain comparison evidence for inspection. CI refuses baseline recording, needs no Argos credentials or CLI, and runs the same comparisons for fork PRs without privileged upload authentication.
 
-Argos is the sole image baseline store. Generated PNGs are ignored; source fixtures and inventories remain tracked, as do non-image database snapshots. Native previews use standard 8-bit rendering and a fixed host-layer clock; package captures retain their existing renderer and traits. Intentional image changes require Argos review. See [TESTING.md](TESTING.md#simulator-environment) for local commands and [ARGOS_SETUP.md](ARGOS_SETUP.md) for account and baseline setup.
+Repository PNGs are the baselines; intentional changes require reviewed PNG commits. Scratch captures and diff artifacts remain ignored. Native previews preserve standard 8-bit rendering and a fixed host-layer clock and compare decoded pixels with the narrowly bounded RGB rounding tolerance documented in [SNAPSHOT_TESTING.md](SNAPSHOT_TESTING.md); package snapshots preserve their existing strategies and tolerances. See [TESTING.md](TESTING.md#simulator-environment) for local commands and [SNAPSHOT_TESTING.md](SNAPSHOT_TESTING.md) for baseline updates.
 
-Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): reuse representative layouts and preserve documented regression risks. The migration consolidates only three verified redundant captures; the historical audit shortlist is not permission to delete the remaining matrices. Git history cleanup remains a separate maintenance operation.
+The required-check cutover is a separate live repository-settings operation: after the replacement checks pass on the current revision and Codex approves it, remove only the external `argos` requirement while preserving `build`, `lint`, `gitleaks`, `ios-test`, `swift-test`, `native-previews`, their App bindings, and all other protections. YAML alone cannot change required checks. Until that validated cutover, the existing external requirement may still block merging; do not bypass it. Open PRs using the retired workflow need to update from the replacement revision.
+
+Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): reuse representative layouts and preserve documented regression risks. The rollback preserves all 623 images and the earlier three verified consolidations; the historical audit shortlist is not permission to delete the remaining matrices. Git history cleanup and its monitor remain paused; no history rewrite is part of this rollback.
 
 ## 1. Goals & Philosophy
 
@@ -229,7 +231,7 @@ jobs:
 
 The shared pins live in
 [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json);
-[argos.yml](../.github/workflows/argos.yml) runs the capture drivers that validate them.
+[snapshots.yml](../.github/workflows/snapshots.yml) runs the capture drivers that validate them.
 Local setup, exact-build matching, capture, and simulator lifecycle are documented in
 [TESTING.md](TESTING.md#simulator-environment).
 
@@ -394,9 +396,12 @@ or an approval from another reviewer does not satisfy the Codex gate.
 
 ### 6.4 CI and Review Gates
 
-Check live branch protection/rules and PR checks when delivering. `main` currently
-requires `build`, `lint`, `gitleaks`, `ios-test`, `swift-test`, `native-previews`, and `argos`. Native Codex
-approval is a separate agent-enforced gate, not one of those Actions checks.
+Check live branch protection/rules and PR checks when delivering. Preserve
+`build`, `lint`, `gitleaks`, `ios-test`, `swift-test`, and `native-previews`. The external
+`argos` requirement is removed only through the validated live cutover described
+[above](#repository-snapshot-workflow); do not infer that a workflow edit changed
+protection. Native Codex approval is a separate agent-enforced gate, not one of
+those Actions checks.
 Wait for applicable CI to pass even if protection does not enforce a particular
 check. Do not bypass or weaken repository protections to complete a PR.
 

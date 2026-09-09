@@ -1,4 +1,4 @@
-"""Validate complete visual artifacts before creating a single Argos upload set."""
+"""Validate complete visual artifacts against the tracked capture inventory."""
 import hashlib
 import json
 import os
