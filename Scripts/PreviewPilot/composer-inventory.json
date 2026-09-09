@@ -31,7 +31,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_empty_dark",
@@ -65,7 +66,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_empty_light",
@@ -99,7 +101,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_light",
@@ -133,7 +136,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_dark",
@@ -167,7 +171,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_light_xxl",
@@ -201,7 +206,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_mic_unavailable_light",
@@ -235,18 +241,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_mid_morph_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_mid_morph_light.png",
     "pixels": [
       1206,
-      230
+      228
     ],
     "points": [
       402,
-      76.66666666666667
+      76.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -269,7 +276,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pills_multiple_light",
@@ -312,7 +320,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_near_max_light",
@@ -346,7 +355,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_dark",
@@ -385,7 +395,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_light",
@@ -424,7 +435,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_light_xxl",
@@ -463,7 +475,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_pill_dark",
@@ -497,7 +510,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_pill_light",
@@ -531,7 +545,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_dark",
@@ -577,7 +592,8 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_light",
@@ -623,7 +639,8 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_reduce_motion",
@@ -669,7 +686,8 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": true
+    "previewReduceMotion": true,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_xxl",
@@ -715,7 +733,8 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_streaming_light",
@@ -749,7 +768,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_typed_light",
@@ -783,6 +803,7 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   }
 ]

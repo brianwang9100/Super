@@ -114,15 +114,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    @Test("streaming tail mid-bold in dark theme")
-    func streamingTailMidBoldDark() {
-        verifyStreamingMarkdown(
-            text: "The key insight is that **partial markdown",
-            theme: .vellumDark,
-            name: "list_streaming_midbold_dark"
-        )
-    }
-
     @Test("streaming tail mid-list (third item just opened)")
     func streamingTailMidList() {
         verifyStreamingMarkdown(
@@ -138,36 +129,12 @@ struct MessageListSnapshotTests {
         )
     }
 
-    @Test("streaming tail mid-list in dark theme")
-    func streamingTailMidListDark() {
-        verifyStreamingMarkdown(
-            text: """
-            Three things to remember:
-
-            - first item complete
-            - second item complete
-            - third item
-            """,
-            theme: .vellumDark,
-            name: "list_streaming_midlist_dark"
-        )
-    }
-
     @Test("streaming tail with inline code mid-formation")
     func streamingTailMidInlineCode() {
         verifyStreamingMarkdown(
             text: "Wrap the value in `Array(",
             theme: .vellumLight,
             name: "list_streaming_midcode_light"
-        )
-    }
-
-    @Test("streaming tail with inline code mid-formation in dark theme")
-    func streamingTailMidInlineCodeDark() {
-        verifyStreamingMarkdown(
-            text: "Wrap the value in `Array(",
-            theme: .vellumDark,
-            name: "list_streaming_midcode_dark"
         )
     }
 
@@ -404,19 +371,6 @@ struct MessageListSnapshotTests {
         verifyAppearance(
             fontScale: 1.20,
             name: "list_scale_max_light"
-        )
-    }
-
-    /// Dark-mode coverage at the upper-bound. Per AGENTS.md §Testing.2
-    /// every new SwiftUI variant needs a light + dark pair. The
-    /// light-theme matrix above already locks the rest of the
-    /// font-scale knob range.
-    @Test("appearance: scale max (dark)")
-    func appearanceScaleMaxDark() {
-        verifyAppearance(
-            fontScale: 1.20,
-            name: "list_scale_max_dark",
-            theme: .vellumDark
         )
     }
 

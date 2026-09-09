@@ -39,14 +39,17 @@ public struct ChatScreen: View {
     /// mirrors the prior `MinimizedChatPill.onTap`.
     public let onSurfaceTapped: (() -> Void)?
 
-    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
-    /// body-drag overlay. Fires on every drag-changed tick with the live
+    /// Requests the minimized presentation from the overlay host.
+    public let onMinimize: (() -> Void)?
+
+    /// Forwarded to both drag handles and the transcript body-drag gesture.
+    /// Fires on every drag-changed tick with the live
     /// translation so the overlay can update its chat-surface height in
     /// real time.
     public let onDragChanged: ((_ translation: CGSize) -> Void)?
 
-    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
-    /// body-drag overlay. Fires on drag-end with the gesture's translation
+    /// Forwarded to both drag handles and the transcript body-drag gesture.
+    /// Fires on drag-end with the gesture's translation
     /// and SwiftUI's predicted-end-translation (a velocity proxy). Wired by
     /// `ChatOverlay` to snap to the nearest presentation state on release.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
@@ -85,6 +88,7 @@ public struct ChatScreen: View {
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
         onSurfaceTapped: (() -> Void)? = nil,
+        onMinimize: (() -> Void)? = nil,
         onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
         onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         dragResetToken: Int = 0
@@ -95,6 +99,7 @@ public struct ChatScreen: View {
         self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onSurfaceTapped = onSurfaceTapped
+        self.onMinimize = onMinimize
         self.onDragChanged = onDragChanged
         self.onDragEnded = onDragEnded
         self.dragResetToken = dragResetToken
@@ -537,6 +542,14 @@ public struct ChatScreen: View {
             isRecording: viewModel.voiceState.isRecording,
             isMicAvailable: viewModel.voiceState != .unavailable,
             onStopRecording: viewModel.handleStopRecording,
+            onMinimize: onMinimize.map { action in
+                {
+                    dismissKeyboard()
+                    action()
+                }
+            },
+            onDragChanged: onDragChanged,
+            onDragEnded: onDragEnded,
             progress: progress,
             references: viewModel.pendingReferences.map {
                 VerseReferencePillModel(id: $0.id, label: $0.displayLabel)
