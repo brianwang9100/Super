@@ -21,7 +21,7 @@ private let bibleAppletLog = Logger(subsystem: "com.brianwang.Super", category: 
 public struct BibleApplet: MiniApplet {
     /// Stable, lowercase identifier — used for routing, settings keys, and
     /// deep-link URIs (`super://bible/<recordID>`).
-    public static let appletID: String = "bible"
+    nonisolated public static let appletID: String = "bible"
     public var appletID: String { Self.appletID }
     public var displayName: String { "Bible" }
     /// Muted plum, matching the prior placeholder so the sidebar glyph and
@@ -339,6 +339,7 @@ public struct BibleApplet: MiniApplet {
     /// locally-held value before the struct is moved into the
     /// `AppletRegistry` is sufficient.
     public func attach(to bus: SuperEventBus) async {
+        await viewModel.load()
         await referenceInbox.attach(to: bus)
         await annotationDispatchViewModel.attach(to: bus)
         await viewModel.attachSidebar(to: bus)

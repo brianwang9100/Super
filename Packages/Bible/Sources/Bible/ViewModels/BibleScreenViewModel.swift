@@ -136,6 +136,7 @@ public final class BibleScreenViewModel {
 
     private enum QueuedNavigationIntent {
         case reference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?)
+        case exactReference(BibleReaderReference)
         case translation(BibleTranslation)
     }
 
@@ -203,6 +204,7 @@ public final class BibleScreenViewModel {
         idGenerator: any IDGenerator = UUIDGenerator(),
         disclaimerStore: any AnnotationDisclaimerStore = UserDefaultsAnnotationDisclaimerStore(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition,
+        initialTranslation: BibleTranslation = .defaultTranslation,
         narration: NarrationController? = nil,
         hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
         annotationDispatchViewModel: BibleAnnotationDispatchViewModel = BibleAnnotationDispatchViewModel()
@@ -222,6 +224,7 @@ public final class BibleScreenViewModel {
         self.navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
         self.annotationDispatchViewModel = annotationDispatchViewModel
         self.position = initialPosition
+        self.translation = initialTranslation
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
         // Default to the production synth-backed controller so tests that
         // don't exercise narration don't need to construct one. Tests
@@ -382,10 +385,8 @@ public final class BibleScreenViewModel {
     /// if needed, then pre-selects the verses so the reader lands with
     /// them highlighted (the same look as having just tapped them).
     ///
-    /// Driven by Bible-citation taps inside the Chat transcript and by
-    /// `super://bible/...` URLs at the scene root. Both paths go
-    /// through `SuperEvent.openRecord(reference:)` → the Bible applet's
-    /// event-bus subscriber → this method.
+    /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
+    /// and the applet's inbox. Internal preview handoffs use the exact-selection overload.
     ///
     /// - Parameters:
     ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).
@@ -419,15 +420,48 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Opens an internal handoff with its captured translation and exact, potentially disjoint selection.
+    func openReference(_ reference: BibleReaderReference) {
+        guard isValidPosition(reference.position) else { return }
+        // Retry snapshots explicit translation before its read. Register the
+        // handoff now, including when initial restoration has already failed.
+        latestExplicitTranslation = reference.translation
+        if isRestoringNavigation {
+            queuedNavigationIntents.append(.exactReference(reference))
+            return
+        }
+        applyReference(reference)
+    }
+
+    private func applyReference(_ reference: BibleReaderReference) {
+        applyReference(position: reference.position, translation: reference.translation) {
+            reference.selectedVerses.contains($0)
+        }
+    }
+
     private func applyReference(
         bookId: String,
         chapterNumber: Int,
         verseStart: Int?,
         verseEnd: Int?
     ) {
+        // Public ranges use the active translation when the queued intent executes.
+        applyReference(
+            position: BiblePosition(bookId: bookId, chapterNumber: chapterNumber),
+            translation: translation
+        ) { verse in
+            guard let verseStart else { return false }
+            return verse >= verseStart && verse <= (verseEnd ?? verseStart)
+        }
+    }
+
+    private func applyReference(
+        position destination: BiblePosition,
+        translation targetTranslation: BibleTranslation,
+        selectsVerse: (Int) -> Bool
+    ) {
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
 
-        let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         if destination == position {
             narration.stop()
         } else {
@@ -435,24 +469,16 @@ public final class BibleScreenViewModel {
             navigationHistory.visit(destination)
             position = destination
         }
+        translation = targetTranslation
         applyCurrentChapter()
-        if let verseStart {
-            let upper = verseEnd ?? verseStart
-            selectedVerses = Set(verseTextsByNumber().keys.filter {
-                $0 >= verseStart && $0 <= upper
-            })
-        } else {
-            selectedVerses.removeAll()
-        }
+        // Iterate only real chapter verses, bounding both huge ranges and exact sets.
+        selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
         // Flag the first selected verse for the reader to scroll into
         // view once it mounts (or, for a same-chapter deep link, on the
         // next `pendingScrollVerse` change). Chapter-only navigation
         // leaves this `nil` so the new chapter just snaps to its top
         // like a manual nav.
-        pendingScrollVerse = verseStart
-        if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
-            pendingScrollVerse = selectedVerses.min()
-        }
+        pendingScrollVerse = selectedVerses.min()
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
         bookSheet = nil
@@ -1710,6 +1736,8 @@ public final class BibleScreenViewModel {
                     verseStart: verseStart,
                     verseEnd: verseEnd
                 )
+            case .exactReference(let reference):
+                applyReference(reference)
             case .translation(let selected):
                 applyTranslationSelection(selected)
             }
