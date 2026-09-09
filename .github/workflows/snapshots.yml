@@ -48,7 +48,7 @@ jobs:
           python3 Scripts/PreviewPilot/run.py --output screenshots
           python3 Scripts/VisualTesting/seal.py native screenshots --output .build/VisualTesting/native
       - name: Publish native capture artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-native
           path: .build/VisualTesting/native/
@@ -56,7 +56,7 @@ jobs:
           retention-days: 7
       - name: Preserve native capture evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-preview-evidence
           path: |
@@ -89,7 +89,7 @@ jobs:
           CAPTURE_PACKAGE: ${{ matrix.package }}
         run: python3 Scripts/VisualTesting/capture.py "$CAPTURE_PACKAGE" --output ".build/VisualTesting/package-$CAPTURE_PACKAGE"
       - name: Publish validated package capture artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-${{ matrix.package }}
           path: .build/VisualTesting/package-${{ matrix.package }}/
@@ -97,7 +97,7 @@ jobs:
           retention-days: 7
       - name: Preserve package test evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: package-visual-evidence-${{ matrix.package }}
           path: |
@@ -145,7 +145,7 @@ jobs:
       - name: Validate the complete compared inventory
         run: python3 Scripts/VisualTesting/aggregate.py --artifacts .build/visual-artifacts --output screenshots
       - name: Preserve complete compared screenshots
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: compared-snapshots
           path: screenshots/
