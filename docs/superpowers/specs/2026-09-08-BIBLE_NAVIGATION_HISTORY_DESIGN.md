@@ -24,7 +24,7 @@ Example: `1 Peter 2 → John 3 → Psalm 23`. Back opens John 3; forward returns
 
 When appending entry 26, remove the oldest entry and adjust the cursor. Apply forward truncation before the cap. Disable back at index zero and forward at the last index; retain both buttons and their space even when disabled. An empty/new installation becomes one entry at its initial chapter.
 
-**Proposed translation policy:** back/forward keeps the reader's current translation. This is chapter history; translation remains a reader preference. This was offered as an optional user choice and is the assumption for this draft.
+**Translation policy:** back/forward keeps the reader's current translation. This is chapter history; translation remains a reader preference.
 
 **Landing behavior:** return to the chapter's top. Do not restore verse selection, scroll offsets, sheets, or narration. Verse-specific incoming references retain their existing landing behavior. Per-visit scroll restoration is a possible follow-up, not part of this chapter-level feature.
 
@@ -39,7 +39,7 @@ Place two independent chevron buttons inside the existing selector's leading edg
 
 The new divider sits immediately left of the book segment, separating the arrow pair from the existing book/translation selector. Keep the existing divider between book and translation. There is no divider between the two arrows.
 
-- Reuse a single `superGlassSurface(in: Capsule())` for the grouped selector. The prototype approximates native glass; final appearance requires simulator review.
+- Use a single `superGlassSurface(in: RoundedRectangle(cornerRadius: 22))` for the grouped selector. This retains the pill silhouette at ordinary height and accommodates wrapped rows.
 - Each history button uses a compact 32 × 44 pt hit area. Use SF Symbols `chevron.left` and `chevron.right`, about 14–16 pt medium weight through `SuperTypography`.
 - Per the native spacing feedback, the pair occupies **64 pt** with glyphs **28 pt center-to-center**: shift each glyph 2 pt toward the pair's center. This removes 12 pt from each outer margin of the previous 88 pt pair while retaining its inter-chevron spacing. Keep button frames/content shapes adjacent and non-overlapping; the narrower horizontal tap regions are intentional for this compact design. Use the same spacing for enabled and disabled states.
 - Use theme ink for enabled chevrons and 0.35 opacity for disabled chevrons. Disabled controls cannot activate. Divider: existing 1 × 16 pt treatment with the existing border token/opacity.
@@ -58,7 +58,7 @@ History arrows mean “where I was,” while existing chapter arrows mean previo
 
 Keep everything in `Packages/Bible`. `BibleScreenViewModel` owns navigation and exposes history availability. No cross-applet database access, new module, global singleton, network call, or cloud synchronization.
 
-Recommended: a pure `BibleNavigationHistory` value plus an optional versioned JSON column on the existing singleton `bibleReadingPosition` row. Persist chapter, translation, history entries, and history cursor in one row write through `BibleReadingPositionRepository`. This preserves the existing tool translation lookup and avoids separate writes drifting out of sync.
+A pure `BibleNavigationHistory` value plus an optional versioned JSON column on the existing singleton `bibleReadingPosition` row. Persist chapter, translation, history entries, and history cursor in one row write through `BibleReadingPositionRepository`. This preserves the existing tool translation lookup and avoids separate writes drifting out of sync.
 
 Alternatives considered:
 
@@ -105,6 +105,6 @@ Writes run immediately after navigation, without a debounce. Background transiti
 
 The main risks are confusing history with chapter stepping, squeezing the top bar, a restoration task overwriting a newer intent, and saving mismatched position/cursor state. The explicit actions, layout fallbacks, restore gate, and atomic full-record writes address them.
 
-## Prototype scope
+## Prototype to production
 
-The inline prototype demonstrates the leading arrow pair, divider, enabled/disabled states, chapter navigation, back/forward traversal, and forward-branch deletion. It uses local in-memory demo state and representative chapter excerpts. Its history strip is explanatory and is not proposed app chrome. Native Liquid Glass, SQLite persistence, VoiceOver-on-device behavior, and production navigation wiring are planned work.
+The approved prototype established the compact arrow spacing and grouped selector. Production uses the native controls, GRDB persistence, and explicit view-model navigation described above. The explanatory prototype history strip and debug-only route are absent from the shipping app.

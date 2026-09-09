@@ -10,7 +10,7 @@
 
 **Spec:** [Bible navigation history design](../specs/2026-09-08-BIBLE_NAVIGATION_HISTORY_DESIGN.md).
 
-**Status:** Production implementation authorized after native prototype approval. Fresh plan review completed; the pre-load and retry-race findings below are incorporated. Implementation is in progress; delivery includes a PR.
+**Status:** Production implementation authorized after native prototype approval. Fresh plan review completed; the pre-load and retry-race findings below are incorporated. Implementation and local QA are complete; PR delivery and CI review remain.
 
 ## Global constraints
 
@@ -106,22 +106,27 @@ await model._waitForPendingPersist()
 - [x] Measure the resulting nav-bar height and pass a top content reserve into `BibleChapterReader`, replacing its fixed 68 pt padding. Compute the immersive hide distance from measured height plus safe-area clearance, replacing `BibleScreen`'s fixed 120 pt offset. Preserve current single-row spacing and avoid double-counting safe areas. Verify the long-name/large-type chapter heading remains visible and the entire toolbar hides on scroll.
 - [x] Preserve existing host chapter arrows and selection-pill behavior. Confirm SuperOS's larger cluster uses the fallback cleanly, while SuperBible's composer chapter controls remain independent.
 - [x] Reuse current light/dark, selection, narration, and font-scale captures. Add one bounded history-state gallery (first-only, oldest, middle, newest) and one compact-width/long-name accessibility case only if the existing suite cannot expose those defects. Proposed maximum inventory addition: **2 images**; from the current 623 to 625 total (Bible 276 to 278). Recount at implementation time and report actual delta/rationale; no generated PNGs in Git.
-- [ ] Validate independent taps, accessibility labels/disabled states, and boundary hit regions on the worktree simulator. Commit the selector and fixtures after targeted visual verification. Hardware keyboard and VoiceOver gesture traversal are not automated by the available simulator tooling; report that limitation.
+- [x] Validate independent taps, accessibility labels/disabled states, and boundary hit regions on the worktree simulator. Commit the selector and fixtures after targeted visual verification. Hardware keyboard and VoiceOver gesture traversal are not automated by the available simulator tooling; report that limitation.
 
 ## Task 5: Complete QA and delivery
 
 - [x] Run the whole Bible package suite with `swift test` from `Packages/Bible`: 873 tests across 86 suites passed.
-- [ ] Match `Scripts/VisualTesting/simulator-pins.json`; use `python3 Scripts/worktree_simulator.py ensure` and its returned UUID. Generate schemes and run Bible simulator tests with parallel testing disabled. For image capture use `python3 Scripts/VisualTesting/capture.py Bible --output .build/bible-history-visual-capture` from the repository root, with a fresh output directory.
+- [x] Match `Scripts/VisualTesting/simulator-pins.json`; use `python3 Scripts/worktree_simulator.py ensure` and its returned UUID. Generate schemes and run Bible simulator tests with parallel testing disabled. For image capture use `python3 Scripts/VisualTesting/capture.py Bible --output .build/bible-history-visual-capture` from the repository root, with a fresh output directory.
 - [x] Build both `Super` and `SuperBible` against that simulator because the shared nav bar affects both hosts. Follow the exact commands in `docs/TESTING.md`.
-- [ ] Manually visit A→B→C, back to B, relaunch offline, forward to C, back to B, then open D. Verify C disappears, D survives relaunch, translation remains current, and native controls fit long names and accessibility sizes. Verify no interaction goes to the adjacent biblical chapter accidentally.
-- [ ] Have a separate review subagent review production changes; address serious actionable findings and rerun affected checks.
+- [x] Manually visit A→B→C, back to B, relaunch from the local database, forward to C, back to B, then open D. Verify C disappears, D survives relaunch, translation remains current, and native controls fit long names and accessibility sizes. Verify no interaction goes to the adjacent biblical chapter accidentally.
+- [x] Have a separate review subagent review production changes; address serious actionable findings and rerun affected checks.
 - [ ] Create a draft PR using the repository template, with local results and capture-count rationale. Follow root `AGENTS.md` for CI/Codex review, current-revision approval, ready/auto-merge, and eventual merge verification. Monitor at the specified 10-minute cadence using a scheduled wakeup.
 
 ## Validation record
 
-The native prototype was approved with 32 × 44 pt history targets and 28 pt glyph-center spacing. Production storage and reader logic are implemented. The full macOS Bible suite passes 873 tests across 86 suites; both app hosts build on the pinned simulator. Final visual capture and native smoke checks are in progress.
-
-Storage review passed without findings. UI review found restoration gating for composer actions and a toast hit-area regression; both were fixed and the reviewer confirmed a clean re-review. A separate whole-branch review is in progress.
+- `swift test` from `Packages/Bible`: 873 tests in 86 suites passed, including a fresh rerun after replacing a forced try in a new test helper with error propagation.
+- Pinned iPhone 17 / iOS 26.4.1 (23E254a), Xcode 26.4.1 (17E202): 874 nonvisual simulator tests passed; both Super and SuperBible builds passed.
+- Full Bible visual driver: 278 images validated across 26 serialized suites. Inventory grows by 2 to 625 total: history-state gallery and narrow long-name accessibility layout. Existing nav-bar canvases grow to 160 pt and toast fixtures become 260 pt galleries to include the new content without extra image fanout.
+- Changed-file SwiftLint: no errors. Existing view-model warnings and the JSONEncoder UTF-8 conversion warning remain. Diff checks passed. Visual pipeline tests: 19 passed.
+- Native SuperBible smoke: `[1 Peter 2, John 3, Psalms 23]` at John survived relaunch with forward history; Forward opened Psalms, then an edge tap on Back returned to John. Selecting KJV preserved Forward. Opening Romans 8 removed Psalms, and relaunch restored Romans/KJV. Read-only SQLite inspection confirmed one matching row/payload/cursor.
+- Native large-text Song of Solomon layout kept the heading below the expanded toolbar; scrolling removed the full toolbar. Normal text size was restored. Accessibility labels, destinations, disabled states, and independent tap regions were inspected; hardware keyboard/VoiceOver gesture traversal and network-disconnected-device testing were not performed.
+- Storage and final whole-branch reviews passed. UI review identified restoration gating for composer actions and a toast hit-area regression; both were fixed and passed re-review. The final whole-branch reviewer found no serious actionable production issues.
+- Generated visual images remain ignored/local; Argos is the baseline store.
 
 ## Production plan review
 

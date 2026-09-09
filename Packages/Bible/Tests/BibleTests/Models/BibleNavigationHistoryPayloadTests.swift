@@ -41,30 +41,30 @@ struct BibleNavigationHistoryPayloadTests {
     }
 
     @Test("unsupported payload versions recover to the saved position")
-    func unsupportedVersion() {
-        expectFallback(for: payload(version: 2, entries: [fallback], currentIndex: 0))
+    func unsupportedVersion() throws {
+        expectFallback(for: try payload(version: 2, entries: [fallback], currentIndex: 0))
     }
 
     @Test("empty and oversized histories recover to the saved position")
-    func invalidEntryCounts() {
-        expectFallback(for: payload(version: 1, entries: [], currentIndex: 0))
+    func invalidEntryCounts() throws {
+        expectFallback(for: try payload(version: 1, entries: [], currentIndex: 0))
         let entries = (1...26).map { BiblePosition(bookId: "PSA", chapterNumber: $0) }
-        expectFallback(for: payload(version: 1, entries: entries, currentIndex: 25))
+        expectFallback(for: try payload(version: 1, entries: entries, currentIndex: 25))
     }
 
     @Test("unknown books and invalid chapters recover to the saved position")
-    func invalidCatalogDestinations() {
-        expectFallback(for: payload(
+    func invalidCatalogDestinations() throws {
+        expectFallback(for: try payload(
             version: 1,
             entries: [BiblePosition(bookId: "NOPE", chapterNumber: 1)],
             currentIndex: 0
         ))
-        expectFallback(for: payload(
+        expectFallback(for: try payload(
             version: 1,
             entries: [BiblePosition(bookId: "JHN", chapterNumber: 22)],
             currentIndex: 0
         ))
-        expectFallback(for: payload(
+        expectFallback(for: try payload(
             version: 1,
             entries: [BiblePosition(bookId: "JHN", chapterNumber: 0)],
             currentIndex: 0
@@ -72,14 +72,14 @@ struct BibleNavigationHistoryPayloadTests {
     }
 
     @Test("out-of-bounds cursors recover to the saved position")
-    func invalidCursor() {
-        expectFallback(for: payload(version: 1, entries: [fallback], currentIndex: -1))
-        expectFallback(for: payload(version: 1, entries: [fallback], currentIndex: 1))
+    func invalidCursor() throws {
+        expectFallback(for: try payload(version: 1, entries: [fallback], currentIndex: -1))
+        expectFallback(for: try payload(version: 1, entries: [fallback], currentIndex: 1))
     }
 
     @Test("a cursor that disagrees with the saved row recovers to the saved position")
-    func cursorRowDisagreement() {
-        expectFallback(for: payload(
+    func cursorRowDisagreement() throws {
+        expectFallback(for: try payload(
             version: 1,
             entries: [fallback, BiblePosition(bookId: "JHN", chapterNumber: 3)],
             currentIndex: 1
@@ -102,15 +102,15 @@ struct BibleNavigationHistoryPayloadTests {
         version: Int,
         entries: [BiblePosition],
         currentIndex: Int
-    ) -> String {
+    ) throws -> String {
         let rawEntries: [[String: Any]] = entries.map {
             ["bookId": $0.bookId, "chapterNumber": $0.chapterNumber]
         }
-        let data = try! JSONSerialization.data(withJSONObject: [
+        let data = try JSONSerialization.data(withJSONObject: [
             "version": version,
             "entries": rawEntries,
             "currentIndex": currentIndex,
         ], options: [.sortedKeys])
-        return String(decoding: data, as: UTF8.self)
+        return try #require(String(bytes: data, encoding: .utf8))
     }
 }
