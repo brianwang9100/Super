@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// UI-local projection of a `SourceCitation` for the transcript. Keeps

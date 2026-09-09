@@ -1,0 +1,57 @@
+name: Xcode 27 Inventory
+
+# Migration-only diagnostics by default. The explicit smoke option delegates
+# unsigned application startup checks; neither path writes snapshot baselines.
+on:
+  workflow_dispatch:
+    inputs:
+      ios26_smoke:
+        description: Build and launch both apps on iOS 26.0 (downloads ~8 GB)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: ${{ !inputs.ios26_smoke }}
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - name: Select candidate Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "27.0-beta"
+
+      - name: Report toolchain and simulator inventory
+        env:
+          EXPECTED_XCODE_BUILD: "27A5252f"
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          echo "Runner image: ${ImageOS:-unknown} / ${ImageVersion:-unknown}"
+          xcodebuild -version
+          test "$(xcodebuild -version | awk '/Build version/ {print $3}')" = "$EXPECTED_XCODE_BUILD"
+          swift --version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes --json | jq '[.runtimes[] | {name, identifier, version, buildversion, isAvailable}]'
+          xcrun simctl runtime list
+          xcrun simctl list devices --json | jq '.devices | with_entries(.value |= map(select(.name == "iPhone 17")))'
+
+      - name: Inspect Foundation Models API declarations
+        run: |
+          set -euo pipefail
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          INTERFACE=$(find "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework/Modules" -name '*.swiftinterface' -print -quit)
+          test -n "$INTERFACE"
+          echo "Interface: $INTERFACE"
+          grep -n -E -A 160 '(class|struct) PrivateCloudComputeLanguageModel' "$INTERFACE"
+          grep -n -E 'init\(model:|init\(.*transcript:|contextSize|ReasoningLevel|supportsLocale|quotaLimitReached' "$INTERFACE"
+
+  ios26-smoke:
+    if: ${{ inputs.ios26_smoke }}
+    # Local reusable workflows resolve at this dispatch's commit, allowing
+    # manual branch validation before the new workflow reaches main.
+    uses: ./.github/workflows/ios-26-smoke.yml

@@ -14,6 +14,18 @@ import SwiftUI
     PreviewSettingsPane(pane: .about, theme: .vellumLight)
 }
 
+#Preview("settings_about_dark", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .about, theme: .vellumDark)
+}
+
+#Preview("settings_about_light_xxl", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .about, theme: .vellumLight).dynamicTypeSize(.xxLarge)
+}
+
+#Preview("settings_about_dark_xxl", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .about, theme: .vellumDark).dynamicTypeSize(.xxLarge)
+}
+
 #Preview("settings_compaction_light", traits: .fixedLayout(width: 402, height: 874)) {
     PreviewSettingsPane(pane: .compaction, theme: .vellumLight)
 }

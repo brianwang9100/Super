@@ -50,18 +50,18 @@ class RendererIntegrityTests(unittest.TestCase):
 
 class RegisteredSimulatorTests(unittest.TestCase):
     def capture(self, supplied=None):
-        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
+        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
         device = {'udid': 'owned-uuid', 'name': 'SuperWT-registered', 'isAvailable': True,
                   'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'}
         def output(*command):
             if command == ('xcodebuild', '-version'):
-                return 'Xcode 26.4.1\nBuild version 17E202'
+                return 'Xcode 27.0\nBuild version 27A5252f'
             if command == ('xcodegen', '--version'):
                 return 'Version: 2.45.4'
             if command == ('xcrun', 'simctl', 'list', 'runtimes', '-j'):
-                return json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'version': '26.4.1', 'isAvailable': True}]})
+                return json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '24A5423a', 'version': '27.0', 'isAvailable': True}]})
             if command == ('xcrun', 'simctl', 'runtime', 'list', '-j'):
-                return json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '23E254a'}})
+                return json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '24A5423a'}})
             if command == ('xcrun', 'simctl', 'list', 'devices', '-j'):
                 return json.dumps({'devices': {runtime: [device]}})
             if command == (run.sys.executable, str(run.ROOT / 'Scripts/worktree_simulator.py'), 'ensure', '--repo', str(run.ROOT)):

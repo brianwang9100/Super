@@ -19,7 +19,7 @@ Why ship this fork:
 - **Differentiation comes from chat-empowered mini-apps.** Existing AI Bible apps are either chatbots glued onto static scripture, or static scripture with no chat at all. SuperBible's bi-directional contract (any verse → chat, any chat reference → verse, AI tools drive plan/memorize/quiz state) is a genuinely new shape.
 - **Reuses what's built.** The Chat host (MVP M0–M12 complete) and Bible mini-app (already in the repo) are the bulk of v1. Only one new applet (Plans) blocks the v1 ship.
 
-Default LLM at first launch: **Apple Foundation Models (AFM)** on-device — free, no key required, works offline. BYOK (Anthropic / OpenAI / Ollama / etc.) stays available as an upgrade path for stronger models. AFM is already seeded as the default `modelConfiguration` row per the existing project state; SuperBible inherits this for free.
+Default LLM on an empty model store (September 2026 revision): **Apple Local only on iOS 26; Private Cloud Compute (PCC) on iOS 27+**. Existing installs keep their records and choices. Both Apple variants require no API key; PCC requires internet, readiness/quota, and Apple's approved managed entitlement. BYOK remains optional. See [Xcode 27 / PCC rollout gates](../../XCODE_27_PCC_PLAN.md).
 
 SuperOS keeps every existing capability and roadmap (Todo, Recipes, Finance, Calendar, Home, server, sync) untouched. SuperOS is **not** going to the App Store; it remains the founder's personal app.
 
@@ -116,7 +116,7 @@ A SuperBible-specific Chat system prompt (per the per-applet system-prompt patte
 
 | Applet | Status | Notes |
 |---|---|---|
-| **Chat** | Built (M0–M12) | Host. Default LLM = AFM on-device. BYOK upgrade path. SuperBible-specific system prompt. |
+| **Chat** | Built (M0–M12) | Host. OS-specific local/PCC default; optional BYOK. SuperBible-specific system prompt; full PCC persona/tool validation required before release. |
 | **Bible** | Built | Drop in unchanged. Long-press-to-chat + tappable canonical-reference tokens already work. |
 | **Plans** | NEW | Bible reading plans. Daily check-in. Streaks. Full bi-directional contract. |
 
@@ -266,9 +266,9 @@ MIT (the existing `LICENSE`). Applies to both apps from one repo.
 
 ## 7. Cloud roadmap
 
-### 7.1 v1: local-only
+### 7.1 v1: local persistence, selectable AI processing
 
-GRDB-on-device for every applet (Chat conversations, Bible highlights, Plans progress). No auth. No server. No sync. No remote LLM proxy — BYOK LLM calls go directly from device to provider, same as current SuperOS.
+GRDB-on-device for every applet (Chat conversations, Bible highlights, Plans progress). No auth, app server, or sync. AI inference is separate: Local only runs on-device; PCC sends selected context and tool results through Apple's Foundation Models framework; BYOK calls go directly to the configured provider. This introduces no custom backend and does not change the CloudKit sync roadmap.
 
 ### 7.2 v2 contingent on traction: CloudKit + Sign in with Apple
 

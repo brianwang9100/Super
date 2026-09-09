@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Compact error pill rendered above the composer. Pulls its message +

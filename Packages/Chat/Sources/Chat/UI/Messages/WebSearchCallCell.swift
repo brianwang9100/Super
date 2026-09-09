@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Tool-call-style cell announcing that the assistant performed a web search,

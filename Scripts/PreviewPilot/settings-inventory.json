@@ -160,5 +160,29 @@
       2622
     ],
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/dataPaneExporting.settings_data_exporting_light.png"
+  },
+  {
+    "preview": "settings_about_dark",
+    "image": "Chat_SettingsPanePreviews.swift_settings_about_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "preview": "settings_about_light_xxl",
+    "image": "Chat_SettingsPanePreviews.swift_settings_about_light_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "preview": "settings_about_dark_xxl",
+    "image": "Chat_SettingsPanePreviews.swift_settings_about_dark_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
   }
 ]

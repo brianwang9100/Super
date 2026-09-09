@@ -6,9 +6,8 @@ import Foundation
 /// cap, thinking capability) that the form prefills and validates
 /// against.
 public struct LLMCatalogModel: Equatable, Sendable, Identifiable {
-    /// Wire-level model identifier sent to the provider (e.g.
-    /// "gpt-5", "gemini-2.5-pro"). Also used as the row's `modelId`
-    /// in the persisted `ModelConfigurationRecord`.
+    /// Provider model identifier, or an app-owned Apple variant identifier.
+    /// Also persisted as `ModelConfigurationRecord.modelId`.
     public let id: String
     /// Human-facing label rendered in the dropdown and auto-assigned
     /// as the `ModelConfigurationRecord.name` when the user picks a
@@ -16,12 +15,11 @@ public struct LLMCatalogModel: Equatable, Sendable, Identifiable {
     /// Defaults to the wire id — the dropdown mixes curated catalog
     /// entries with live-fetched ids, and a curated pretty name next
     /// to raw ids read as two different lists. Only Apple overrides
-    /// it ("Apple Intelligence"): its wire id (`system-default`) is an
-    /// internal token no user would recognize, and there's no live
-    /// fetch on that row to be inconsistent with.
+    /// it: Apple's local/Private Cloud Compute (PCC) IDs are configuration tokens,
+    /// and neither model is fetched from an HTTP model catalog.
     public let displayName: String
-    /// Upper bound the Add-Model form enforces on the Context Window
-    /// field. Users may set a smaller value but not exceed this.
+    /// Context-window cap for editable HTTP models, or fallback metadata for
+    /// Apple's read-only models while their actual context window resolves.
     public let maxContextTokens: Int
     /// Whether the model supports an extended-thinking / reasoning
     /// pass. Drives both the visibility of the Supports-Thinking
@@ -51,12 +49,11 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
     /// the lookup key for `LLMProviderCatalog.entry(forID:)`.
     public let id: String
     public let displayName: String
-    /// Maps to the persisted `LLMProviderKind` discriminator. Only
-    /// Apple Intelligence uses `.appleFoundation`; the rest route
-    /// through `OpenAICompatibleLLMProvider`.
+    /// Maps to the persisted protocol discriminator. Apple uses
+    /// `.appleFoundation`; HTTP providers declare their native or compatible adapter.
     public let kind: LLMProviderKind
     /// Base URL the form auto-fills and hides when this provider is
-    /// picked. Nil for Apple Intelligence (on-device, no URL) and
+    /// picked. Nil for Apple Intelligence (framework-managed, no URL) and
     /// for Custom (user supplies their own).
     public let defaultBaseURL: URL?
     /// The native provider `kind` this entry resolves to when the user
@@ -160,8 +157,8 @@ public enum LLMProviderCatalog {
     /// with PR5), so this is currently exercised only by tests.
     public static let openAIResponsesBaseURL = URL(string: "https://api.openai.com/v1")!
 
-    /// All providers in dropdown order. Apple first so on-device
-    /// users find it at the top; Custom last because it's the
+    /// All providers in dropdown order. Apple first so its local and cloud
+    /// models are easy to find; Custom last because it's the
     /// escape hatch.
     public static let all: [LLMProviderCatalogEntry] = [
         LLMProviderCatalogEntry(
@@ -170,15 +167,18 @@ public enum LLMProviderCatalog {
             kind: .appleFoundation,
             defaultBaseURL: nil,
             models: [
-                // `maxContextTokens` here is only a static cap fallback; AFM's
-                // real, read-only window is read live via
-                // `AppleFoundationLLMProvider.deviceContextTokens` (surfaced in
-                // the detail pane and seed row), so the detail pane never
-                // exercises this 4096 for the Apple kind.
+                // Static metadata is available on iOS 26 too; actual context
+                // windows and readiness come from model-specific status.
                 LLMCatalogModel(
-                    id: "system-default",
-                    displayName: "Apple Intelligence",
-                    maxContextTokens: 4_096,
+                    id: AppleFoundationModel.local.rawValue,
+                    displayName: AppleFoundationModel.local.displayName,
+                    maxContextTokens: AppleFoundationModel.local.fallbackContextTokens,
+                    supportsThinking: false
+                ),
+                LLMCatalogModel(
+                    id: AppleFoundationModel.privateCloudCompute.rawValue,
+                    displayName: AppleFoundationModel.privateCloudCompute.displayName,
+                    maxContextTokens: AppleFoundationModel.privateCloudCompute.fallbackContextTokens,
                     supportsThinking: false
                 ),
             ]

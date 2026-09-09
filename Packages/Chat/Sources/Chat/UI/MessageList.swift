@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Pins the read-only system motion preference in previews and UI tests.

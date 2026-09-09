@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Inline pill rendered under an assistant message whose turn produced a

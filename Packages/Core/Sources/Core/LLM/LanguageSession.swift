@@ -60,3 +60,13 @@ struct LiveLanguageSession: LanguageSession {
         }
     }
 }
+
+/// Defensive session for an unsupported API path; it never constructs a model
+/// and reports the same error contract if a caller gets past the status guard.
+struct UnavailableLanguageSession: LanguageSession {
+    let error: LLMError
+
+    func streamResponse(to prompt: String, options: GenerationOptions) -> AsyncThrowingStream<String, any Error> {
+        AsyncThrowingStream { $0.finish(throwing: error) }
+    }
+}

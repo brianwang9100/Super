@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Inline cost-gate prompt for the native web-search proposal

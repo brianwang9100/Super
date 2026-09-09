@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Transient HUD pill rendered above the composer for ~1.2 s after the

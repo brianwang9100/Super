@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Default Verbosity pane. Mirrors `VerbosityPane` from `settings.jsx`: a

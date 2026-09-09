@@ -11,4 +11,4 @@ Legacy visual fixtures live in `Tests/ChatTests/UI/Snapshots/__Snapshots__/`. Fo
 
 ## Simulator streaming UI
 
-Use `DebugLLMProvider`, not a real model or API key. Both app bootstraps seed DEBUG model choices; select the canned streaming model in the picker if a real model was already active. Extend `responseBank` in `Sources/Chat/LLM/DebugLLMProvider.swift` when a new response shape is needed. The debug providers must remain excluded from Release builds.
+Use `DebugLLMProvider`, not a real model or API key. Both app bootstraps seed DEBUG model choices after production seeding; explicitly select the canned streaming model in the picker so fixtures do not mask local-on-26/PCC-on-27 fresh defaults. Extend `responseBank` in `Sources/Chat/LLM/DebugLLMProvider.swift` when a new response shape is needed. The debug providers must remain excluded from Release builds.

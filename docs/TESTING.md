@@ -12,7 +12,9 @@ Read this before adding tests, changing SwiftUI views, capturing visual fixtures
 | Cross-applet event/tool | Exercise a real in-memory `SuperEventBus` |
 | SwiftUI view | Cover distinct visual risks through existing or new screen/gallery captures; follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md) for state, theme, accessibility, and form-factor selection |
 
-Coverage floors remain Core ≥80%, applets ≥70%, and future server ≥80%; do not lower them. The workflows currently print Swift coverage summaries; Codecov gating remains planned.
+Coverage floors remain Core ≥80%, applets ≥70%, and future server ≥80%; do not lower them. Argos's package driver builds once with coverage, enumerates the complete test target, and runs each discovered visual suite in isolation. A complementary logic execution excludes exactly those suites. `Scripts/ios_coverage.py` validates the complete test union and unions raw executable physical source-line hits from these same-source/same-build results. It rejects missing, duplicate, failed or mismatched evidence and retains skips and expanded parameterized executions. Native aggregate percentages and macOS SwiftPM coverage remain separate diagnostics; percentages are never averaged or added. Codecov integration remains planned. Argos's sole `ios-test` aggregate requires both package capture and coverage outcomes.
+
+Successful and failed simulator legs retain the result bundle, raw coverage, exact test/skip inventory, toolchain/runtime identity, and source hashes. A failed/empty/incomplete test run cannot satisfy coverage. Uninstrumented source/resource files remain disclosed in the evidence instead of being silently hidden or counted as fictitious executable lines. Changes to the measurement require reviewed fixtures; green test counts alone do not establish compliance.
 
 Network, database, filesystem, HomeKit, and Keychain side effects need injectable interfaces, including within applets; avoid static singletons and hidden globals. Tests must be able to substitute those dependencies.
 
@@ -32,7 +34,7 @@ Package `AGENTS.md` files identify their local fixtures and drain seams.
 - **New or changed SwiftUI view** → **cover the visual risk, not every view declaration.** Reuse an existing screen or component-gallery scenario when it visibly exercises the change. Add a screenshot only for a distinct layout, theme, reflow, or visual regression risk that existing coverage misses; behavior, data permutations, and state transitions belong in unit/integration tests. Follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
 - **Keep the visual matrix small.** Use Vellum light/dark for a representative primary layout; cover additional states in one theme unless they introduce a separate color/contrast risk. Add XXL, app font-scale extremes, Reduce Motion, and another form factor only where they exercise distinct behavior. Keep a representative reflow case for text-heavy surfaces, known visual regression cases, and each distinct applet-level iPhone/iPad/Mac layout. Do not multiply every state by every axis. All eight palettes belong in the existing package theme galleries, not every screen suite.
 - **Every new screenshot needs a reason.** In the PR's Test Coverage section, name the scenario, the defect it would catch, why an existing capture is insufficient, and the before/after screenshot count. Prefer a small readable component gallery over separate captures of every pill, icon, or toggle. Byte-identical baselines are audit candidates, not proof that their input cases are redundant; retain behavioral assertions and investigate ineffective fixtures before removing coverage.
-- **Argos owns image baselines.** The complete inventory contains 623 images: 582 package fixtures and 41 native previews. Package fixtures retain their Point-Free image strategies through the test-only `VisualTestSupport` exporter; generated PNGs stay ignored. Do not record or commit local image baselines. GRDB/text snapshots and behavioral assertions remain independent. Approve only intentional visual changes in Argos, never simply to make a check pass.
+- **Argos owns image baselines.** The complete inventory contains 652 images: 604 package fixtures and 48 native previews. Package fixtures retain their Point-Free image strategies through the test-only `VisualTestSupport` exporter; generated PNGs stay ignored. Do not record or commit local image baselines. GRDB/text snapshots and behavioral assertions remain independent. Approve only intentional visual changes in Argos, never simply to make a check pass.
 
 ## Visual fixture conventions
 
@@ -49,7 +51,7 @@ Per-screen suites use Vellum light/dark for primary layouts. `ThemeGallerySnapsh
 
 ## Simulator environment
 
-The source of truth is [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both capture drivers, the worktree simulator helper, and the local guard. Current pins are Xcode **26.4.1 / `17E202`**, XcodeGen **2.45.4**, iOS **26.4.1 / `23E254a`**, and **iPhone 17**. Match the exact toolchain and runtime builds. Coordinate pin changes with CI and Argos review.
+The source of truth is [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both capture drivers, the worktree simulator helper, and the local guard. Current pins are Xcode **27.0 beta 6 / `27A5252f`**, XcodeGen **2.45.4**, iOS **27.0 / `24A5423a`**, and **iPhone 17**. Match the exact toolchain and runtime builds. Coordinate pin changes with CI and Argos review.
 
 ```bash
 xcodebuild -version
@@ -57,19 +59,19 @@ xcrun simctl list runtimes iOS
 xcrun simctl runtime list
 ```
 
-Both `23E244` and `23E254a` report as iOS 26.4 and share the simulator runtime identifier. Keep only the pinned build installed for that minor. When the default Xcode differs, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'` to the installed pinned toolchain. The local [simulator guard](../.codex/hooks/enforce-snapshot-sim.py) checks concrete destinations against the shared pins.
+Different beta builds can share the `iOS-27-0` runtime identifier. Verify both `simctl list runtimes --json` and `simctl runtime list`; `OS=27.0` alone cannot distinguish them. Use a literal per-command `DEVELOPER_DIR` when the global Xcode selection differs. The simulator guard fails closed if the exact compiler/runtime/device cannot be verified. Xcode 27 requires macOS 26.4 or later; do not change the host or global toolchain without authorization.
 
 Use a dedicated **per-worktree** simulator for tests and manual verification, never a shared booted device. The capture drivers call `python3 Scripts/worktree_simulator.py ensure` and reuse its registered UUID. Local visual commands, from the repository root:
 
 ```bash
 npm ci
 python3 -m pip install -r Scripts/VisualTesting/requirements.txt
-npm test                              # full 623-image capture and validation
-npm run test:visual:native             # native 41-image subset
+npm test                              # full 652-image capture and validation
+npm run test:visual:native             # native 48-image subset
 python3 Scripts/VisualTesting/capture.py Chat --output .build/chat-visual-capture
 ```
 
-The package command requires a fresh output directory; substitute Bible/Core/Todo as needed. It builds once and runs the serialized visual suites individually. Bundles contain `images/` and `capture.json`; logs and result bundles live under `.build/VisualTesting/`. Normal view iteration can use targeted capture or Xcode previews; CI renders the complete inventory on every PR, including documentation changes. A full local render is required for capture-infrastructure changes and useful for diagnosing rendering; ordinary code changes still require the affected package's local unit/integration/database tests and relevant simulator coverage.
+The package command exports coverage evidence under its run directory. Enforce its unchanged floor with `python3 Scripts/ios_coverage.py --evidence .build/VisualTesting/run-PACKAGE-ID/coverage`. A capture can complete below the floor; the separate coverage job then fails `ios-test`. The package command requires a fresh output directory; substitute Bible/Core/Todo as needed. It builds once and runs the serialized visual suites individually. Bundles contain `images/` and `capture.json`; logs and result bundles live under `.build/VisualTesting/`. Normal view iteration can use targeted capture or Xcode previews; CI renders the complete inventory on every PR, including documentation changes. A full local render is required for capture-infrastructure changes and useful for diagnosing rendering; ordinary code changes still require the affected package's local unit/integration/database tests and relevant simulator coverage.
 
 For simulator logic tests or app verification:
 
@@ -86,6 +88,8 @@ xcodebuild test -scheme Chat \
 `ensure` creates once and returns the same UUID on later runs; it does not boot the device. Skip `boot` when it is already booted. Package test schemes live in `Scripts/xcodegen-extras/` and are copied by `project.yml`'s post-generation command. Use the capture driver when exporting images; direct tests do not produce a complete validated Argos bundle.
 
 If the pinned environment is unavailable, report the exact mismatch and missing verification in the PR. Do not approve a different renderer's output as a substitute for the required capture.
+
+For older-runtime app compatibility only, `SUPER_IOS_COMPATIBILITY=1` permits `build`/`build-for-testing` using the pinned Xcode against an explicit iOS 26 destination. It never permits test execution or recording. Install/launch the apps separately; the manual [iOS 26 smoke workflow](../.github/workflows/ios-26-smoke.yml) runs bounded Debug/Release startup checks. Real-device model/UI behavior remains a separate gate.
 
 ## Worktree simulator lifecycle
 

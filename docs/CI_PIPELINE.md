@@ -6,6 +6,8 @@
 
 ## Implemented pipeline
 
+**Xcode 27 migration:** Apple jobs use the `xcode-27` hosted preview on macOS 26, select `27.0-beta`, and assert build `27A5252f`. Simulator tests pin iOS 27.0 build `24A5423a` and iPhone 17. Both apps retain their iOS 26.0 deployment minimum. [The execution plan](XCODE_27_PCC_PLAN.md) records historical pre-Argos validation and current compatibility, coverage, and signed PCC gates; an unsigned build is not entitlement approval or distribution proof.
+
 | Surface | Current behavior |
 |---|---|
 | [Swift Tests](../.github/workflows/swift-test.yml) | Discovers Swift packages, runs package suites with coverage, and reports the aggregate `swift-test` check. |
@@ -27,9 +29,11 @@ records the delivery check, not a replacement for repository settings.
 
 ## Argos visual workflow
 
-[argos.yml](../.github/workflows/argos.yml) captures the complete 623-image inventory on every PR and main push, including documentation-only changes. Four package shards export 582 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+For pre-merge iOS 26 startup evidence, manually dispatch the existing **iOS Build** workflow on the candidate branch with `ios_26_smoke=true`. Its reusable `ios-26-compatibility` job invokes that revision's `ios-26-smoke.yml` and reports its own outcome. The option defaults to false and never adds runtime downloads or smoke work to ordinary PR runs. This works before the new smoke workflow is independently registered on main.
 
-Each shard publishes an `images/` directory and a `capture.json` manifest. Aggregation validates the exact inventory, image decoding and dimensions, hashes and commit/run/attempt identity before uploading the complete set once. A missing or failed shard cannot produce a partial green visual build. `ios-test` aggregates the four package capture jobs; `native-previews` covers the complete aggregation and OIDC upload. Main requires both checks and Argos's `argos` review status alongside `build`, `lint`, `gitleaks`, and `swift-test`. Fork PRs remain blocked until their authenticated Argos path is available and verified.
+[argos.yml](../.github/workflows/argos.yml) captures the complete 652-image inventory on every PR and main push, including documentation-only changes. Four package shards export 604 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 48 previews. Package visual suites run serially on a registered worktree simulator. Their coverage-enabled build and individual results feed a complementary logic execution, excluding exactly those suites. The collector validates the complete enumerated test union, source/build identity and raw physical-line hits before the separate coverage matrix enforces Core 80% / applets 70%. All raw evidence is retained; skipped and parameterized executions are disclosed. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+
+Each shard publishes an `images/` directory and a `capture.json` manifest. Aggregation validates the exact inventory, image decoding and dimensions, hashes and commit/run/attempt identity before uploading the complete set once. A missing or failed shard cannot produce a partial green visual build. `ios-test` aggregates both the four package capture jobs and the coverage matrix; `native-previews` covers the complete aggregation and OIDC upload. Main requires both checks and Argos's `argos` review status alongside `build`, `lint`, `gitleaks`, and `swift-test`. Fork PRs remain blocked until their authenticated Argos path is available and verified.
 
 Argos is the sole image baseline store. Generated PNGs are ignored; source fixtures and inventories remain tracked, as do non-image database snapshots. Native previews use standard 8-bit rendering and a fixed host-layer clock; package captures retain their existing renderer and traits. Intentional image changes require Argos review. See [TESTING.md](TESTING.md#simulator-environment) for local commands and [ARGOS_SETUP.md](ARGOS_SETUP.md) for account and baseline setup.
 
@@ -236,8 +240,10 @@ Local setup, exact-build matching, capture, and simulator lifecycle are document
 ### 4.3 Code Coverage Requirements
 
 [TESTING.md](TESTING.md#required-coverage) owns the coverage floors and required
-tests. The checked-in Swift workflow prints coverage summaries; Codecov status
-checks remain part of the planned pipeline below.
+tests. The Swift workflow prints a separate macOS unit-only summary. The iOS
+workflow directly gates same-run unique executable source-line coverage after
+successful full-package execution. Codecov status checks remain part of the
+planned pipeline below; they are not needed for the direct 80%/70% gate.
 
 ---
 
@@ -419,7 +425,7 @@ This inverts the usual relationship: tests are not written to satisfy a coverage
 
 ### 8.2 Coverage Requirements
 
-| Target | Minimum | Enforced By |
+| Target | Minimum | Planned Enforcement |
 |--------|---------|-------------|
 | Core package | 80% | Codecov status check |
 | Each applet package | 70% | Codecov status check |
@@ -507,7 +513,7 @@ jobs:
 
 ### 9.2 Client Deployment (TestFlight)
 
-The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-26`, pins Xcode `26.4.1` (iOS 26.4 SDK) via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
+The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `xcode-27`, selects `27.0-beta` via [`setup-xcode`](https://github.com/maxim-lobanov/setup-xcode) and asserts build `27A5252f`, imports the Apple Distribution `.p12` and App Store profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually (`workflow_dispatch`) or by a `release/v*` tag. Confirm actual TestFlight processing before relying on a newly pinned beta for distribution.
 
 **Why this way (the four non-obvious choices):**
 
@@ -515,7 +521,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 
 2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
 
-3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5) with 26.4.1 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
+3. **Pin the compiler build, including between betas.** The approved Xcode 27 migration deliberately uses a preview. Selection by `27.0-beta` is followed by an exact build assertion; do not substitute `latest` or assume a previously accepted beta proves the next build's upload acceptance.
 
 4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
 

@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Collapsible tool-call card: header with the tool's friendly display name +

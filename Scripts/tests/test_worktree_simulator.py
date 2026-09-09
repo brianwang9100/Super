@@ -16,7 +16,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'worktree_simulator.py'
 spec = importlib.util.spec_from_file_location('worktree_simulator', SCRIPT)
 lifecycle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lifecycle)
-RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
+RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
 MODEL = 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'
 PIN = json.loads((SCRIPT.parent / 'VisualTesting/simulator-pins.json').read_text())
 
@@ -28,13 +28,18 @@ class FakeHost:
         self.fail = None
         self.inventory = None
         self.on_shutdown = lambda: None
-        self.build = '23E254a'
+        self.build = '24A5423a'
+        self.xcode = 'Xcode 27.0\nBuild version 27A5252f'
+        self.images = {'pinned': {'runtimeIdentifier': RUNTIME,
+            'version': '27.0', 'build': self.build}}
 
     def run(self, args):
         if args[0] == 'git':
             return lifecycle.command(args)
         if args == ['xcodebuild', '-version']:
-            return 'Xcode 26.4.1\nBuild version 17E202'
+            return self.xcode
+        if args == ['xcrun', 'simctl', 'runtime', 'list', '-j']:
+            return json.dumps(self.images)
         if args[:3] != ['xcrun', 'simctl', 'list']:
             action = args[2]
             self.mutations.append(args[2:])
@@ -56,7 +61,7 @@ class FakeHost:
         if args[3] == 'devices':
             return self.inventory if self.inventory is not None else json.dumps({'devices': {RUNTIME: list(self.devices.values())}})
         if args[3] == 'runtimes':
-            return json.dumps({'runtimes': [{'identifier': RUNTIME, 'version': '26.4.1',
+            return json.dumps({'runtimes': [{'identifier': RUNTIME, 'version': '27.0',
                 'buildversion': self.build, 'isAvailable': True}]})
         if args[3] == 'devicetypes':
             return json.dumps({'devicetypes': [{'name': 'iPhone 17', 'identifier': MODEL}]})
@@ -74,6 +79,9 @@ class WorktreeSimulatorTests(unittest.TestCase):
         workflow = self.repo / 'Scripts/VisualTesting/simulator-pins.json'
         workflow.parent.mkdir(parents=True)
         workflow.write_text(json.dumps(PIN))
+        hook = self.repo / '.codex/hooks/enforce-snapshot-sim.py'
+        hook.parent.mkdir(parents=True)
+        shutil.copyfile(SCRIPT.parents[1] / '.codex/hooks/enforce-snapshot-sim.py', hook)
         self.git('add', '.')
         self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test',
                  '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
@@ -298,6 +306,43 @@ class WorktreeSimulatorTests(unittest.TestCase):
         with self.assertRaises(lifecycle.LifecycleError):
             self.manager.ensure()
         self.assertEqual(self.host.mutations, [])
+
+    def test_exact_beta_build_is_required_before_creation(self):
+        for xcode in ('Xcode 27.0\nBuild version 27A5200a', 'Xcode 27.0',
+                      'Xcode 26.4.1\nBuild version 27A5252f'):
+            with self.subTest(xcode=xcode):
+                self.host.xcode = xcode
+                with self.assertRaises(lifecycle.LifecycleError):
+                    self.manager.ensure()
+                self.assertEqual(self.host.mutations, [])
+
+    def test_hidden_runtime_image_prevents_creation(self):
+        self.host.images['hidden'] = dict(self.host.images['pinned'], build='24A5430a')
+        with self.assertRaisesRegex(lifecycle.LifecycleError, 'disk image'):
+            self.manager.ensure()
+        self.assertEqual(self.host.mutations, [])
+
+    def test_missing_disk_image_prevents_creation(self):
+        self.host.images = {}
+        with self.assertRaises(lifecycle.LifecycleError):
+            self.manager.ensure()
+        self.assertEqual(self.host.mutations, [])
+
+    def test_missing_or_conflicting_pin_prevents_creation(self):
+        workflow = self.worktree / 'Scripts/VisualTesting/simulator-pins.json'
+        for text in ('{}', 'not json'):
+            with self.subTest(text=text):
+                workflow.write_text(text)
+                with self.assertRaises(lifecycle.LifecycleError):
+                    self.manager.ensure()
+                self.assertEqual(self.host.mutations, [])
+
+    def test_cleanup_does_not_load_checkout_guard_or_check_toolchain(self):
+        self.manager.ensure()
+        (self.repo / '.codex/hooks/enforce-snapshot-sim.py').unlink()
+        self.host.xcode = 'unavailable'
+        self.host.images = {}
+        self.assertEqual(self.cleaner.cleanup()['retained'], 1)
 
     def test_registry_lock_excludes_other_processes(self):
         code = '''import fcntl, sys

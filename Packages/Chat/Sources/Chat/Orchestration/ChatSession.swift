@@ -171,6 +171,7 @@ public actor ChatSession {
     private var liveTurn: LiveTurn?
 
     private struct LiveTurn {
+        var resolvedModel: SelectableModel?
         var accumulatedText: String = ""
         var accumulatedThinking: String = ""
         /// Wall-clock instant of the first thinking delta in the current
@@ -189,6 +190,8 @@ public actor ChatSession {
     /// late attacher hydrate its view to the current state so the user
     /// sees the in-progress response, not a blank slate.
     public struct LiveTurnSnapshot: Sendable {
+        /// Latest model metadata, including a context window resolved after launch.
+        public let resolvedModel: SelectableModel?
         public let accumulatedText: String
         public let accumulatedThinking: String
         /// Wall-clock instant of the first thinking delta in this
@@ -201,11 +204,13 @@ public actor ChatSession {
         public init(
             accumulatedText: String,
             accumulatedThinking: String,
-            thinkingStartedAt: Date? = nil
+            thinkingStartedAt: Date? = nil,
+            resolvedModel: SelectableModel? = nil
         ) {
             self.accumulatedText = accumulatedText
             self.accumulatedThinking = accumulatedThinking
             self.thinkingStartedAt = thinkingStartedAt
+            self.resolvedModel = resolvedModel
         }
     }
 
@@ -471,7 +476,8 @@ public actor ChatSession {
         let snapshot = LiveTurnSnapshot(
             accumulatedText: live.accumulatedText,
             accumulatedThinking: live.accumulatedThinking,
-            thinkingStartedAt: live.thinkingStartedAt
+            thinkingStartedAt: live.thinkingStartedAt,
+            resolvedModel: live.resolvedModel
         )
         return (snapshot, stream)
     }
@@ -482,6 +488,8 @@ public actor ChatSession {
     /// so the next round-trip in a tool-call loop starts from `""`.
     private func broadcast(_ event: ChatEvent) {
         switch event {
+        case .modelResolved(let model):
+            liveTurn?.resolvedModel = model
         case .textDelta(let chunk):
             liveTurn?.accumulatedText += chunk
         case .thinkingDelta(let chunk):
@@ -636,6 +644,7 @@ public actor ChatSession {
         temperature: Double,
         provider: LLMProvider
     ) async throws {
+        var model = model
         let nativeSearch = NativeWebSearch.usesNativeSearch(model)
         let mockSearch = NativeWebSearch.usesMockSearch(model)
         // Search-gate state for this user message's loop:
@@ -661,6 +670,14 @@ public actor ChatSession {
         pendingMockQuery = nil
         while true {
             try Task.checkCancellation()
+            // PCC resolves its context asynchronously. Do this before any
+            // budget, briefing tier, or compaction decision uses the model.
+            let priorModel = model
+            model = try await provider.resolveModel(model)
+            try Task.checkCancellation()
+            if model != priorModel {
+                broadcast(.modelResolved(SelectableModel(recordId: provider.id, model: model)))
+            }
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
             // Small-window models (on-device AFM) drop the heaviest/lowest-value
@@ -1011,6 +1028,13 @@ public actor ChatSession {
     /// no LLM call, no checkpoint write.
     private func runCompaction(model: LLMModel) async {
         await runGuardedTurn {
+            let provider = try await self.llmProviderRegistry.requireActive()
+            let priorModel = model
+            let model = try await provider.resolveModel(model)
+            try Task.checkCancellation()
+            if model != priorModel {
+                self.broadcast(.modelResolved(SelectableModel(recordId: provider.id, model: model)))
+            }
             let assembly = try await self.assemble(model: model)
             // Same denominator split as `maybeAutoCompact`: on the compact
             // tier the fixed floor (briefings + tools + allowance) would

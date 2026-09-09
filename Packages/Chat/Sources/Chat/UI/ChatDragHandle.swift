@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Apple-style drag affordance pinned to the top of the chat surface. 36 ×

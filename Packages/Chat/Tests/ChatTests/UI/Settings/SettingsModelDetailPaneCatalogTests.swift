@@ -11,6 +11,55 @@ import Testing
 /// breaking these.
 @Suite("LLMProviderCatalog + Add-Model create seeds")
 struct SettingsModelDetailPaneCatalogTests {
+    @Test("The disabled iOS 26 native-menu PCC label includes the exact restriction suffix")
+    func cloudMenuLabelOnIOS26IsExplicit() {
+        #expect(SettingsModelDetailPane.appleModelOptionLabel(
+            model: .privateCloudCompute, supportsPrivateCloudCompute: false,
+            isAlreadyAdded: true, isUnavailable: true
+        ) == "Private Cloud Compute (PCC) (only available for iOS 27)")
+        #expect(SettingsModelDetailPane.appleModelOptionLabel(
+            model: .local, supportsPrivateCloudCompute: false,
+            isAlreadyAdded: false, isUnavailable: false
+        ) == "Local only")
+    }
+
+    @Test("Native-menu labels distinguish available, already-added, and unavailable PCC")
+    func cloudMenuLabelsDistinguishRegistrationStates() {
+        #expect(SettingsModelDetailPane.appleModelOptionLabel(
+            model: .privateCloudCompute, supportsPrivateCloudCompute: true,
+            isAlreadyAdded: false, isUnavailable: false
+        ) == "Private Cloud Compute (PCC)")
+        #expect(SettingsModelDetailPane.appleModelOptionLabel(
+            model: .privateCloudCompute, supportsPrivateCloudCompute: true,
+            isAlreadyAdded: true, isUnavailable: true
+        ) == "Private Cloud Compute (PCC) (already added)")
+        #expect(SettingsModelDetailPane.appleModelOptionLabel(
+            model: .privateCloudCompute, supportsPrivateCloudCompute: true,
+            isAlreadyAdded: false, isUnavailable: true
+        ) == "Private Cloud Compute (PCC) (currently unavailable)")
+    }
+
+    @Test("Finishing status load updates only an automatic create selection")
+    func refreshedAppleDefaultPreservesExplicitChoicesAndEdits() {
+        let local = AppleFoundationModel.local.rawValue
+        let cloud = AppleFoundationModel.privateCloudCompute.rawValue
+        #expect(SettingsModelDetailPane.refreshedAppleModelID(
+            currentID: local, preferredID: cloud, isEditing: false, userSelected: false
+        ) == cloud)
+        #expect(SettingsModelDetailPane.refreshedAppleModelID(
+            currentID: local, preferredID: nil, isEditing: false, userSelected: false
+        )?.isEmpty == true)
+        #expect(SettingsModelDetailPane.refreshedAppleModelID(
+            currentID: local, preferredID: cloud, isEditing: false, userSelected: true
+        ) == nil)
+        #expect(SettingsModelDetailPane.refreshedAppleModelID(
+            currentID: local, preferredID: cloud, isEditing: true, userSelected: false
+        ) == nil)
+        #expect(SettingsModelDetailPane.refreshedAppleModelID(
+            currentID: cloud, preferredID: cloud, isEditing: false, userSelected: false
+        ) == nil)
+    }
+
     // MARK: - Catalog invariants
 
     @Test("Every provider has a non-empty id and display name")
@@ -335,7 +384,7 @@ struct SettingsModelDetailPaneCatalogTests {
             baseURL: nil
         )
         #expect(resolved.providerID == LLMProviderCatalog.appleProviderID)
-        #expect(resolved.catalogID == "system-default")
+        #expect(resolved.catalogID == "legacy-afm-id")
     }
 
     @Test("resolveEditProvider falls back to Custom for an off-catalog compat row")
@@ -348,7 +397,7 @@ struct SettingsModelDetailPaneCatalogTests {
             baseURL: URL(string: "https://my-proxy.local/v1")
         )
         #expect(resolved.providerID == LLMProviderCatalog.customProviderID)
-        #expect(resolved.catalogID == "")
+        #expect(resolved.catalogID.isEmpty)
     }
 
     // MARK: - Create-flow seeds
@@ -357,22 +406,67 @@ struct SettingsModelDetailPaneCatalogTests {
     func appleSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: LLMProviderCatalog.appleProviderID)
         #expect(seeds.providerID == LLMProviderCatalog.appleProviderID)
-        #expect(seeds.name == "Apple Intelligence")
+        #expect(seeds.name == AppleFoundationModel.local.displayName)
         #expect(seeds.modelId == "system-default")
         #expect(seeds.modelCatalogID == "system-default")
         #expect(seeds.maxContextText == "4096")
         #expect(seeds.supportsThinking == false)
         // AFM has no URL — the field isn't rendered for this provider.
-        #expect(seeds.baseURLText == "")
+        #expect(seeds.baseURLText.isEmpty)
     }
 
-    @Test("Apple provider reads 'Apple'; its model reads 'Apple Intelligence'")
+    @Test("An explicit PCC preference seeds the cloud variant without HTTP credentials")
+    func appleCloudPreferenceSeedsCloudModel() {
+        let model = AppleFoundationModel.privateCloudCompute
+        let seeds = SettingsModelDetailPane.makeCreateSeeds(
+            providerID: LLMProviderCatalog.appleProviderID,
+            preferredAppleModelID: model.rawValue
+        )
+        #expect(seeds.providerID == LLMProviderCatalog.appleProviderID)
+        #expect(seeds.name == model.displayName)
+        #expect(seeds.modelId == model.rawValue)
+        #expect(seeds.modelCatalogID == model.rawValue)
+        #expect(seeds.maxContextText == String(model.fallbackContextTokens))
+        #expect(!seeds.supportsThinking)
+        #expect(seeds.baseURLText.isEmpty)
+    }
+
+    @Test("An explicit empty Apple preference never preselects an unavailable or duplicate model")
+    func emptyApplePreferenceLeavesModelUnselected() {
+        let seeds = SettingsModelDetailPane.makeCreateSeeds(
+            providerID: LLMProviderCatalog.appleProviderID,
+            preferredAppleModelID: ""
+        )
+        #expect(seeds.providerID == LLMProviderCatalog.appleProviderID)
+        #expect(seeds.name.isEmpty)
+        #expect(seeds.modelId.isEmpty)
+        #expect(seeds.modelCatalogID.isEmpty)
+        #expect(seeds.baseURLText.isEmpty)
+    }
+
+    @Test("Apple's local and PCC catalog entries expose distinct model identities")
     func appleProviderAndModelNamesAreDistinct() {
         let entry = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)
         #expect(entry?.displayName == "Apple", "provider should mirror Google/Gemini — provider name is 'Apple'")
         #expect(entry?.kind == .appleFoundation)
-        #expect(entry?.models.count == 1)
-        #expect(entry?.models.first?.displayName == "Apple Intelligence", "the single model is 'Apple Intelligence'")
+        #expect(entry?.models.map(\.id) == ["system-default", "private-cloud-compute"])
+        #expect(entry?.models.map(\.displayName) == AppleFoundationModel.allCases.map(\.displayName))
+        #expect(entry?.defaultBaseURL == nil)
+    }
+
+    @Test(arguments: AppleFoundationModel.allCases)
+    func appleCatalogMetadataMatchesTheChosenVariant(model: AppleFoundationModel) {
+        let resolved = LLMProviderCatalog.model(forModelId: model.rawValue)
+        #expect(resolved?.provider.id == LLMProviderCatalog.appleProviderID)
+        #expect(resolved?.model.displayName == model.displayName)
+        #expect(resolved?.model.maxContextTokens == model.fallbackContextTokens)
+        #expect(resolved?.model.supportsThinking == false)
+    }
+
+    @Test("PCC addition does not redefine the legacy local model constant")
+    func legacyAppleDefaultModelRemainsLocal() {
+        #expect(AppleFoundationLLMProvider.defaultModelID == AppleFoundationModel.local.rawValue)
+        #expect(AppleFoundationLLMProvider.defaultModelID != AppleFoundationModel.privateCloudCompute.rawValue)
     }
 
     @Test("Google seeds Gemini 3 Pro with the native generateContent URL")
@@ -421,9 +515,9 @@ struct SettingsModelDetailPaneCatalogTests {
     @Test("Custom seeds empty name + empty model id + OpenAI placeholder URL")
     func customSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: LLMProviderCatalog.customProviderID)
-        #expect(seeds.name == "")
-        #expect(seeds.modelId == "")
-        #expect(seeds.modelCatalogID == "")
+        #expect(seeds.name.isEmpty)
+        #expect(seeds.modelId.isEmpty)
+        #expect(seeds.modelCatalogID.isEmpty)
         #expect(seeds.baseURLText == "https://api.openai.com/v1")
         #expect(seeds.maxContextText == "200000")
         // "Thinking enabled by default" for Custom — the user can't
@@ -435,7 +529,7 @@ struct SettingsModelDetailPaneCatalogTests {
     func unknownProviderFallsBack() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "vapor-cloud-9000")
         #expect(seeds.providerID == LLMProviderCatalog.customProviderID)
-        #expect(seeds.modelId == "")
+        #expect(seeds.modelId.isEmpty)
     }
 
     // MARK: - reconcile (live model list ⨉ catalog metadata)
@@ -592,7 +686,7 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(SettingsModelDetailPane.editSeedName(
             rowName: "", resolvedProviderID: LLMProviderCatalog.customProviderID,
             resolvedCatalogID: "", storedFallback: nil
-        ) == "")
+        ).isEmpty)
     }
 
     @Test("Edit header is provider-only for built-ins, Provider · Model for Apple, nil for Custom/create")
@@ -674,10 +768,12 @@ struct SettingsModelDetailPaneCatalogTests {
             id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
             maxContextTokens: 1_000_000, supportsThinking: true
         )
-        let fetched = [LLMCatalogModel(
-            id: "gemini-3-pro", displayName: "Gemini 3 Pro",
-            maxContextTokens: 1_000_000, supportsThinking: true
-        )]
+        let fetched = [
+            LLMCatalogModel(
+                id: "gemini-3-pro", displayName: "Gemini 3 Pro",
+                maxContextTokens: 1_000_000, supportsThinking: true
+            ),
+        ]
 
         // Fetched list omits the stored model → appended last.
         let unioned = SettingsModelDetailPane.displayedModels(

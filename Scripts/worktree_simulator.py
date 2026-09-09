@@ -5,6 +5,7 @@ import argparse
 from contextlib import contextmanager
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -144,9 +145,15 @@ class Simulators:
             raise LifecycleError(f'Install only CI iOS {version} build {build} for that minor')
         types = json.loads(self.run(['xcrun', 'simctl', 'list', 'devicetypes', '--json']))['devicetypes']
         models = [d['identifier'] for d in types if d.get('name') == model]
-        if len(models) != 1:
+        if models != ['com.apple.CoreSimulator.SimDeviceType.' + model.replace(' ', '-')]:
             raise LifecycleError(f'Cannot resolve device type {model}')
-        return matches[0]['identifier'], models[0]
+        runtime = matches[0]['identifier']
+        images = json.loads(self.run(['xcrun', 'simctl', 'runtime', 'list', '-j']))
+        builds = [image.get('build') for image in images.values()
+                  if image.get('runtimeIdentifier') == runtime]
+        if builds != [build]:
+            raise LifecycleError(f'Install only CI iOS {version} build {build}; ambiguous runtime disk images')
+        return runtime, models[0]
 
     def device_for(self, entry, devices):
         if entry['udid'] is not None:

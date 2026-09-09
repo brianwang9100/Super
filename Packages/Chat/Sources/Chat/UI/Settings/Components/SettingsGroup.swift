@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Rounded card container that hosts one or more `SettingsRow`s. Mirrors

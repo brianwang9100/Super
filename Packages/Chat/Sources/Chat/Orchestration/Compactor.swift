@@ -106,6 +106,10 @@ public actor Compactor {
             priorCheckpoint: priorCheckpoint
         )
         let provider = try await llmProviderRegistry.requireActive()
+        // Standalone compactor callers need the same readiness check as the
+        // chat loop; an unavailable selected model must not generate a summary.
+        let model = try await provider.resolveModel(model)
+        try Task.checkCancellation()
         let summary = try await runSummarization(provider: provider, model: model, prompt: prompt)
         guard !summary.isEmpty else { throw CompactorError.emptySummary }
 

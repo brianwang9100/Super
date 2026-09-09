@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// One row inside a `SettingsGroup`. Mirrors `SettingsRow` from

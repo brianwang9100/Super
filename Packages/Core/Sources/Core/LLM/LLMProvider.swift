@@ -14,6 +14,10 @@ public protocol LLMProvider: Sendable {
     /// conformers; this is what the model picker displays.
     var supportedModels: [LLMModel] { get }
 
+    /// Resolve current model metadata before budgeting or compaction. Providers
+    /// with asynchronous readiness fail here instead of budgeting a guessed limit.
+    func resolveModel(_ model: LLMModel) async throws(LLMError) -> LLMModel
+
     /// Begin a streaming completion.
     ///
     /// - Parameters:
@@ -62,6 +66,8 @@ public protocol LLMProvider: Sendable {
 }
 
 public extension LLMProvider {
+    func resolveModel(_ model: LLMModel) async throws(LLMError) -> LLMModel { model }
+
     func stream(
         messages: [LLMMessage],
         model: LLMModel,

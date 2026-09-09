@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Personalization pane. Replaces the previous "System Prompt" pane —

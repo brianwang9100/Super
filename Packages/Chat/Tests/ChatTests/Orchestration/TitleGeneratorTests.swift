@@ -126,6 +126,46 @@ struct TitleGeneratorTests {
         #expect(await provider.capturedRequests().isEmpty)
     }
 
+    @Test("Automatic titles do not inherit a PCC-only fresh setup")
+    func automaticTitlesDoNotUsePCCDefault() async {
+        let pccModel = LLMModel(
+            id: AppleFoundationModel.privateCloudCompute.rawValue,
+            displayName: "Apple Intelligence — Private Cloud Compute",
+            supportsThinking: false, supportsTools: true, maxContextTokens: 32_768
+        )
+        // No script: any implicit cloud request would fail the strict fake.
+        let pcc = FakeLLMProvider(id: "pcc", model: pccModel)
+        let registry = LLMProviderRegistry()
+        await registry.register(pcc)
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry, settingsStore: await makeStore(titleModelId: nil)
+        )
+        #expect(await generator.generate(userText: "Study", assistantText: "Response") == nil)
+        #expect(await pcc.capturedRequests().isEmpty)
+    }
+
+    @Test("Explicit PCC title selection is honored")
+    func explicitPCCTitles() async {
+        let pccModel = LLMModel(
+            id: AppleFoundationModel.privateCloudCompute.rawValue,
+            displayName: "Apple Intelligence — Private Cloud Compute",
+            supportsThinking: false, supportsTools: true, maxContextTokens: 32_768
+        )
+        let pcc = FakeLLMProvider(id: "pcc", model: pccModel)
+        await pcc.enqueue([
+            .messageStart(id: "title", model: pccModel.id),
+            .textDelta(index: 0, text: "Study notes"),
+            .messageComplete(usage: TokenUsage(inputTokens: 5, outputTokens: 2)),
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(pcc)
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry, settingsStore: await makeStore(titleModelId: "pcc")
+        )
+        #expect(await generator.generate(userText: "Study", assistantText: "Response") == "Study notes")
+        #expect(await pcc.capturedRequests().count == 1)
+    }
+
     @Test("Automatic selection titles with the Apple Foundation model when available")
     func generateAutomaticUsesAppleFoundationModel() async throws {
         let afmModel = LLMModel(

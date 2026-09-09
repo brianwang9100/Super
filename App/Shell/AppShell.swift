@@ -712,12 +712,8 @@ struct AppShell: View {
             memoryRepository: dependencies.memoryRepository,
             llmProviderRegistry: dependencies.llmProviderRegistry,
             httpClient: URLSessionHTTPClient(),
-            // Thread the boot-time availability snapshot through so the
-            // Settings UI agrees with the seeder/provider hydrator on
-            // whether AFM is usable. Re-querying `SystemLanguageModel
-            // .default.availability` here would let a mid-session toggle
-            // of Apple Intelligence split that answer across surfaces.
             appleFoundationAvailability: dependencies.appleFoundationAvailability,
+            appleFoundationStatusProvider: dependencies.appleFoundationStatusProvider,
             audioSetup: dependencies.providerAudioSetup,
             eventBus: dependencies.eventBus
         )
@@ -779,11 +775,14 @@ struct AppShell: View {
             settingsStore: ChatSettingsStore(repository: dependencies.settingRepository)
         )
         let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService(), audioActivity: dependencies.audioActivity)
-        // Use the persisted model id so the picker survives relaunch; stale ids fall back to first available.
+        // Persisted picker choices win; otherwise respect the selected seed,
+        // including an unavailable PCC row, before any sorted/debug fallback.
         let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
+        let preferredRecordId = await dependencies.llmProviderRegistry.activeID()
         let initialModelId = ChatScreenViewModel.resolveInitialModelId(
             persisted: persistedModelId,
-            available: providerModels
+            available: providerModels,
+            preferredRecordId: preferredRecordId
         )
         // Friendly tool labels for the transcript's tool-call cards. Built
         // here because the registry has every applet's tools registered; the

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 @testable import Bible
 
@@ -138,6 +139,107 @@ struct BibleBookSheetViewModelTests {
             viewModel.initialScrollAnchor
                 == .chapterCell(bookId: "PSA", chapterNumber: 49)
         )
+    }
+
+    @Test("an appearance-time scroll attempt stays pending until the actual target and viewport are laid out")
+    func initialScrollWaitsForBothLayoutSignals() {
+        let viewModel = makeViewModel(currentPosition: BiblePosition(bookId: "ROM", chapterNumber: 8))
+        // The old onAppear path consumed its latch here, before either layout
+        // existed. A failed pre-layout attempt must not lose the later request.
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 4000), viewportSize: .init(width: 402, height: 500)
+        )
+        #expect(viewModel.canResolveInitialScroll == false)
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollTarget(.bookRow(bookId: "GEN"), size: .init(width: 402, height: 50))
+        #expect(viewModel.canResolveInitialScroll == false)
+        viewModel.updateInitialScrollTarget(.bookRow(bookId: "ROM"), size: .init(width: 402, height: 220))
+        #expect(viewModel.canResolveInitialScroll)
+        #expect(viewModel.consumeInitialScrollAnchor() == .bookRow(bookId: "ROM"))
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+    }
+
+    @Test("a chapter target laid out before its viewport still waits for a usable container")
+    func chapterInitialScrollHandlesOppositeLayoutOrder() {
+        let viewModel = makeViewModel(currentPosition: BiblePosition(bookId: "PSA", chapterNumber: 119))
+        let anchor = BibleBookSheetScrollAnchor.chapterCell(bookId: "PSA", chapterNumber: 119)
+        viewModel.updateInitialScrollTarget(anchor, size: .init(width: 50, height: 40))
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 6000), viewportSize: .zero
+        )
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 6000), viewportSize: .init(width: 402, height: 500)
+        )
+        #expect(viewModel.consumeInitialScrollAnchor() == anchor)
+    }
+
+    @Test("zero-sized target and empty content never consume the initial scroll")
+    func initialScrollRejectsIncompleteGeometry() {
+        let viewModel = makeViewModel()
+        let anchor = BibleBookSheetScrollAnchor.bookRow(bookId: "1PE")
+        viewModel.updateInitialScrollLayout(contentSize: .zero, viewportSize: .init(width: 402, height: 500))
+        viewModel.updateInitialScrollTarget(anchor, size: .init(width: 402, height: 50))
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 4000), viewportSize: .init(width: 402, height: 500)
+        )
+        viewModel.updateInitialScrollTarget(anchor, size: .zero)
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.updateInitialScrollTarget(anchor, size: .init(width: 402, height: 50))
+        #expect(viewModel.consumeInitialScrollAnchor() == anchor)
+    }
+
+    @Test("layout changes after initial positioning cannot undo search, ordering, or manual expansion")
+    func initialScrollIsConsumedOncePerPresentation() {
+        let viewModel = makeViewModel()
+        let anchor = BibleBookSheetScrollAnchor.bookRow(bookId: "1PE")
+        viewModel.order = .alphabetical
+        viewModel.updateInitialScrollTarget(anchor, size: .init(width: 402, height: 100))
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 4000), viewportSize: .init(width: 402, height: 500)
+        )
+        #expect(viewModel.consumeInitialScrollAnchor() == anchor)
+        viewModel.query = "Romans"
+        viewModel.order = .traditional
+        viewModel.toggleExpansion(bookId: "ROM")
+        viewModel.clearQuery()
+        viewModel.updateInitialScrollTarget(anchor, size: .init(width: 402, height: 50))
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 3500), viewportSize: .init(width: 402, height: 600)
+        )
+        #expect(viewModel.canResolveInitialScroll == false)
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+    }
+
+    @Test("an initially filtered or replaced target cannot cause a delayed jump after clearing search",
+          arguments: ["Genesis", "1 Peter 2:5", "Nonesuch"])
+    func unavailableInitialTargetIsConsumedWithoutScrolling(query: String) {
+        let viewModel = makeViewModel()
+        viewModel.query = query
+        viewModel.updateInitialScrollLayout(
+            contentSize: .init(width: 402, height: 500), viewportSize: .init(width: 402, height: 500)
+        )
+        #expect(viewModel.canResolveInitialScroll)
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+        viewModel.clearQuery()
+        viewModel.updateInitialScrollTarget(.bookRow(bookId: "1PE"), size: .init(width: 402, height: 100))
+        #expect(viewModel.canResolveInitialScroll == false)
+        #expect(viewModel.consumeInitialScrollAnchor() == nil)
+    }
+
+    @Test("a fresh presentation gets a fresh initial-scroll request")
+    func initialScrollStateDoesNotLeakBetweenPresentations() {
+        for _ in 0..<2 {
+            let viewModel = makeViewModel()
+            viewModel.updateInitialScrollTarget(.bookRow(bookId: "1PE"), size: .init(width: 402, height: 100))
+            viewModel.updateInitialScrollLayout(
+                contentSize: .init(width: 402, height: 4000), viewportSize: .init(width: 402, height: 500)
+            )
+            #expect(viewModel.consumeInitialScrollAnchor() == .bookRow(bookId: "1PE"))
+        }
     }
 
     @Test("toggling expansion opens one book and closes it on a repeat tap")

@@ -368,7 +368,7 @@ struct SettingsViewModelTests {
         let row = vm.models.first { $0.id == "afm" }
         #expect(row?.kind == .appleFoundation)
         #expect(row?.baseURL == nil)
-        #expect(row?.endpoint == "")
+        #expect(row?.endpoint.isEmpty == true)
         #expect(row?.hasAPIKey == false)
         #expect(row?.modelId == "system-default")
     }
@@ -590,6 +590,461 @@ struct SettingsViewModelTests {
         #expect(vm.modelEditError?.contains("Could not save model") == true)
         #expect(vm.models.isEmpty)
         #expect(modelRepo.rows.isEmpty)
+    }
+
+    @Test("Local and PCC registrations coexist with independent IDs and metadata")
+    func appleModelVariantsCanCoexist() async {
+        let repository = StubModelRepository(rows: [])
+        let statusProvider = makeAppleStatusProvider()
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: statusProvider)
+        let ids = DeterministicIDGenerator(prefix: "apple-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_700_000_000))
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(vm.preferredAppleFoundationModel == .privateCloudCompute)
+
+        for model in AppleFoundationModel.allCases {
+            await vm.createAppleFoundationModel(
+                name: model.displayName, supportsThinking: true, maxContextTokens: 123,
+                model: model, idGenerator: { ids.nextID() }, now: clock.now()
+            )
+            #expect(vm.modelEditError == nil)
+        }
+
+        #expect(repository.rows.map(\.id) == ["apple-1", "apple-2"])
+        #expect(repository.rows.map(\.modelId) == AppleFoundationModel.allCases.map(\.rawValue))
+        #expect(repository.rows.map(\.maxContextTokens) == [8_192, 24_000])
+        #expect(repository.rows.allSatisfy {
+            $0.kind == .appleFoundation && $0.baseURL == nil && $0.apiKeyRef == nil
+                && !$0.supportsThinking && !$0.isSelected && $0.createdAt == clock.now()
+        })
+        #expect(repository.storedKeys.isEmpty)
+        #expect(vm.hasAppleFoundationModel(.local))
+        #expect(vm.hasAppleFoundationModel(.privateCloudCompute))
+        #expect(vm.preferredAppleFoundationModel == nil)
+    }
+
+    @Test("Duplicate Apple registration is rejected per variant without allocating another ID",
+          arguments: AppleFoundationModel.allCases)
+    func duplicateAppleVariantIsRejected(model: AppleFoundationModel) async {
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: makeAppleStatusProvider())
+        let ids = DeterministicIDGenerator(prefix: "duplicate-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 100))
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+
+        await vm.createAppleFoundationModel(
+            name: model.displayName, supportsThinking: false, maxContextTokens: 1,
+            model: model, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+        let saved = repository.rows
+        await vm.createAppleFoundationModel(
+            name: "Duplicate", supportsThinking: false, maxContextTokens: 1,
+            model: model, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+
+        #expect(repository.rows == saved)
+        #expect(vm.modelEditError?.contains("already added") == true)
+        #expect(ids.nextID() == "duplicate-2")
+        #expect(!vm.isSavingAppleModel)
+        let other: AppleFoundationModel = model == .local ? .privateCloudCompute : .local
+        #expect(vm.appleFoundationRegistrationIssue(for: other) == nil)
+        #expect(vm.preferredAppleFoundationModel == other)
+    }
+
+    @Test("Duplicate checks consult persistence even when the Models list is stale",
+          arguments: AppleFoundationModel.allCases)
+    func appleDuplicateInsertedOutsideTheViewModelIsRejected(model: AppleFoundationModel) async throws {
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: makeAppleStatusProvider())
+        let ids = DeterministicIDGenerator(prefix: "unused-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 200))
+        await vm.load()
+        let existing = ModelConfigurationRecord(
+            id: "outside-row", name: "Existing choice", baseURL: nil, apiKeyRef: nil,
+            modelId: model.rawValue, createdAt: clock.now(), kind: .appleFoundation,
+            isSelected: true
+        )
+        try await repository.save(existing)
+        #expect(!vm.hasAppleFoundationModel(model))
+
+        await vm.createAppleFoundationModel(
+            name: model.displayName, supportsThinking: false, maxContextTokens: 1,
+            model: model, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+
+        #expect(repository.rows == [existing])
+        #expect(vm.hasAppleFoundationModel(model))
+        #expect(vm.modelEditError?.contains("already added") == true)
+        #expect(ids.nextID() == "unused-1")
+    }
+
+    @Test("iOS 26 cannot save PCC even if a caller bypasses the disabled picker")
+    func unsupportedOSRejectsCloudRegistration() async {
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(
+            modelRepository: repository,
+            appleFoundationStatusProvider: makeAppleStatusProvider(supportsPrivateCloudCompute: false)
+        )
+        let ids = DeterministicIDGenerator(prefix: "unused-")
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(!vm.supportsPrivateCloudCompute)
+        #expect(vm.preferredAppleFoundationModel == .local)
+
+        await vm.createAppleFoundationModel(
+            name: "PCC", supportsThinking: false, maxContextTokens: 32_000,
+            model: .privateCloudCompute, idGenerator: { ids.nextID() },
+            now: Date(timeIntervalSince1970: 300)
+        )
+
+        #expect(vm.modelEditError == "Private Cloud Compute requires iOS 27 or later.")
+        #expect(repository.rows.isEmpty)
+        #expect(repository.storedKeys.isEmpty)
+        #expect(ids.nextID() == "unused-1")
+        #expect(!vm.isSavingAppleModel)
+    }
+
+    @Test("PCC registration does not depend on the on-device model download")
+    func cloudReadinessIsIndependentOfLocalReadiness() async {
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(
+            modelRepository: repository,
+            appleFoundationStatusProvider: makeAppleStatusProvider(localAvailability: .unavailable(.modelNotReady))
+        )
+        let ids = DeterministicIDGenerator(prefix: "cloud-")
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(!vm.appleFoundationStatus(for: .local).canGenerate)
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+        #expect(vm.appleFoundationRegistrationIssue(for: .local) != nil)
+        #expect(vm.appleFoundationRegistrationIssue(for: .privateCloudCompute) == nil)
+        #expect(vm.preferredAppleFoundationModel == .privateCloudCompute)
+
+        await vm.createAppleFoundationModel(
+            name: "My cloud model", supportsThinking: false, maxContextTokens: 1,
+            model: .privateCloudCompute, idGenerator: { ids.nextID() },
+            now: Date(timeIntervalSince1970: 400)
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.first?.modelId == AppleFoundationModel.privateCloudCompute.rawValue)
+        #expect(repository.rows.first?.maxContextTokens == 24_000)
+    }
+
+    @Test("Unavailable PCC does not block local registration or leave a stale save error")
+    func unavailableCloudDoesNotBlockLocalRegistration() async {
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(
+            modelRepository: repository,
+            appleFoundationStatusProvider: makeAppleStatusProvider(cloudAvailability: .unavailable(.systemNotReady))
+        )
+        let ids = DeterministicIDGenerator(prefix: "local-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 450))
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(vm.preferredAppleFoundationModel == .local)
+
+        await vm.createAppleFoundationModel(
+            name: "Unavailable PCC", supportsThinking: false, maxContextTokens: 1,
+            model: .privateCloudCompute, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+        #expect(vm.modelEditError != nil)
+        #expect(repository.rows.isEmpty)
+        await vm.createAppleFoundationModel(
+            name: "Local only", supportsThinking: false, maxContextTokens: 1,
+            model: .local, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.map(\.id) == ["local-1"])
+        #expect(repository.rows.first?.modelId == AppleFoundationModel.local.rawValue)
+        #expect(repository.rows.first?.maxContextTokens == 8_192)
+    }
+
+    @Test("Quota exhaustion blocks generation but does not prevent saving a PCC configuration")
+    func exhaustedQuotaDoesNotBlockCloudRegistration() async {
+        let repository = StubModelRepository(rows: [])
+        let reset = Date(timeIntervalSince1970: 1_700_086_400)
+        let vm = makeViewModel(
+            modelRepository: repository,
+            appleFoundationStatusProvider: makeAppleStatusProvider(
+                cloudQuota: .init(state: .limitReached, resetDate: reset)
+            )
+        )
+        let ids = DeterministicIDGenerator(prefix: "quota-")
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(vm.appleFoundationRegistrationIssue(for: .privateCloudCompute) == nil)
+        #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute).quota?.resetDate == reset)
+        #expect(vm.appleFoundationStatusMessage(for: .privateCloudCompute)?.contains("daily usage limit") == true)
+
+        await vm.createAppleFoundationModel(
+            name: "PCC after reset", supportsThinking: false, maxContextTokens: 1,
+            model: .privateCloudCompute, idGenerator: { ids.nextID() },
+            now: Date(timeIntervalSince1970: 500)
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.first?.modelId == AppleFoundationModel.privateCloudCompute.rawValue)
+        #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+    }
+
+    @Test("Saving an Apple edit cannot convert local to PCC or PCC to local",
+          arguments: AppleFoundationModel.allCases)
+    func appleEditPreservesSavedVariant(model: AppleFoundationModel) async {
+        let existing = ModelConfigurationRecord(
+            id: "saved-apple", name: "Saved choice", baseURL: nil, apiKeyRef: nil,
+            modelId: model.rawValue, createdAt: Date(timeIntervalSince1970: 600),
+            kind: .appleFoundation, maxContextTokens: 8_000, isSelected: true
+        )
+        let repository = StubModelRepository(rows: [existing])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: makeAppleStatusProvider())
+        await vm.load()
+        let other: AppleFoundationModel = model == .local ? .privateCloudCompute : .local
+
+        await vm.updateModel(
+            id: existing.id, name: "Changed backend", baseURL: nil,
+            modelId: other.rawValue, apiKey: "", supportsThinking: false, maxContextTokens: 1
+        )
+
+        #expect(repository.rows == [existing])
+        #expect(vm.models.first?.modelId == model.rawValue)
+        #expect(vm.modelEditError?.contains("separately") == true)
+        #expect(repository.storedKeys.isEmpty)
+    }
+
+    @Test("A restored PCC row can be renamed on iOS 26 without changing its identity")
+    func unsupportedCloudEditKeepsRecordIdentity() async {
+        let existing = ModelConfigurationRecord(
+            id: "restored-pcc", name: "Original cloud name", baseURL: nil, apiKeyRef: nil,
+            modelId: AppleFoundationModel.privateCloudCompute.rawValue,
+            createdAt: Date(timeIntervalSince1970: 700), kind: .appleFoundation,
+            maxContextTokens: 24_000, isSelected: true
+        )
+        let repository = StubModelRepository(rows: [existing])
+        let vm = makeViewModel(modelRepository: repository,
+                               appleFoundationStatusProvider: makeAppleStatusProvider(supportsPrivateCloudCompute: false))
+        await vm.load()
+
+        await vm.updateModel(
+            id: existing.id, name: "Renamed cloud choice", baseURL: nil,
+            modelId: existing.modelId, apiKey: "", supportsThinking: false,
+            maxContextTokens: existing.maxContextTokens
+        )
+
+        var expected = existing
+        expected.name = "Renamed cloud choice"
+        #expect(repository.rows == [expected])
+        #expect(vm.modelEditError == nil)
+        #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+    }
+
+    @Test("Editing either Apple variant preserves the active provider when both are registered",
+          arguments: AppleFoundationModel.allCases)
+    func editingAppleVariantDoesNotSelectItsSibling(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let existing = try #require(rows.first { $0.modelId == model.rawValue })
+        try await registry.setActive(id: existing.id)
+        let vm = makeViewModel(
+            modelRepository: repository, llmProviderRegistry: registry,
+            appleFoundationStatusProvider: makeAppleStatusProvider()
+        )
+
+        await vm.updateModel(
+            id: existing.id, name: "Renamed Apple model", baseURL: nil,
+            modelId: existing.modelId, apiKey: "", supportsThinking: false,
+            maxContextTokens: existing.maxContextTokens
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(await registry.activeID() == existing.id)
+        #expect(await registry.allProviders().count == 2)
+        let replacement = try #require(await registry.provider(id: existing.id))
+        #expect(replacement is AppleFoundationLLMProvider)
+        #expect(replacement.supportedModels.first?.id == existing.modelId)
+        #expect(repository.rows.first { $0.id == existing.id }?.name == "Renamed Apple model")
+    }
+
+    @Test("An Apple edit cannot escape its backend through the search-kind selection")
+    func appleEditRejectsSearchKindConversion() async {
+        let existing = ModelConfigurationRecord(
+            id: "apple-row", name: "Apple", baseURL: nil, apiKeyRef: nil,
+            modelId: AppleFoundationModel.local.rawValue, createdAt: Date(timeIntervalSince1970: 800),
+            kind: .appleFoundation, isSelected: true
+        )
+        let repository = StubModelRepository(rows: [existing])
+        let vm = makeViewModel(modelRepository: repository)
+        await vm.load()
+
+        await vm.updateModel(
+            id: existing.id, name: existing.name, baseURL: URL(string: "https://example.test/v1"),
+            modelId: existing.modelId, apiKey: "synthetic-key", supportsThinking: false,
+            maxContextTokens: 1, searchSelection: (.openAIResponses, "native")
+        )
+
+        #expect(repository.rows == [existing])
+        #expect(repository.storedKeys.isEmpty)
+        #expect(vm.modelEditError?.contains("separately") == true)
+    }
+
+    @Test("Explicit status refresh replaces stale readiness and quota after load has completed")
+    func appleStatusesRefreshAfterInitialLoad() async {
+        let unavailable = AppleFoundationModelStatus(
+            model: .privateCloudCompute, availability: .unavailable(.systemNotReady)
+        )
+        let provider = ScriptedAppleFoundationStatusProvider(cloudStatus: unavailable)
+        let vm = makeViewModel(appleFoundationStatusProvider: provider)
+        await vm.load()
+        await vm.refreshAppleFoundationStatuses()
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == unavailable)
+        #expect(vm.preferredAppleFoundationModel == .local)
+        let refreshed = AppleFoundationModelStatus(
+            model: .privateCloudCompute, availability: .available, contextTokens: 24_000,
+            quota: .init(state: .approachingLimit, resetDate: Date(timeIntervalSince1970: 900))
+        )
+        await provider.setCloudStatus(refreshed)
+
+        await vm.refreshAppleFoundationStatuses()
+
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == refreshed)
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+        #expect(vm.appleFoundationStatusMessage(for: .privateCloudCompute) == "Approaching the daily PCC usage limit.")
+        #expect(vm.preferredAppleFoundationModel == .privateCloudCompute)
+        #expect(await provider.requestedModels() == [.local, .privateCloudCompute, .local, .privateCloudCompute])
+    }
+
+    @Test("Canceled Apple status refresh cannot publish readiness after the pane exits")
+    func canceledAppleStatusRefreshDoesNotPublish() async {
+        let provider = ScriptedAppleFoundationStatusProvider(
+            cloudStatus: AppleFoundationModelStatus(
+                model: .privateCloudCompute, availability: .available, contextTokens: 24_000
+            ), gateFirstRequest: true
+        )
+        let vm = makeViewModel(appleFoundationStatusProvider: provider)
+        let initialLocal = vm.appleFoundationStatus(for: .local)
+        let initialCloud = vm.appleFoundationStatus(for: .privateCloudCompute)
+        let refresh = Task { await vm.refreshAppleFoundationStatuses() }
+        await provider.waitUntilGateEntered()
+
+        refresh.cancel()
+        await provider.releaseGate()
+        await refresh.value
+
+        #expect(vm.appleFoundationStatus(for: .local) == initialLocal)
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == initialCloud)
+        #expect(await provider.requestedModels() == [.local])
+    }
+
+    @Test("Loading Settings never asks for Apple status and preserves the existing local configuration")
+    func settingsLoadDoesNotWaitForCloudMetadata() async throws {
+        let local = try #require(makeAppleModelRecords().first { $0.modelId == AppleFoundationModel.local.rawValue })
+        let repository = StubModelRepository(rows: [local])
+        let provider = StrictAppleStatusProvider(allowedModel: nil)
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: provider)
+
+        await vm.load()
+
+        #expect(vm.models.map(\.id) == [local.id])
+        #expect(vm.models.first?.name == local.name)
+        #expect(repository.rows == [local])
+        #expect(await provider.requestedModels().isEmpty)
+        #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+    }
+
+    @Test("Saving Local only refreshes local readiness without consulting PCC")
+    func localRegistrationDoesNotWaitForCloudMetadata() async {
+        let repository = StubModelRepository(rows: [])
+        let provider = StrictAppleStatusProvider(allowedModel: .local)
+        let registry = LLMProviderRegistry()
+        let vm = makeViewModel(
+            modelRepository: repository, llmProviderRegistry: registry,
+            appleFoundationStatusProvider: provider
+        )
+        let ids = DeterministicIDGenerator(prefix: "local-only-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_100))
+        await vm.load()
+
+        await vm.createAppleFoundationModel(
+            name: "Offline study", supportsThinking: false, maxContextTokens: 1,
+            model: .local, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.map(\.id) == ["local-only-1"])
+        #expect(repository.rows.first?.modelId == AppleFoundationModel.local.rawValue)
+        #expect(repository.rows.first?.maxContextTokens == 8_192)
+        #expect(await provider.requestedModels() == [.local, .local])
+        #expect(await registry.provider(id: "local-only-1") != nil)
+    }
+
+    @Test("A local save does not invalidate the PCC portion of an overlapping lifecycle refresh")
+    func localSaveKeepsIndependentCloudRefresh() async {
+        let cloud = AppleFoundationModelStatus(
+            model: .privateCloudCompute, availability: .available, contextTokens: 24_000
+        )
+        let provider = ScriptedAppleFoundationStatusProvider(cloudStatus: cloud, gateFirstRequest: true)
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: provider)
+        let ids = DeterministicIDGenerator(prefix: "overlap-local-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_200))
+        let refresh = Task { await vm.refreshAppleFoundationStatuses() }
+        await provider.waitUntilGateEntered()
+
+        await vm.createAppleFoundationModel(
+            name: "Local study", supportsThinking: false, maxContextTokens: 1,
+            model: .local, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+        await provider.releaseGate()
+        await refresh.value
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.map(\.id) == ["overlap-local-1"])
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == cloud)
+        #expect(await provider.requestedModels() == [.local, .local, .privateCloudCompute])
+    }
+
+    @Test("Overlapping Apple saves cannot both pass the per-view-model registration guard")
+    func overlappingAppleSavesDoNotDuplicateTheModel() async {
+        let provider = ScriptedAppleFoundationStatusProvider(
+            cloudStatus: AppleFoundationModelStatus(
+                model: .privateCloudCompute, availability: .available, contextTokens: 24_000
+            ), gateFirstRequest: true
+        )
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: provider)
+        let ids = DeterministicIDGenerator(prefix: "one-save-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_000))
+        let first = Task {
+            await vm.createAppleFoundationModel(
+                name: "PCC", supportsThinking: false, maxContextTokens: 1,
+                model: .privateCloudCompute, idGenerator: { ids.nextID() }, now: clock.now()
+            )
+        }
+        await provider.waitUntilGateEntered()
+        #expect(vm.isSavingAppleModel)
+
+        await vm.createAppleFoundationModel(
+            name: "Duplicate PCC", supportsThinking: false, maxContextTokens: 1,
+            model: .privateCloudCompute, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+        await provider.releaseGate()
+        #expect(await first.value?.id == "one-save-1")
+
+        #expect(repository.rows.map(\.id) == ["one-save-1"])
+        #expect(repository.rows.first?.name == "PCC")
+        #expect(ids.nextID() == "one-save-2")
+        #expect(vm.modelEditError == nil)
+        #expect(!vm.isSavingAppleModel)
     }
 
     @Test("createModel writes to repository and refreshes models list")
@@ -1649,7 +2104,7 @@ struct SettingsViewModelTests {
             repo.saveGate = gate
             repo.saveError = KeyRotationTestError.saveFailed
         }
-        let vm = makeViewModel(modelRepository: repo)
+        let vm = makeViewModel(modelRepository: repo, appleFoundationAvailability: .available)
         vm.openPane(.modelDetail(id: "m1"))
         let originSession = vm.beginModelFormSession()
         let mutation = Task { await runFormModelMutation(operation, in: vm, formSession: originSession) }
@@ -1689,7 +2144,7 @@ struct SettingsViewModelTests {
     func expiredModelMutationCannotClearCurrentError(operation: String) async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
-        let vm = makeViewModel(modelRepository: repo)
+        let vm = makeViewModel(modelRepository: repo, appleFoundationAvailability: .available)
         vm.openPane(.modelDetail(id: "m1"))
         let originSession = vm.beginModelFormSession()
         vm.popToRoot()
@@ -1889,6 +2344,59 @@ struct SettingsViewModelTests {
         #expect(vm.modelEditError == "Could not remove the model. Try again.")
         #expect(changes == 1)
         #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
+    }
+
+    @Test("Deleting one Apple variant keeps its sibling registered and selectable",
+          arguments: AppleFoundationModel.allCases)
+    func deletingAppleVariantPreservesItsSibling(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let deleted = try #require(rows.first { $0.modelId == model.rawValue })
+        let retained = try #require(rows.first { $0.modelId != model.rawValue })
+        try await registry.setActive(id: deleted.id)
+        let vm = makeViewModel(modelRepository: repository, llmProviderRegistry: registry)
+
+        let succeeded = await vm.deleteModel(id: deleted.id)
+
+        #expect(succeeded)
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows == [retained])
+        #expect(vm.models.map(\.id) == [retained.id])
+        #expect(await registry.provider(id: deleted.id) == nil)
+        #expect(await registry.provider(id: retained.id) != nil)
+        #expect(await registry.activeID() == retained.id)
+    }
+
+    @Test("Failed Apple deletion retains the row and its active provider",
+          arguments: AppleFoundationModel.allCases)
+    func failedAppleDeletionKeepsConfigurationAndProvider(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        repository.deleteError = ModelConfigurationRepositoryError.unknownModel(id: "synthetic-failure")
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let existing = try #require(rows.first { $0.modelId == model.rawValue })
+        try await registry.setActive(id: existing.id)
+        let vm = makeViewModel(modelRepository: repository, llmProviderRegistry: registry)
+
+        let succeeded = await vm.deleteModel(id: existing.id)
+
+        #expect(!succeeded)
+        #expect(vm.modelEditError == "Could not remove the model. Try again.")
+        #expect(repository.rows == rows)
+        #expect(Set(vm.models.map(\.id)) == Set(rows.map(\.id)))
+        #expect(await registry.allProviders().count == 2)
+        #expect(await registry.activeID() == existing.id)
     }
 
     @Test("monogram splits on space, dash, and underscore")
@@ -2302,6 +2810,8 @@ struct SettingsViewModelTests {
         modelListingService: (any ModelListingService)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
         appleFoundationContextTokens: Int = 4_096,
+        appleFoundationStatusProvider: (any AppleFoundationModelStatusProvider)? = nil,
+        clock: any Clock = FixedClock(Date(timeIntervalSince1970: 0)),
         audioSetup: ProviderAudioSetup? = nil,
         eventBus: SuperEventBus? = nil
     ) -> SettingsViewModel {
@@ -2321,19 +2831,121 @@ struct SettingsViewModelTests {
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
             webSearchPolicyReceiver: webSearchPolicyReceiver,
             hapticsEngine: hapticsEngine,
+            clock: clock,
             memoryRepository: memoryRepository,
             llmProviderRegistry: llmProviderRegistry,
             httpClient: httpClient,
             modelListingService: modelListingService,
             appleFoundationAvailability: appleFoundationAvailability,
             appleFoundationContextTokens: appleFoundationContextTokens,
+            appleFoundationStatusProvider: appleFoundationStatusProvider,
             audioSetup: audioSetup,
             eventBus: eventBus
+        )
+    }
+
+    private func makeAppleModelRecords() -> [ModelConfigurationRecord] {
+        AppleFoundationModel.allCases.map { model in
+            ModelConfigurationRecord(
+                id: "apple-\(model.rawValue)", name: model.displayName, baseURL: nil, apiKeyRef: nil,
+                modelId: model.rawValue, createdAt: Date(timeIntervalSince1970: 700),
+                kind: .appleFoundation, maxContextTokens: model.fallbackContextTokens
+            )
+        }
+    }
+
+    private func makeAppleStatusProvider(
+        localAvailability: AppleFoundationAvailability = .available,
+        cloudAvailability: AppleFoundationModelStatus.Availability = .available,
+        cloudQuota: AppleFoundationModelStatus.QuotaUsage? = nil,
+        supportsPrivateCloudCompute: Bool = true
+    ) -> FixedAppleFoundationModelStatusProvider {
+        FixedAppleFoundationModelStatusProvider(
+            localAvailability: localAvailability,
+            supportsPrivateCloudCompute: supportsPrivateCloudCompute,
+            privateCloudComputeStatus: AppleFoundationModelStatus(
+                model: .privateCloudCompute, availability: cloudAvailability,
+                contextTokens: 24_000, quota: cloudQuota
+            ),
+            localContextTokens: 8_192
         )
     }
 }
 
 // MARK: - Test doubles
+
+/// Traps on unrelated status reads, proving local persistence cannot depend on PCC metadata.
+private actor StrictAppleStatusProvider: AppleFoundationModelStatusProvider {
+    nonisolated let supportsPrivateCloudCompute = true
+    private let allowedModel: AppleFoundationModel?
+    private var requests: [AppleFoundationModel] = []
+
+    init(allowedModel: AppleFoundationModel?) {
+        self.allowedModel = allowedModel
+    }
+
+    func requestedModels() -> [AppleFoundationModel] { requests }
+
+    func status(for model: AppleFoundationModel) async -> AppleFoundationModelStatus {
+        precondition(model == allowedModel, "Unexpected Apple status read")
+        requests.append(model)
+        return AppleFoundationModelStatus(model: model, availability: .available, contextTokens: 8_192)
+    }
+}
+
+/// Mutable Apple readiness with an awaitable first-request gate; never consults the OS.
+private actor ScriptedAppleFoundationStatusProvider: AppleFoundationModelStatusProvider {
+    nonisolated let supportsPrivateCloudCompute = true
+    private var cloudStatus: AppleFoundationModelStatus
+    private var requests: [AppleFoundationModel] = []
+    private var gateFirstRequest: Bool
+    private var gateEntered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiter: CheckedContinuation<Void, Never>?
+
+    init(cloudStatus: AppleFoundationModelStatus, gateFirstRequest: Bool = false) {
+        self.cloudStatus = cloudStatus
+        self.gateFirstRequest = gateFirstRequest
+    }
+
+    func setCloudStatus(_ status: AppleFoundationModelStatus) {
+        precondition(status.model == .privateCloudCompute)
+        cloudStatus = status
+    }
+
+    func requestedModels() -> [AppleFoundationModel] { requests }
+
+    func waitUntilGateEntered() async {
+        if gateEntered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func releaseGate() {
+        guard let gateWaiter else { preconditionFailure("No Apple status request is waiting") }
+        self.gateWaiter = nil
+        gateWaiter.resume()
+    }
+
+    func status(for model: AppleFoundationModel) async -> AppleFoundationModelStatus {
+        requests.append(model)
+        if gateFirstRequest {
+            gateFirstRequest = false
+            await withCheckedContinuation { continuation in
+                gateWaiter = continuation
+                gateEntered = true
+                let waiters = entryWaiters
+                entryWaiters = []
+                for waiter in waiters { waiter.resume() }
+            }
+        }
+        switch model {
+        case .local:
+            return AppleFoundationModelStatus(model: model, availability: .available, contextTokens: 8_192)
+        case .privateCloudCompute:
+            return cloudStatus
+        }
+    }
+}
 
 private actor InMemorySettingRepository: SettingRepository {
     private var storage: [String: String] = [:]
@@ -2466,6 +3078,8 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     var saveGate: KeyRotationSaveGate?
     var deleteGate: KeyRotationSaveGate?
     var retiredKeyCleanupGate: KeyRotationSaveGate?
+    /// Drives delete failures without changing persistence or registered-provider state.
+    var deleteError: Error?
 
     init(rows: [ModelConfigurationRecord]) {
         self.rows = rows
@@ -2530,6 +3144,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         await deleteGate?.suspend()
         if let ref = row.apiKeyRef { try await deleteAPIKey(ref: ref) }
         if let error = deleteRowError { throw error }
+        if let error = deleteError { throw error }
         rows.removeAll { $0.id == id }
     }
     func setSelected(id: String) async throws {
