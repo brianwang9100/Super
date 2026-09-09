@@ -13,6 +13,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
+        // Use MarkdownUI's existing parser to remove internal-link semantics in scoped previews.
+        .package(url: "https://github.com/swiftlang/swift-cmark", from: "0.4.0"),
         .package(url: "https://github.com/johnsundell/splash.git", from: "0.16.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
     ],
@@ -26,6 +28,8 @@ let package = Package(
             name: "Core",
             dependencies: [
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+                .product(name: "cmark-gfm", package: "swift-cmark"),
+                .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
                 .product(name: "Splash", package: "splash"),
             ],
             // Bundles the four EB Garamond faces (Regular / Italic /

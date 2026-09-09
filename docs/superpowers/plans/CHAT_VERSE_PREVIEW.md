@@ -14,7 +14,7 @@
 
 - Workspace: `/Users/bwang/.codex/worktrees/3773/Super`; edit only this worktree.
 - No applet-to-applet imports; shared shell imports Core/Chat and opaque MiniApplet values.
-- No new persistent tables, dependencies, provider APIs, or cross-applet imports.
+- No new persistent tables, third-party packages or resolved versions, provider APIs, or cross-applet imports. Core explicitly declares MarkdownUI's already-resolved swift-cmark dependency to remove internal links through its parsed syntax tree.
 - Temporary chapter/selection state; explicit highlight/note/bookmark edits remain persistent.
 - Native `.sheet`, existing `SheetNavBar`, `SuperTypography`, and `SuperGlass` only.
 - Decorations stay GRDBQuery `@Query` with a chapter-specific reader identity.

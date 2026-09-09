@@ -234,7 +234,9 @@ their behavioral tests need no sweeping rename.
 Do not cancel accepted note/highlight writes or dispatched annotation jobs when
 the preview closes. Scoped presentation work is cancelled/invalidated; the
 app-lifetime dispatch subscriber remains attached once. No new persistent tables,
-dependencies, provider APIs, or cross-applet imports are introduced.
+third-party packages or resolved versions, provider APIs, or cross-applet imports
+are introduced. Core explicitly declares MarkdownUI's existing swift-cmark
+dependency to unwrap internal link nodes without reimplementing Markdown syntax.
 
 ## Errors and boundaries
 
