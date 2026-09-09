@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XCTest
 @testable import Core
 
 /// Verifies app-owned Apple identities, OS-independent status, and metadata caching.
@@ -132,9 +133,106 @@ struct AppleFoundationModelTests {
         #expect(await query.callCount == 2)
     }
 
+    @Test
+    func cancellingOneContextWaiterDoesNotWaitForOrCancelTheSharedQuery() async {
+        let query = GatedContextQuery([.success(32_768)])
+        let source = AppleFoundationContextProvider { await query.next() }
+        let completed = XCTestExpectation(description: "Cancelled metadata waiter finishes before query release")
+        let cancelled = Task {
+            let result = await source.resolve()
+            completed.fulfill()
+            return result
+        }
+        await query.waitUntilEntered()
+        let retained = Task { await source.resolve() }
+        cancelled.cancel()
+        // A deadline only detects a hung waiter; query ordering uses continuations, not sleeps.
+        let completion = await XCTWaiter.fulfillment(of: [completed], timeout: 2)
+        #expect(completion == .completed)
+        #expect(await source.cachedContextTokens() == nil)
+        await query.release()
+        #expect(await cancelled.value == .failure(.cancelled))
+        #expect(await retained.value == .success(32_768))
+        #expect(await source.resolve() == .success(32_768))
+        #expect(await query.callCount == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func precancelledContextWaiterDoesNotQueryOrUseCache(cached: Bool) async {
+        let query = ScriptedContextQuery([.success(8_192)])
+        let source = AppleFoundationContextProvider { await query.next() }
+        if cached { #expect(await source.resolve() == .success(8_192)) }
+        let gate = GatedContextQuery([.success(1)])
+        let task = Task {
+            _ = await gate.next()
+            return await source.resolve()
+        }
+        await gate.waitUntilEntered()
+        task.cancel()
+        await gate.release()
+        #expect(await task.value == .failure(.cancelled))
+        #expect(await query.callCount == (cached ? 1 : 0))
+    }
+
+    @Test(arguments: [Result<Int, LLMError>.failure(.rateLimited), .success(0)])
+    func cancelledWaiterDoesNotCacheFailedOrInvalidSharedMetadata(first: Result<Int, LLMError>) async {
+        let query = GatedContextQuery([first, .success(16_384)])
+        let source = AppleFoundationContextProvider { await query.next() }
+        let task = Task { await source.resolve() }
+        await query.waitUntilEntered()
+        task.cancel()
+        // Race completion against the cancellation-handler hop back to the actor.
+        await query.release()
+        #expect(await task.value == .failure(.cancelled))
+        // Join the still-pending query if cancellation won before its completion.
+        let result = await source.resolve()
+        if case .failure = result { #expect(await source.resolve() == .success(16_384)) }
+        else { #expect(result == .success(16_384)) }
+        #expect(await source.resolve() == .success(16_384))
+        #expect(await query.callCount == 2)
+    }
+
     private func code(of error: LLMError?) -> String? {
         if case .providerError(let code, _) = error { return code }
         return nil
+    }
+}
+
+/// Cancellation-ignoring query with an explicit entry/release handshake and strict outcomes.
+actor GatedContextQuery {
+    private var outcomes: [Result<Int, LLMError>]
+    private var entered = false
+    private var released = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+    private(set) var callCount = 0
+
+    init(_ outcomes: [Result<Int, LLMError>]) { self.outcomes = outcomes }
+
+    func next() async -> Result<Int, LLMError> {
+        precondition(!outcomes.isEmpty, "Unexpected context metadata query")
+        callCount += 1
+        let outcome = outcomes.removeFirst()
+        if !released {
+            await withCheckedContinuation { continuation in
+                releaseWaiter = continuation
+                entered = true
+                entryWaiters.forEach { $0.resume() }
+                entryWaiters.removeAll()
+            }
+        }
+        return outcome
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        releaseWaiter?.resume()
+        releaseWaiter = nil
     }
 }
 

@@ -260,7 +260,7 @@ class IOSCoverageTests(unittest.TestCase):
                 coverage.execution_summary(summary, tree, legacy, 0, False)
 
     def evidence(self, visual_covered=4, logic_covered=7):
-        output = self.workspace / "evidence"
+        output = Path(self.temporary.name) / "evidence"
         output.mkdir()
         invocation = {"sha": "same-source", "run_id": "42", "run_attempt": "1"}
         options = ["-scheme", "Chat", "-derivedDataPath", "/same-build", "-enableCodeCoverage", "YES"]
@@ -294,6 +294,49 @@ class IOSCoverageTests(unittest.TestCase):
             }.items():
                 coverage.write_json(folder / (name + ".json"), value)
         return output, invocation
+
+    def test_actual_repository_inputs_round_trip_capture_and_audit(self):
+        # Use the actual tracked tree, including package CLAUDE.md aliases. A
+        # synthetic all-regular-file inventory concealed the capture/audit mismatch.
+        self.workspace = Path(__file__).resolve().parents[2]
+        self.filename = "Packages/Chat/Sources/Chat/ViewModels/SettingsViewModel.swift"
+        self.inventory = coverage.source_inventory(self.workspace, "Chat", [self.filename])
+        inputs = coverage.command("git", "-C", str(self.workspace), "ls-files", "-z", "--", "Packages", "project.yml",
+                                  "Scripts/xcodegen-extras").strip("\0").split("\0")
+        capture = SimpleNamespace(workspace=self.workspace, inputs=inputs)
+        hashes = coverage.CaptureCoverage.hash_inputs(capture)
+        aliases = {f"Packages/{package}/CLAUDE.md" for package in ("Bible", "Chat", "Core", "Todo")}
+        self.assertEqual(set(hashes), set(inputs) - aliases)
+        output, invocation = self.evidence()
+        provenance = json.loads((output / "provenance.json").read_text())
+        coverage.write_json(output / "provenance.json", {**provenance, "input_hashes": hashes})
+        self.assertTrue(coverage.audit_evidence(output, self.workspace, invocation)["meets_threshold"])
+
+    def test_capture_and_audit_reject_unsafe_build_inputs(self):
+        target = self.workspace / self.filename
+        linked = target.with_name("Linked.swift")
+        linked.symlink_to(target)
+        directory = self.workspace / "linked-sources"
+        directory.symlink_to(target.parent, target_is_directory=True)
+        instruction = self.workspace / "Packages/Chat/Sources/Chat/CLAUDE.md"
+        instruction.symlink_to(target)
+        alias = self.workspace / "Packages/Chat/CLAUDE.md"
+        alias.symlink_to(target)  # Only an exact package-root AGENTS.md alias is exempt.
+        escaping = target.with_name("Escape.swift")
+        escaping.symlink_to("/etc/hosts")
+        names = [str(linked.relative_to(self.workspace)), str(instruction.relative_to(self.workspace)),
+                 "linked-sources/Example.swift", "Packages/Chat/CLAUDE.md",
+                 str(escaping.relative_to(self.workspace)), str(target),
+                 "Packages/Chat/Sources/Chat/../Chat/Example.swift", "../outside.swift"]
+        output, invocation = self.evidence()
+        provenance = json.loads((output / "provenance.json").read_text())
+        for name in names:
+            with self.subTest(name=name, phase="capture"), self.assertRaises(coverage.CoverageError):
+                coverage.CaptureCoverage.hash_inputs(SimpleNamespace(workspace=self.workspace, inputs=[name]))
+            coverage.write_json(output / "provenance.json", {
+                **provenance, "input_hashes": {name: self.inventory[self.filename]["sha256"]}})
+            with self.subTest(name=name, phase="audit"), self.assertRaises(coverage.CoverageError):
+                coverage.audit_evidence(output, self.workspace, invocation)
 
     def test_raw_evidence_recomputes_union_without_averaging_percentages(self):
         output, invocation = self.evidence()

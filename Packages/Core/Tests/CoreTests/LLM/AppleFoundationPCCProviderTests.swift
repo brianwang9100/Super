@@ -1,6 +1,7 @@
 import FoundationModels
 import Foundation
 import Testing
+import XCTest
 @testable import Core
 
 /// Exercises the shared PCC streaming engine with injected status/session data;
@@ -47,6 +48,48 @@ struct AppleFoundationPCCProviderTests {
         #expect(resolved.maxContextTokens == 32_768)
         #expect(provider.supportedModels[0].maxContextTokens == 32_768)
         #expect(await status.requests == [.privateCloudCompute])
+    }
+
+    @Test
+    func cancellingPCCResolutionFinishesBeforeMetadataAndNeverStartsGeneration() async {
+        let query = GatedContextQuery([.success(32_768)])
+        let context = AppleFoundationContextProvider { await query.next() }
+        let recorder = TranscriptRecorder()
+        let provider = AppleFoundationLLMProvider(
+            model: .privateCloudCompute,
+            initialStatus: .init(model: .privateCloudCompute, availability: .available),
+            status: {
+                switch await context.resolve() {
+                case .success(let tokens):
+                    return .init(model: .privateCloudCompute, availability: .available, contextTokens: tokens)
+                case .failure(let error):
+                    return .init(model: .privateCloudCompute, availability: .available, metadataError: error)
+                }
+            },
+            sessionFactory: { transcript, _ in
+                recorder.record(transcript)
+                return MockLanguageSession(outcome: .snapshots(["must not generate"]))
+            }
+        )
+        let completed = XCTestExpectation(description: "Cancelled PCC resolution releases its caller")
+        let task = Task { () -> LLMError? in
+            defer { completed.fulfill() }
+            do {
+                _ = try await provider.resolveModel(provider.supportedModels[0])
+                _ = try await run(provider)
+                return nil
+            } catch { return error as? LLMError }
+        }
+        await query.waitUntilEntered()
+        task.cancel()
+        let completion = await XCTWaiter.fulfillment(of: [completed], timeout: 2)
+        #expect(completion == .completed)
+        #expect(recorder.all.isEmpty)
+        await query.release()
+        #expect(await task.value == .cancelled)
+        #expect(await context.resolve() == .success(32_768))
+        #expect(recorder.all.isEmpty)
+        #expect(provider.supportedModels[0].maxContextTokens == 0)
     }
 
     @Test

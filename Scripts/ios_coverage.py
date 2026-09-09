@@ -295,6 +295,31 @@ def build_inventory(derived_data):
     return result
 
 
+def input_hashes(workspace, names):
+    """Fingerprint build inputs with the same fail-closed policy at capture and audit."""
+    workspace = workspace.resolve()
+    hashes = {}
+    for name in names:
+        require(isinstance(name, str) and name, "Unsafe coverage input path")
+        relative = Path(name)
+        require(not relative.is_absolute() and ".." not in relative.parts
+                and relative.as_posix() == name, "Unsafe coverage input path")
+        path = workspace / relative
+        # These package-root instruction aliases cannot be compiled or copied as
+        # target resources. Their canonical AGENTS.md files remain fingerprinted.
+        # Do not exempt a similarly named file inside Sources/Tests/resources.
+        if (len(relative.parts) == 3 and relative.parts[0] == "Packages"
+                and relative.name == "CLAUDE.md" and path.is_symlink()):
+            target = path.with_name("AGENTS.md")
+            require(path.readlink() == Path("AGENTS.md") and target.is_file()
+                    and target.resolve() == target, "Unsafe coverage instruction alias")
+            continue
+        require(path.is_file() and not path.is_symlink() and path.resolve() == path,
+                "Unsafe coverage input path")
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
 class CaptureCoverage:
     """Collect visual and logic results without rebuilding or concurrent visual suites."""
 
@@ -320,7 +345,7 @@ class CaptureCoverage:
         write_json(self.folder / "provenance.json", self.provenance)
 
     def hash_inputs(self):
-        return {name: hashlib.sha256((self.workspace / name).read_bytes()).hexdigest() for name in self.inputs}
+        return input_hashes(self.workspace, self.inputs)
 
     def prepare(self, options):
         require(self.hash_inputs() == self.input_hashes, "Sources changed during instrumented build")
@@ -379,10 +404,8 @@ def audit_evidence(folder, workspace, invocation, enforce_floor=True):
             "Coverage source hashes do not match the checkout")
     require(provenance.get("build_products"), "Missing same-build identity")
     require(provenance.get("completed") is True, "Capture did not verify final source/build identity")
-    for name, digest in provenance["input_hashes"].items():
-        path = workspace / name
-        require(not path.is_symlink() and path.resolve().is_relative_to(workspace), "Unsafe coverage input path")
-        require(hashlib.sha256(path.read_bytes()).hexdigest() == digest, "Test/build inputs do not match checkout")
+    require(input_hashes(workspace, provenance["input_hashes"]) == provenance["input_hashes"],
+            "Test/build inputs do not match checkout")
     expected = expected_tests(json.loads((folder / "enumeration.json").read_text()), scheme)
     suites = provenance["suites"]
     require(isinstance(suites, list) and len(suites) == len(set(suites)) and suites,
