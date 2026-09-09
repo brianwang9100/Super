@@ -6,7 +6,7 @@
 
 **Architecture:** Separate `.previewRecord` from `.openRecord`, with applet-owned opaque preview content presented by the shared shell. Compose the preview and full reader from shared chapter/study views, using isolated reading models and an applet-lifetime annotation dispatcher.
 
-**Tech Stack:** Swift 6, SwiftUI native sheets, Observation, GRDBQuery, SuperEventBus, Swift Testing, VisualTestSupport/Argos.
+**Tech Stack:** Swift 6, SwiftUI native sheets, Observation, GRDBQuery, SuperEventBus, Swift Testing, VisualTestSupport/repository PNG baselines.
 
 **Spec:** [Chat verse preview design](../specs/CHAT_VERSE_PREVIEW_DESIGN.md)
 
@@ -20,7 +20,7 @@
 - Decorations stay GRDBQuery `@Query` with a chapter-specific reader identity.
 - Xcode 26.4.1 (`17E202`), iOS 26.4.1 (`23E254a`), iPhone 17; confirm live pins before QA.
 - New public declarations/test suites have short documentation; async tests use completion seams, never sleeps/polling.
-- Preserve existing capture coverage; Argos is the sole baseline; no committed visual PNGs.
+- Preserve existing capture coverage; reviewed repository PNGs are the baseline; commit intentional images after explicit recording and comparison.
 
 ## Task 1: Share annotation dispatch without sharing reader state
 
@@ -159,3 +159,5 @@ reviewers approved the final revisions with no remaining serious issues. The
 architecture reviewer additionally approved one-time/coalesced initial restoration
 with navigation/translation precedence tests. The user approved implementation and
 stacked PRs on 2026-09-08.
+
+Repository snapshot restoration: the stack now includes main's PR #354 rollback. The preview layer explicitly recorded and inspected its three new modal baselines on pinned Xcode 26.4.1/iOS 26.4.1 after default comparison rejected the missing files. Existing baselines and rendering tolerances are preserved. The integration layer updates those same three files for the final approved floating-pill design. Live protection was verified to require build, lint, gitleaks, ios-test, swift-test, and native-previews with their existing GitHub Actions app bindings; Argos is no longer a gate.
