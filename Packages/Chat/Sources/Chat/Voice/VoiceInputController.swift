@@ -1,148 +1,150 @@
 import Core
 import Foundation
 
-/// `@Observable @MainActor` view-model collaborator owned by
-/// ``ChatScreenViewModel`` (one per chat screen). Coordinates a single
-/// in-flight ``VoiceInputService`` session: drives `toggle()`/`stop()`
-/// from the composer mic button, exposes the live `partialTranscript`
-/// for the composer to render, and fires `onFinalTranscript` once at
-/// session end so the view model can commit the text into the composer
-/// buffer.
-///
-/// State machine (per spec §5.3):
-///
-///     .idle ── toggle()/permissions OK + available ──► .listening
-///       ▲                                                │
-///       └── stop() / .final / silenceTimeout ────────────┘
-///
-///     .idle ── permissions denied ────► .denied
-///     .idle ── !isAvailable ──────────► .unavailable
-///     .listening ── stream throws ────► .failed(reason)
-///
-/// `toggle()` is idempotent across rapid calls — a second tap inside the
-/// same task tick (before `state` flips to `.listening`) is dropped.
+/// One ordered voice update. Consumers append `appendedText` to their own draft
+/// and render `preview` separately. State, append, and preview change atomically.
+public struct VoiceInputUpdate: Sendable, Equatable {
+    /// Monotonic delivery revision, including updates across recording sessions.
+    public let revision: Int
+    /// New completed phrase only; never an accumulated transcript or replacement.
+    public let appendedText: String
+    /// Revisable current utterance, separate from previously completed phrases.
+    public let preview: String
+    /// State after this update's phrase has been committed.
+    public let state: VoiceInputController.State
+}
+
+/// Independent microphone component. Owns recognition and capture lifetime and
+/// publishes append-only phrases through `updates()`, without knowing composer text.
 @Observable
 @MainActor
 public final class VoiceInputController {
-    /// Coarse UI state. The composer dims its mic on `.unavailable`,
-    /// renders the recording stop button on `.listening`, and the view
-    /// model maps `.denied`/`.failed` to the error banner via
-    /// `handleVoiceStateChange(_:)`.
+    /// Capture and permission state projected by subscribers into their UI.
     public enum State: Equatable, Sendable {
         case idle
         case listening
+        case stopping
         case denied
         case unavailable
         case failed(String)
+
+        /// Keeps recording controls active while captured events finish draining.
+        public var isRecording: Bool { self == .listening || self == .stopping }
     }
 
+    /// Immediate capture state; text consumers use the state in their ordered updates.
     public private(set) var state: State = .idle {
         didSet {
             if state == .listening && oldValue != .listening { audioActivity?.beginCapture() }
             if state != .listening && oldValue == .listening { audioActivity?.endCapture() }
         }
     }
-    /// Most recent `.partial` transcript from the active session. The
-    /// service accumulates utterances committed across natural pauses
-    /// inside a single session, so this value grows as the user keeps
-    /// speaking — a pause-then-resume looks like a single continuous
-    /// dictation, not two separate sessions. Empty outside
-    /// `.listening`.
-    public private(set) var partialTranscript: String = ""
 
-    /// Fires once per session with the committed final text (including
-    /// the silence-timeout commit path). The view model installs this in
-    /// init to write the transcript into the composer text buffer.
-    public var onFinalTranscript: ((String) -> Void)?
+    /// Current provisional utterance, excluding all already-published phrases.
+    public var partialTranscript: String { accumulator.partialTranscript }
 
     private let audioActivity: AudioActivity?
     private let service: any VoiceInputService
+    private var accumulator = DictationTranscriptAccumulator()
     private var streamTask: Task<Void, Never>?
-    /// Set true on every `toggle()` start path, cleared on completion,
-    /// so a second `toggle()` arriving in the same task tick (before
-    /// `state` flips to `.listening`) doesn't double-start the service.
     private var isStarting = false
     private var generation = 0
+    private var startIntent = 0
+    private var nextSubscriberID = 0
+    private var subscribers: [Int: AsyncStream<VoiceInputUpdate>.Continuation] = [:]
+    private(set) var revision = 0
 
+    /// Creates a component with an injectable recognition service and capture gate.
     public init(service: any VoiceInputService, audioActivity: AudioActivity? = nil) {
         self.service = service
         self.audioActivity = audioActivity
-        // Initial availability check — if no on-device model is
-        // installed for the device locale, boot into `.unavailable` so
-        // the composer dims the mic button before the user ever taps it.
-        if !service.isAvailable(locale: .current) {
-            self.state = .unavailable
-        }
+        if !service.isAvailable(locale: .current) { state = .unavailable }
     }
 
-    /// Start a new session if idle, stop the current one if listening.
-    /// Idempotent across rapid calls inside the same task tick.
-    public func toggle(locale: Locale = .current) async {
-        switch state {
-        case .listening:
-            stop()
-            return
-        case .unavailable:
-            // Defensive arm — the composer renders the mic as
-            // `.disabled(true)` while state is `.unavailable`, so a tap
-            // shouldn't normally reach the controller in this state. If
-            // it does (e.g. a programmatic invocation), re-check
-            // availability in case the locale's on-device model finished
-            // downloading since boot, and either drop into `.idle` to
-            // continue or return silently — the dimmed mic conveys the
-            // unavailable state on its own; no banner.
-            if service.isAvailable(locale: locale) {
-                state = .idle
-            } else {
-                return
-            }
-        case .denied, .failed, .idle:
-            break
-        }
+    isolated deinit {
+        streamTask?.cancel()
+        service.stopRecognition()
+        if state == .listening { audioActivity?.endCapture() }
+        for continuation in subscribers.values { continuation.finish() }
+        processedEventSignal?.finish()
+    }
 
+    /// Subscribe before starting capture. Unbounded buffering preserves every phrase.
+    /// Only state/preview replay on subscription; previous additions never replay.
+    /// Cancelling a subscription removes it without affecting another consumer.
+    public func updates() -> AsyncStream<VoiceInputUpdate> {
+        nextSubscriberID += 1
+        let id = nextSubscriberID
+        let (stream, continuation) = AsyncStream<VoiceInputUpdate>.makeStream()
+        subscribers[id] = continuation
+        continuation.yield(update(appending: ""))
+        continuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in self?.subscribers[id] = nil }
+        }
+        return stream
+    }
+
+    /// Starts capture, or stops if already listening. Concurrent permission requests
+    /// cannot double-start, and a stop invalidates a still-pending permission result.
+    public func toggle(locale: Locale = .current) async {
+        let intent = startIntent
+        if state == .listening {
+            stop()
+            await streamTask?.value
+            return
+        }
+        if state == .stopping {
+            await streamTask?.value
+            // Another pending toggle may already have started the next session.
+            guard startIntent == intent, !state.isRecording, !Task.isCancelled else { return }
+        }
         guard !isStarting else { return }
-        isStarting = true
+        if state == .unavailable && !service.isAvailable(locale: locale) { return }
+        generation += 1
         let session = generation
+        isStarting = true
         defer { if generation == session { isStarting = false } }
 
         let permission = await service.requestPermissions()
-        guard generation == session, !Task.isCancelled else { return }
+        guard generation == session, startIntent == intent, !Task.isCancelled else { return }
         guard permission == .granted else {
             state = .denied
+            publish()
             return
         }
         guard service.isAvailable(locale: locale) else {
             state = .unavailable
+            publish()
             return
         }
-
-        partialTranscript = ""
+        accumulator = DictationTranscriptAccumulator()
         state = .listening
-        startStream(locale: locale)
+        publish()
+        startStream(locale: locale, session: session)
     }
 
-    /// Cancel the in-flight stream. The service's `onTermination` block
-    /// tears down the audio engine; the controller resets to `.idle`
-    /// here without waiting for a final event.
+    /// Releases capture immediately, then drains already-buffered recognition events.
+    /// The stopping state holds Send disabled until the final phrase is delivered.
     public func stop() {
-        generation += 1
-        isStarting = false
-        streamTask?.cancel()
-        streamTask = nil
+        startIntent += 1
+        guard state != .stopping else { return }
         if state == .listening {
-            // Commit whatever partial we have so a user-initiated stop
-            // behaves the same as an upstream `.final` event. This is
-            // the spec §6 "final transcript (last partial) commits"
-            // path that also runs on silence timeout.
-            let committed = partialTranscript
-            partialTranscript = ""
-            state = .idle
-            onFinalTranscript?(committed)
+            service.stopRecognition()
+            state = .stopping
+            publish()
+        } else {
+            // Invalidate pending permissions without discarding queued speech.
+            generation += 1
+            isStarting = false
         }
     }
 
-    private func startStream(locale: Locale) {
-        let session = generation
+    /// Test drain seam for a stop that has released audio but still has buffered events.
+    func _waitForPendingStop() async {
+        if state == .stopping { await streamTask?.value }
+    }
+
+    private func startStream(locale: Locale, session: Int) {
         let stream = service.startRecognition(locale: locale)
         streamTask = Task { [weak self] in
             do {
@@ -150,93 +152,72 @@ public final class VoiceInputController {
                     guard let self, !Task.isCancelled, self.generation == session else { return }
                     self.handle(event)
                     self.signalProcessedEvent()
+                    if self.generation != session { return }
                 }
-                // Stream ended cleanly without a `.final` event — treat
-                // as a normal stop so the controller doesn't strand in
-                // `.listening`.
                 guard let self, !Task.isCancelled, self.generation == session else { return }
-                if self.state == .listening {
-                    let committed = self.partialTranscript
-                    self.partialTranscript = ""
-                    self.state = .idle
-                    self.onFinalTranscript?(committed)
-                }
-                self.signalProcessedEvent()
-            } catch is CancellationError {
-                // `stop()` already wrote the terminal state.
-                return
-            } catch let error as VoiceInputError {
-                guard let self, !Task.isCancelled, self.generation == session else { return }
-                self.handle(error)
+                self.finish(with: .idle)
                 self.signalProcessedEvent()
             } catch {
                 guard let self, !Task.isCancelled, self.generation == session else { return }
-                self.partialTranscript = ""
-                self.state = .failed(error.localizedDescription)
+                self.finish(with: Self.terminalState(for: error))
                 self.signalProcessedEvent()
             }
         }
     }
 
-    // MARK: - Test seam
+    private func handle(_ event: VoiceInputEvent) {
+        switch event {
+        case .partial(let text):
+            accumulator.ingestPartial(text)
+            publish()
+        case .utterance(let text):
+            publish(appending: accumulator.commitCurrentUtterance(text))
+        case .final(let text):
+            finish(with: .idle, finalText: text)
+        }
+    }
 
-    /// Test-only signal stream. When a test installs it via
-    /// ``_observeProcessedEvents()``, the controller yields `()` once after
-    /// every stream event it handles and every stream-driven terminal
-    /// transition — so a test can await the controller's reaction on an
-    /// observable signal instead of polling `Task.yield()`. Left nil in
-    /// production, where the yield is a cheap optional no-op. Underscore
-    /// surface = test-only, not stable API.
+    private func finish(with terminalState: State, finalText: String = "") {
+        let phrase = accumulator.commitCurrentUtterance(finalText)
+        generation += 1
+        isStarting = false
+        // Explicit service teardown precedes releasing the shared audio gate.
+        service.stopRecognition()
+        streamTask?.cancel()
+        streamTask = nil
+        state = terminalState
+        publish(appending: phrase)
+    }
+
+    private static func terminalState(for error: Error) -> State {
+        switch error {
+        case VoiceInputError.silenceTimeout, is CancellationError: .idle
+        case VoiceInputError.permissionDenied: .denied
+        case VoiceInputError.unavailable: .unavailable
+        case VoiceInputError.recognizerFailed(let reason), VoiceInputError.audioEngineFailed(let reason): .failed(reason)
+        default: .failed(error.localizedDescription)
+        }
+    }
+
+    private func update(appending text: String) -> VoiceInputUpdate {
+        VoiceInputUpdate(revision: revision, appendedText: text, preview: partialTranscript, state: state)
+    }
+
+    private func publish(appending text: String = "") {
+        revision += 1
+        let event = update(appending: text)
+        for continuation in subscribers.values { continuation.yield(event) }
+    }
+
     private var processedEventSignal: AsyncStream<Void>.Continuation?
 
-    /// Install (replacing any prior) the processed-event signal and return the
-    /// stream a test drains — one value per event the stream task handles.
-    /// `AsyncStream` buffers, so a signal emitted before the test reads it is
-    /// not lost; the test may `emit(...)` then `await iterator.next()` in
-    /// either interleaving.
+    /// Deterministic test seam: one signal after each handled service event or ending.
     func _observeProcessedEvents() -> AsyncStream<Void> {
-        // Finish any prior stream so an iterator held on it terminates rather
-        // than hanging — makes the seam safe if a test reuses a controller.
         processedEventSignal?.finish()
         let (stream, continuation) = AsyncStream<Void>.makeStream()
         processedEventSignal = continuation
         return stream
     }
 
-    private func signalProcessedEvent() {
-        processedEventSignal?.yield(())
-    }
-
-    private func handle(_ event: VoiceInputEvent) {
-        switch event {
-        case .partial(let text):
-            partialTranscript = text
-        case .final(let text):
-            partialTranscript = ""
-            state = .idle
-            onFinalTranscript?(text)
-        }
-    }
-
-    private func handle(_ error: VoiceInputError) {
-        switch error {
-        case .silenceTimeout:
-            // Treat as a normal stop — commit whatever the most recent
-            // `.partial` was. Per spec §7 "final transcript (last
-            // partial) commits; controller returns to `.idle`; no banner".
-            let committed = partialTranscript
-            partialTranscript = ""
-            state = .idle
-            onFinalTranscript?(committed)
-        case .permissionDenied:
-            partialTranscript = ""
-            state = .denied
-        case .unavailable:
-            partialTranscript = ""
-            state = .unavailable
-        case .recognizerFailed(let reason), .audioEngineFailed(let reason):
-            partialTranscript = ""
-            state = .failed(reason)
-        }
-    }
+    private func signalProcessedEvent() { processedEventSignal?.yield(()) }
 }

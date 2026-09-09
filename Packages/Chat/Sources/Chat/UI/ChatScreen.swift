@@ -492,9 +492,6 @@ public struct ChatScreen: View {
             viewModel.adoptPendingReferences()
             await viewModel.load()
         }
-        .onChange(of: viewModel.voice.state) { _, newState in
-            viewModel.handleVoiceStateChange(newState)
-        }
         // When the surface collapses past the editor-interactive threshold
         // the composer's `TextField` becomes `.disabled`. Disabling a
         // focused field does not clear `@FocusState`, so without this the
@@ -548,8 +545,8 @@ public struct ChatScreen: View {
                 Task { await viewModel.handleMicTap() }
             },
             onCancelStreaming: viewModel.cancelStreaming,
-            isRecording: viewModel.voice.state == .listening,
-            isMicAvailable: viewModel.voice.state != .unavailable,
+            isRecording: viewModel.voiceState.isRecording,
+            isMicAvailable: viewModel.voiceState != .unavailable,
             onStopRecording: viewModel.handleStopRecording,
             progress: progress,
             references: viewModel.pendingReferences.map {
@@ -635,34 +632,13 @@ public struct ChatScreen: View {
         #endif
     }
 
-    /// Composer binding that splices the live partial transcript onto
-    /// the user-typed prefix while recording, and bypasses to the plain
-    /// `composerText` everywhere else. Lives in the view (not the view
-    /// model) so the binding logic stays adjacent to the `TextField`
-    /// it feeds.
+    /// Live speech is a display-only preview beside the current draft. Only user
+    /// edits write this binding; voice additions arrive through the subscription.
     private var composerBinding: Binding<String> {
         Binding(
-            get: {
-                if viewModel.voice.state == .listening {
-                    let partial = viewModel.voice.partialTranscript
-                    let prefix = viewModel.committedComposerText
-                    if partial.isEmpty {
-                        return prefix
-                    } else if prefix.isEmpty {
-                        return partial
-                    } else {
-                        return "\(prefix) \(partial)"
-                    }
-                }
-                return viewModel.composerText
-            },
+            get: { viewModel.displayedComposerText },
             set: { newValue in
-                // Defense in depth: the `TextField` is `.disabled` while
-                // recording so writes shouldn't reach this set: arm,
-                // but a future caller forgetting to disable would let a
-                // mid-recording write replace the user's prefix while
-                // partials keep streaming. Guard explicitly.
-                guard viewModel.voice.state != .listening else { return }
+                guard !viewModel.voiceState.isRecording else { return }
                 viewModel.composerText = newValue
             }
         )

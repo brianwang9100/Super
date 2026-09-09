@@ -83,6 +83,8 @@ The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolC
 
 Owns: composer buffer, projected `MessageList.Item` list, live `streamingTail`, terminal `error`, model selection, the active verbosity used for rendering (seeded at init from `ChatSettings.defaultVerbosity` and pushed in by the host when the Settings sheet changes it), used/max token counts, header title (mutated by `TitleGenerator` after the first exchange), and a `VoiceInputController` collaborator.
 
+Voice input is an independent `VoiceInputController` component. The view model subscribes to its unbounded `AsyncStream<VoiceInputUpdate>` before capture starts. Each update appends one completed phrase to the current `composerText` and atomically projects `voicePreview` and `voiceState`. The screen renders `displayedComposerText` (draft plus provisional preview); it never snapshots the draft at microphone start or replaces it with a whole-session transcript. Empty callbacks retain the pending hypothesis, and stop, timeout, clean completion, and failures flush it once. Capture stops synchronously before another session can take ownership; the send control becomes available only after the final append is consumed.
+
 Driven by: an injected `ChatSessionDriver` (in production a `LiveChatSessionDriver` wrapping the per-conversation `ChatSession` actor from `ChatSessionStore`). The view model consumes the actor's `AsyncStream<ChatEvent>` and folds each event into observable state — that's the bridge between the orchestration loop in ARCHITECTURE §5 and what SwiftUI re-renders.
 
 ---

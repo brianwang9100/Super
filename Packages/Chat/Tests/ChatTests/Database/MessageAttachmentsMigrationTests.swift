@@ -4,19 +4,10 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Tests for the `v2_messageAttachments` migration — the additive
-/// `attachmentsJSON` column and a full GRDB round-trip of a `MessageRecord`
-/// carrying a verse-reference attachment.
+/// Tests for the GRDB encoding and decoding of nullable message attachments.
+/// The shared schema snapshot owns the attachments-column shape.
 @Suite("MessageRecord attachments migration")
 struct MessageAttachmentsMigrationTests {
-    @Test func v2AddsAttachmentsJSONColumnToMessageTable() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try db.columns(in: "message").map(\.name)
-        }
-        #expect(columns.contains("attachmentsJSON"))
-    }
-
     @Test func messageWithAttachmentsRoundTripsThroughGRDB() async throws {
         let db = try ChatDatabase.makeInMemory()
         let now = Date(timeIntervalSince1970: 1_700_000_000)

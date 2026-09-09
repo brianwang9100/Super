@@ -3,42 +3,52 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `BibleDatabase` — the migrations produce the expected
-/// reading-position and highlight schema.
+/// Tests highlight uniqueness and seeded historical data upgrades.
+/// `BibleSchemaSnapshotTests` owns the complete current schema inventory.
 @Suite("BibleDatabase")
 struct BibleDatabaseTests {
-    @Test("v1 creates the reading-position table with its columns")
-    func v1CreatesSchema() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let columns = try database.queue.read { db in
-            try db.columns(in: "bibleReadingPosition").map(\.name)
-        }
-        #expect(
-            Set(columns) == ["id", "bookId", "chapterNumber", "translationId", "updatedAt"]
-        )
-    }
+    @Test("v13 adds nullable history while preserving v12 reading and unrelated rows")
+    func v13MigratesLegacyReadingPosition() throws {
+        let queue = try DatabaseQueue()
+        var migrator = DatabaseMigrator()
+        registerBibleMigrations(&migrator)
+        try migrator.migrate(queue, upTo: "v12_narrationPrefetch")
 
-    @Test("v2 creates the highlight table with its columns")
-    func v2CreatesHighlightSchema() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let columns = try database.queue.read { db in
-            try db.columns(in: "bibleHighlight").map(\.name)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO bibleReadingPosition
+                    (id, bookId, chapterNumber, translationId, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: ["current", "ROM", 8, "KJV", now]
+            )
+            try BibleHighlightRecord(
+                id: "survivor",
+                bookId: "ROM",
+                chapterNumber: 8,
+                verseNumber: 28,
+                colorId: "yellow",
+                createdAt: now,
+                updatedAt: now
+            ).insert(db)
         }
-        #expect(Set(columns) == [
-            "id", "bookId", "chapterNumber", "verseNumber",
-            "colorId", "createdAt", "updatedAt", "deletedAt",
-        ])
-    }
 
-    @Test("v2 indexes the highlight table for the chapter query and soft delete")
-    func v2CreatesHighlightIndexes() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let indexes = try database.queue.read { db in
-            try db.indexes(on: "bibleHighlight")
+        try migrator.migrate(queue)
+
+        let (position, highlightCount) = try queue.read { db in
+            (
+                try BibleReadingPositionRecord.fetchOne(db, key: "current"),
+                try BibleHighlightRecord.fetchCount(db)
+            )
         }
-        let verseIndex = indexes.first { $0.name == "bibleHighlight_on_bookId_chapterNumber_verseNumber" }
-        #expect(verseIndex?.isUnique == true, "the verse index enforces one row per verse")
-        #expect(indexes.contains { $0.name == "bibleHighlight_on_deletedAt" })
+        let restored = try #require(position)
+        #expect(restored.bookId == "ROM")
+        #expect(restored.chapterNumber == 8)
+        #expect(restored.translationId == "KJV")
+        #expect(restored.navigationHistoryJSON == nil)
+        #expect(highlightCount == 1)
     }
 
     @Test("v2 rejects a second row for the same verse")
@@ -57,43 +67,6 @@ struct BibleDatabaseTests {
         }
     }
 
-    @Test("the annotation table carries a summary column (category/title/body dropped by v9)")
-    func annotationSchemaHasSummary() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let columns = try database.queue.read { db in
-            try db.columns(in: "bibleAnnotation").map(\.name)
-        }
-        #expect(Set(columns) == [
-            "id", "target", "bookId", "chapterNumber",
-            "verseStart", "verseEnd", "summary",
-            "source", "modelId", "createdAt",
-        ])
-        #expect(!columns.contains("category"), "v9 replaced the multi-card columns with summary")
-        #expect(!columns.contains("title"))
-        #expect(!columns.contains("body"))
-    }
-
-    @Test("the annotation table indexes chapter and book lookups")
-    func annotationIndexesSurviveTheV9Rebuild() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let indexes = try database.queue.read { db in
-            try db.indexes(on: "bibleAnnotation")
-        }
-        // The chapter-positioning index drives the reader's `@Query` and
-        // groups bubbles by `verseEnd`. The target+book index drives the
-        // book-picker's `BookAnnotationsExistenceRequest`. Neither is
-        // UNIQUE — the table tolerates multiple rows per target group, with
-        // ordering enforced by `(createdAt, id)` rather than the schema.
-        #expect(indexes.contains {
-            $0.name == "bibleAnnotation_on_bookId_chapterNumber_verseEnd"
-                && $0.isUnique == false
-        })
-        #expect(indexes.contains {
-            $0.name == "bibleAnnotation_on_target_bookId"
-                && $0.isUnique == false
-        })
-    }
-
     /// The legacy → v9 upgrade path: a database stopped at v8 carries the
     /// multi-card `(category, title, body)` annotation shape; running the
     /// full migrator must drop those rows wholesale (destructive by
@@ -108,12 +81,44 @@ struct BibleDatabaseTests {
         registerBibleMigrations(&migrator)
 
         try migrator.migrate(queue, upTo: "v8_createBookmark")
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let position = BibleReadingPositionRecord(
+            bookId: "JHN", chapterNumber: 3, translationId: "KJV", updatedAt: date
+        )
+        let highlight = BibleHighlightRecord(
+            id: "highlight", bookId: "JHN", chapterNumber: 3, verseNumber: 16,
+            colorId: "yellow", createdAt: date, updatedAt: date
+        )
+        let bookmark = BibleBookmarkRecord(
+            id: "bookmark", colorId: "red", bookId: "JHN", chapterNumber: 3, createdAt: date
+        )
+        let note = BibleNoteRecord(
+            id: "note", target: .verse, bookId: "JHN", chapterNumber: 3,
+            verseStart: 16, verseEnd: 17, body: "Keep my note", source: .user,
+            createdAt: date, updatedAt: date
+        )
         // One legacy multi-card row, inserted raw against the v5 shape
         // (category as its Int raw value), plus a finished bulk-ledger run
         // whose `done` unit asserts that row exists — v9 must clear both,
         // or a resumed run would report chapters annotated whose rows the
         // rebuild just dropped.
         try queue.write { db in
+            // Seed the historical columns; the current record also encodes
+            // navigationHistoryJSON, which is introduced after this v8 schema.
+            try db.execute(
+                sql: """
+                    INSERT INTO bibleReadingPosition
+                    (id, bookId, chapterNumber, translationId, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    position.id, position.bookId, position.chapterNumber,
+                    position.translationId, position.updatedAt,
+                ]
+            )
+            try highlight.insert(db)
+            try bookmark.insert(db)
+            try note.insert(db)
             try db.execute(
                 sql: """
                 INSERT INTO bibleAnnotation
@@ -159,5 +164,19 @@ struct BibleDatabaseTests {
         // Units are deleted explicitly — the v6 cascade doesn't fire inside
         // migrations (DatabaseMigrator runs with foreign keys off).
         #expect(unitCount == 0, "ledger units are cleared with their runs")
+        // v9 intentionally drops annotations and their ledger, while preserving
+        // unrelated reader state and user-authored content byte for byte.
+        let preserved = try queue.read { db in
+            (
+                try BibleReadingPositionRecord.fetchAll(db),
+                try BibleHighlightRecord.fetchAll(db),
+                try BibleBookmarkRecord.fetchAll(db),
+                try BibleNoteRecord.fetchAll(db)
+            )
+        }
+        #expect(preserved.0 == [position])
+        #expect(preserved.1 == [highlight])
+        #expect(preserved.2 == [bookmark])
+        #expect(preserved.3 == [note])
     }
 }

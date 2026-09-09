@@ -1,4 +1,5 @@
 import Foundation
+import os
 @testable import Chat
 
 /// In-memory ``VoiceInputService`` test double. Tests configure
@@ -13,11 +14,14 @@ import Foundation
 /// until the test calls `emit` or `finish`. Tests assert against
 /// `startCallCount` to catch double-start regressions.
 final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = OSAllocatedUnfairLock()
     private var _permissionStatus: VoiceInputPermissionStatus = .granted
     private var _isAvailableValue: Bool = true
     private var _startCallCount: Int = 0
     private var continuation: AsyncThrowingStream<VoiceInputEvent, Error>.Continuation?
+    private var generation = 0
+    private var pendingStop: AsyncThrowingStream<VoiceInputEvent, Error>.Continuation?
+    private var delaysStopCompletion = false
     private var permissionGate: PermissionGate?
 
     var permissionStatus: VoiceInputPermissionStatus {
@@ -56,7 +60,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
     }
 
     /// Synchronous read of `permissionGate` so `requestPermissions`
-    /// (an async function) doesn't call `NSLock.lock/unlock` from an
+    /// (an async function) doesn't call `OSAllocatedUnfairLock.lock/unlock` from an
     /// async context — Swift 6 strict concurrency disallows that.
     private func currentGate() -> PermissionGate? {
         lock.lock()
@@ -65,19 +69,43 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
     }
 
     func startRecognition(locale: Locale) -> AsyncThrowingStream<VoiceInputEvent, Error> {
+        let (stream, continuation) = AsyncThrowingStream<VoiceInputEvent, Error>.makeStream()
         lock.lock()
         _startCallCount += 1
+        generation += 1
+        let session = generation
+        self.continuation = continuation
         lock.unlock()
-        return AsyncThrowingStream { continuation in
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
             self.lock.lock()
-            self.continuation = continuation
+            if self.generation == session { self.continuation = nil }
             self.lock.unlock()
-            continuation.onTermination = { [weak self] _ in
-                self?.lock.lock()
-                self?.continuation = nil
-                self?.lock.unlock()
-            }
         }
+        return stream
+    }
+
+    func stopRecognition() {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        let delayed = delaysStopCompletion
+        if delayed { pendingStop = continuation }
+        lock.unlock()
+        if !delayed { continuation?.finish() }
+    }
+
+    /// Holds only stream completion so tests can exercise the controller's drain wait.
+    func delayStopCompletion() {
+        lock.lock()
+        delaysStopCompletion = true
+        lock.unlock()
+    }
+
+    var isCapturing: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return continuation != nil
     }
 
     /// Yield an event into the active stream. No-op if no session is
@@ -102,8 +130,9 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
     /// controller treats this as a normal stop.
     func finish() {
         lock.lock()
-        let continuation = self.continuation
+        let continuation = self.continuation ?? pendingStop
         self.continuation = nil
+        pendingStop = nil
         lock.unlock()
         continuation?.finish()
     }
@@ -114,7 +143,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
 /// shape as the M10 `SleepGate` helper — every awaiter (current + future)
 /// resumes the moment the gate opens.
 final class PermissionGate: @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = OSAllocatedUnfairLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var released = false
     private var entered = false
@@ -129,7 +158,7 @@ final class PermissionGate: @unchecked Sendable {
         // parks on `continuations`; a `release()` that races in before it parks
         // is still not lost, because `released` latches (checked below).
         // Locking is done in a synchronous helper — Swift 6 strict concurrency
-        // disallows `NSLock.lock/unlock` directly in an async context.
+        // disallows `OSAllocatedUnfairLock.lock/unlock` directly in an async context.
         for continuation in markEntered() { continuation.resume() }
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

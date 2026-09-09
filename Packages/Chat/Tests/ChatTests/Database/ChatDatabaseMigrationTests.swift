@@ -5,8 +5,8 @@ import SnapshotTesting
 import Testing
 @testable import Chat
 
-/// Tests for `registerChatMigrations` v1 schema — table set, column shape,
-/// FK (foreign key) cascade, and index inventory.
+/// Tests for historical upgrades, data preservation, schema shape, and
+/// behavioral constraints across all registered Chat migrations.
 @Suite("ChatDatabase migrations")
 struct ChatDatabaseMigrationTests {
 
@@ -40,49 +40,6 @@ struct ChatDatabaseMigrationTests {
         #endif
     }
 
-    @Test func v1CreatesEverySchemaTable() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let names = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'grdb_%'
-                ORDER BY name
-            """)
-        }
-        #expect(names == [
-            "compactionCheckpoint",
-            "conversation",
-            "memory",
-            "message",
-            "modelConfiguration",
-            "modelStagedKey",
-            "setting",
-            "toolCall",
-            "toolEnablement",
-        ])
-    }
-
-    @Test func v1CreatesEveryExpectedIndex() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let names = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='index' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'grdb_%'
-                ORDER BY name
-            """)
-        }
-        #expect(names == [
-            "compactionCheckpoint_on_conversationId_isLive",
-            "conversation_on_updatedAt",
-            "memory_on_createdAt",
-            "message_on_conversationId_createdAt",
-            "modelConfiguration_unique_selected",
-            "toolCall_on_conversationId",
-            "toolCall_on_messageId",
-            "toolCall_on_status",
-        ])
-    }
-
     @Test func partialUniqueIndexBlocksTwoSelectedRows() async throws {
         let db = try ChatDatabase.makeInMemory()
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -112,35 +69,6 @@ struct ChatDatabaseMigrationTests {
                 modelId: "m", createdAt: now, isSelected: false
             ).insert(db)
         }
-    }
-
-    @Test func messageColumnsMatchRecordShape() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(message)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
-
-        #expect(lookup["id"]?.0 == "TEXT")
-        #expect(lookup["conversationId"]?.0 == "TEXT")
-        #expect(lookup["conversationId"]?.1 == 1)
-        #expect(lookup["role"]?.0 == "TEXT")
-        #expect(lookup["role"]?.1 == 1)
-        #expect(lookup["content"]?.0 == "TEXT")
-        #expect(lookup["thinkingContent"]?.0 == "TEXT")
-        #expect(lookup["thinkingContent"]?.1 == 0)
-        #expect(lookup["thinkingDurationMs"]?.0 == "INTEGER")
-        #expect(lookup["thinkingDurationMs"]?.1 == 0)
-        #expect(lookup["thinkingSignature"]?.0 == "TEXT")
-        #expect(lookup["thinkingSignature"]?.1 == 0)
-        #expect(lookup["thinkingModelId"]?.0 == "TEXT")
-        #expect(lookup["thinkingModelId"]?.1 == 0)
-        #expect(lookup["toolCallId"]?.0 == "TEXT")
-        #expect(lookup["toolCallId"]?.1 == 0)
-        #expect(lookup["createdAt"]?.0 == "DATETIME")
-        #expect(lookup["tokenCount"]?.0 == "INTEGER")
-        #expect(lookup["tokenCount"]?.1 == 0)
     }
 
     @Test func deletingConversationCascadesToMessagesAndToolCalls() async throws {
@@ -192,60 +120,20 @@ struct ChatDatabaseMigrationTests {
         #expect(count == 9)
     }
 
-    /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v9_messageThinkingModelId`) via
-    /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
-    /// DEFAULT expressions that the targeted PRAGMA assertions don't
-    /// cover. Snapshot files land under
+    /// Owns the complete fresh-schema table, column, index, foreign-key,
+    /// nullability, and default inventory after all migrations. Historical
+    /// upgrade and behavioral constraint tests remain independent.
+    /// Snapshot files land under
     /// `Tests/ChatTests/Database/__Snapshots__/`.
     @Test func migratedSchemaSnapshot() async throws {
         let db = try ChatDatabase.makeInMemory()
         assertSnapshot(of: db.queue, as: .dumpContent())
     }
 
-    /// `v4_modelConfigurationKind` adds the `kind` discriminator and
-    /// relaxes the NOT NULL constraints on `baseURL` and `apiKeyRef`.
-    @Test func v4AddsKindColumnAndNullableURLAndKeyRef() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(modelConfiguration)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
-
-        #expect(lookup["kind"]?.0 == "TEXT")
-        #expect(lookup["kind"]?.1 == 1)   // NOT NULL
-        #expect(lookup["baseURL"]?.0 == "TEXT")
-        #expect(lookup["baseURL"]?.1 == 0)   // nullable
-        #expect(lookup["apiKeyRef"]?.0 == "TEXT")
-        #expect(lookup["apiKeyRef"]?.1 == 0)   // nullable
-        // The "at most one selected row" partial unique index is preserved
-        // across the recreate-and-copy migration.
-        let indexNames = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='index' AND tbl_name='modelConfiguration'
-            """)
-        }
-        #expect(indexNames.contains("modelConfiguration_unique_selected"))
-    }
-
     /// `v5_conversationKind` adds the `kind` discriminator column to
     /// the `conversation` table with `NOT NULL DEFAULT 'user'`. Pre-v5
     /// rows backfill via the default — verified with the same
     /// stop-at-prior-version + seed pattern used for v4.
-    @Test func v5AddsConversationKindWithUserDefault() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(conversation)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int, $0["dflt_value"] as String?) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2, $0.3)) })
-        #expect(lookup["kind"]?.0 == "TEXT")
-        #expect(lookup["kind"]?.1 == 1)
-        #expect(lookup["kind"]?.2 == "'user'")
-    }
-
     @Test func v5BackfillsPreExistingConversationsAsUser() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
@@ -271,10 +159,8 @@ struct ChatDatabaseMigrationTests {
 
     /// Pre-existing rows are migrated to `kind = 'openAICompatible'` by
     /// the actual v4 backfill INSERT — `DatabaseMigrator.migrate(_:upTo:)`
-    /// lets the test stop at v3, seed a pre-v4 row whose schema has no
-    /// `kind` column, then apply v4 and assert on the migrated value.
-    /// This exercises the literal SELECT clause inside the migration, not
-    /// just the recreated column's DEFAULT.
+    /// lets the test seed the old schema and verify every copied field,
+    /// including the selected model and its credential reference.
     @Test func v4BackfillsExistingRowsAsOpenAICompatible() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
@@ -290,41 +176,36 @@ struct ChatDatabaseMigrationTests {
                     (id, name, baseURL, apiKeyRef, modelId, supportsThinking,
                      maxContextTokens, isSelected, createdAt)
                 VALUES
-                    ('legacy', 'Pre-v4', 'https://api.example.com/v1',
-                     'ref-1', 'gpt', 0, 16000, 0, '2026-01-01 00:00:00')
+                    ('selected', 'Selected legacy model', 'https://api.example.com/v1',
+                     'ref-selected', 'thinking-model', 1, 64000, 1, '2026-01-01 00:00:00'),
+                    ('unselected', 'Other legacy model', 'https://proxy.example.com/custom',
+                     'ref-other', 'plain-model', 0, 16000, 0, '2026-02-03 04:05:06')
             """)
         }
 
-        // Now apply v4 — the backfill INSERT runs against the seeded row.
+        let legacyColumns = """
+            SELECT id, name, baseURL, apiKeyRef, modelId, supportsThinking,
+                   maxContextTokens, isSelected, createdAt
+            FROM modelConfiguration ORDER BY id
+            """
+        let before = try queue.read { db in
+            try Row.fetchAll(db, sql: legacyColumns)
+        }
+
+        // The recreate-and-copy migration must preserve every legacy value.
         try migrator.migrate(queue)
 
+        let after = try queue.read { db in
+            try Row.fetchAll(db, sql: legacyColumns)
+        }
+        #expect(before.count == 2)
+        #expect(after == before)
         let kinds = try await queue.read { db in
             try String.fetchAll(db, sql: """
                 SELECT kind FROM modelConfiguration ORDER BY id
             """)
         }
-        #expect(kinds == ["openAICompatible"])
-    }
-
-    /// `v6_searchBackend` adds a nullable `searchBackend` column without a
-    /// table rebuild, so the partial unique index survives untouched.
-    @Test func v6AddsNullableSearchBackendColumn() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(modelConfiguration)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
-        #expect(lookup["searchBackend"]?.0 == "TEXT")
-        #expect(lookup["searchBackend"]?.1 == 0)   // nullable
-
-        let indexNames = try await db.queue.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='index' AND tbl_name='modelConfiguration'
-            """)
-        }
-        #expect(indexNames.contains("modelConfiguration_unique_selected"))
+        #expect(kinds == ["openAICompatible", "openAICompatible"])
     }
 
     /// Rows that existed before v6 migrate to `searchBackend = NULL` (no
@@ -386,19 +267,6 @@ struct ChatDatabaseMigrationTests {
         #expect(fetched.map(\.searchBackend) == ["native", nil])
     }
 
-    /// `v8_messageThinkingSignature` adds a nullable `thinkingSignature`
-    /// column to `message` without a table rebuild.
-    @Test func v8AddsNullableThinkingSignatureColumn() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(message)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
-        #expect(lookup["thinkingSignature"]?.0 == "TEXT")
-        #expect(lookup["thinkingSignature"]?.1 == 0)   // nullable
-    }
-
     /// Rows that existed before v8 migrate to `thinkingSignature = NULL`
     /// (no replayable thinking block — the Anthropic request gate falls
     /// back to thinking-off for those histories). Stop at v7, seed a row
@@ -456,17 +324,6 @@ struct ChatDatabaseMigrationTests {
         // Ordered by id ascending: "signed" sorts before "unsigned".
         #expect(fetched.map(\.thinkingSignature) == ["sig-1", nil])
         #expect(fetched.map(\.thinkingModelId) == ["claude-opus-4-7", nil])
-    }
-
-    @Test func v9AddsNullableThinkingModelIdColumn() async throws {
-        let db = try ChatDatabase.makeInMemory()
-        let columns = try await db.queue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(message)")
-                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
-        }
-        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
-        #expect(lookup["thinkingModelId"]?.0 == "TEXT")
-        #expect(lookup["thinkingModelId"]?.1 == 0)   // nullable
     }
 
     /// `v10_anthropicNativeDefault` flips *only* the default Anthropic

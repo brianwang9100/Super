@@ -27,7 +27,7 @@ records the delivery check, not a replacement for repository settings.
 
 ## Repository snapshot workflow
 
-[snapshots.yml](../.github/workflows/snapshots.yml) compares the complete 623-image inventory on every PR and main push, including documentation-only changes. Four package shards compare and export 582 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard compares 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+[snapshots.yml](../.github/workflows/snapshots.yml) compares the complete 625-image inventory on every PR and main push, including documentation-only changes. Four package shards compare and export 584 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard compares 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
 
 Each shard publishes image and manifest evidence. Exact inventory validation checks image identities, decoding, dimensions, hashes, and commit/run/attempt identity. Missing or failed shards cannot produce a partial green visual build. `ios-test` aggregates the four package comparison jobs; `native-previews` requires native and package comparisons and validates their complete combined inventory. Failures retain comparison evidence for inspection. CI refuses baseline recording, needs no Argos credentials or CLI, and runs the same comparisons for fork PRs without privileged upload authentication.
 

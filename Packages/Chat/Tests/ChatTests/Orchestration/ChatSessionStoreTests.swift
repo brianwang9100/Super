@@ -197,20 +197,54 @@ struct ChatSessionStoreTests {
         let setup = try await makeStore(scripts: [
             [
                 .messageStart(id: "ma", model: "fake-model-1"),
-                .textDelta(index: 0, text: "ok"),
-                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+                .toolUse(index: 0, id: "tc-a", name: "test.shutdown-a", input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
+            ],
+            [
+                .messageStart(id: "mb", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tc-b", name: "test.shutdown-b", input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
             ],
         ])
+        let executorA = SleepingToolExecutor(toolID: "test.shutdown-a")
+        let executorB = SleepingToolExecutor(toolID: "test.shutdown-b")
+        for executor in [executorA, executorB] {
+            let tool = LLMTool(
+                id: executor.toolID, name: executor.toolID,
+                description: "Waits for cancellation during shutdown.",
+                category: .query, parameters: [], appletId: "test"
+            )
+            await setup.toolRegistry.register(ToolRegistration(tool: tool, execution: .local(executor)))
+        }
         let sessionA = await setup.store.session(for: "conv-A")
-        let stream = await sessionA.send(text: "ping", model: setup.model)
-        _ = await self.collect(stream)
-        await sessionA.waitUntilFinished()
+        let sessionB = await setup.store.session(for: "conv-B")
+        let streamA = await sessionA.send(text: "ping A", model: setup.model)
+        await executorA.awaitFirstCall()
+        let streamB = await sessionB.send(text: "ping B", model: setup.model)
+        await executorB.awaitFirstCall()
+        #expect(Set(await setup.store.runningConversations()) == ["conv-A", "conv-B"])
 
         await setup.store.shutdown()
-        // After shutdown, requesting the same conversation yields a fresh
-        // session instance because the store dropped its registry.
+        // Shutdown itself must drain cancellation writes before returning.
+        // Do not call waitUntilFinished here and mask a missing drain.
+        #expect(await sessionA.isStreaming == false)
+        #expect(await sessionB.isStreaming == false)
+        let calls = GRDBToolCallRepository(database: setup.database)
+        let messages = GRDBMessageRepository(database: setup.database)
+        for (conversationID, callID) in [("conv-A", "tc-a"), ("conv-B", "tc-b")] {
+            #expect(try await calls.fetch(id: callID)?.status == .cancelled)
+            let rows = try await messages.fetchAll(conversationId: conversationID)
+            #expect(rows.map(\.role) == [.user, .assistant, .tool])
+            #expect(rows.last?.toolCallId == callID)
+        }
+        #expect(await self.collect(streamA).last == .error(.cancelled))
+        #expect(await self.collect(streamB).last == .error(.cancelled))
+        #expect(await setup.store.runningConversations().isEmpty)
+
         let sessionAReborn = await setup.store.session(for: "conv-A")
+        let sessionBReborn = await setup.store.session(for: "conv-B")
         #expect(sessionA !== sessionAReborn)
+        #expect(sessionB !== sessionBReborn)
     }
 
     @Test func setUserPersonalizationFansOutToExistingSession() async throws {

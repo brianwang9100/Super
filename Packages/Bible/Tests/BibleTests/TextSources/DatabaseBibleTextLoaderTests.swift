@@ -1,8 +1,9 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Bible
 
-/// Unit tests for `DatabaseBibleTextLoader` against an in-memory `chapter` table —
+/// Integration tests for `DatabaseBibleTextLoader` against an in-memory `chapter` table —
 /// the decode path (all three paragraph shapes plus a boundary-fragmented verse),
 /// the missing-book / missing-chapter → nil contract, and the unavailable-database
 /// degradation.
@@ -36,13 +37,38 @@ struct DatabaseBibleTextLoaderTests {
         #expect(loaded == Self.richChapter)
     }
 
-    @Test("a chapter is scoped to its translation")
-    func scopedToTranslation() throws {
+    @Test("chapter lookup isolates books, chapter numbers, and translations")
+    func scopesToBookChapterAndTranslation() throws {
+        let otherChapter = BibleChapter(number: 3, paragraphs: [.heading("Next chapter")])
+        let otherBook = BibleChapter(number: 2, paragraphs: [.heading("Other book")])
+        let otherTranslation = BibleChapter(number: 2, paragraphs: [.heading("Other translation")])
         let loader = try makeLoader([
+            try .init(translation: .web, bookId: "GEN", number: 2, chapter: otherBook),
+            try .init(translation: .web, bookId: "1PE", number: 3, chapter: otherChapter),
+            try .init(translation: .kjv, bookId: "1PE", number: 2, chapter: otherTranslation),
             try .init(translation: .web, bookId: "1PE", number: 2, chapter: Self.richChapter),
         ])
-        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web) != nil)
-        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .kjv) == nil)
+        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web) == Self.richChapter)
+        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 3, translation: .web) == otherChapter)
+        #expect(try loader.loadChapter(bookId: "GEN", chapterNumber: 2, translation: .web) == otherBook)
+        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .kjv) == otherTranslation)
+        #expect(try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .asv) == nil)
+    }
+
+    @Test("a corrupt stored chapter reports its identity instead of appearing missing",
+          arguments: ["not JSON", "{\"number\":2,\"paragraphs\":[{\"type\":\"prose\"}]}"])
+    func malformedStoredChapterThrows(json: String) throws {
+        let database = try BibleTextDatabase.makeInMemory(chapters: [])
+        try database.queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO chapter(translation, bookId, number, json) VALUES (?, ?, ?, ?)",
+                arguments: ["WEB", "1PE", 2, json]
+            )
+        }
+        let loader = DatabaseBibleTextLoader(database: database)
+        #expect(throws: BibleTextLoaderError.malformedResource("WEB-1PE 2")) {
+            try loader.loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web)
+        }
     }
 
     @Test("an unknown book returns nil")
