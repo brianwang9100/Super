@@ -1,6 +1,6 @@
 # Chat verse preview design
 
-Date: 2026-09-08  
+Date: 2026-09-08
 Status: Implemented and independently reviewed; stacked PR validation in progress
 
 ## Intended behavior

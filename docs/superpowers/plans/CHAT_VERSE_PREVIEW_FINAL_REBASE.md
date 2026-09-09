@@ -53,3 +53,31 @@ testing/CI documents. The approved preview design and behavior remain unchanged.
 Faraday approved the approach and requested explicit VisualTesting Python guard
 coverage and an audit of the complete new handle/scroll source set. Both are
 included above.
+
+## Validation result
+
+The rebased implementation at `21cb2c74` passes Core 335 tests / 43 suites,
+Bible 922 / 93, and Chat 1109 / 84, plus both app builds and the actual-source
+shell ordering harness's 17 assertions. The full default comparison passes all
+584 images: Bible 253, Chat 228, Core 20, Todo 42, and native 41. The runner also
+passes all 38 PreviewPilot and 48 VisualTesting Python tests, including CI
+selection and retirement guards. Recording remained disabled.
+
+All 581 main snapshot PNGs are byte-identical; the only additions are the three
+approved modal images. Main's 540 package inventory rows remain intact. The
+rebase retains all main-owned workflow, retirement, composer-handle and scrolling
+changes. Sagan's separate final diff review found no serious actionable issues;
+Git's merge-tree verification succeeds against `91adcd94`.
+
+Native SuperBible verification in Lapis Dark at 120% confirms the hidden outer
+handle, floating bottom pill, range/disjoint/chapter-only titles, clearable
+selection, and native child actions. Cancel preserves the exact in-session saved
+reading row. Add attaches Romans 8:28–30 once to the existing composer; New opens
+a composer with only John 3:16–17 after both sheets dismiss. Open in Bible restores
+full controls with John 3:16–17 KJV and appends exactly one chapter-history visit.
+
+Ignored evidence is under `.superpowers/sdd/CHAT_VERSE_PREVIEW/final-rebase-*`,
+`.build/VisualTesting/complete-9za60yuz`, and
+`.build/verse-preview-floating-pill/final-rebased-modal.png`. The simulator is
+retained and the task-owned companion is stopped. This result documentation and
+removal of one Markdown hard-break whitespace marker do not alter validated code.
