@@ -103,7 +103,19 @@ struct BibleDatabaseTests {
         // or a resumed run would report chapters annotated whose rows the
         // rebuild just dropped.
         try queue.write { db in
-            try position.insert(db)
+            // Seed the historical columns; the current record also encodes
+            // navigationHistoryJSON, which is introduced after this v8 schema.
+            try db.execute(
+                sql: """
+                    INSERT INTO bibleReadingPosition
+                    (id, bookId, chapterNumber, translationId, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    position.id, position.bookId, position.chapterNumber,
+                    position.translationId, position.updatedAt,
+                ]
+            )
             try highlight.insert(db)
             try bookmark.insert(db)
             try note.insert(db)
