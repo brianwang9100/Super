@@ -6,11 +6,11 @@
 
 **Architecture:** A pure history value belongs to `BibleScreenViewModel`. A versioned payload on the existing GRDB reading-position row stores the entire history and cursor atomically with current chapter/translation. Existing navigation sources funnel through explicit visit versus traversal paths.
 
-**Tech Stack:** Swift, SwiftUI, Observation, GRDB, Swift Testing, existing Argos visual capture tools.
+**Tech Stack:** Swift, SwiftUI, Observation, GRDB, Swift Testing, repository snapshot comparison tools.
 
 **Spec:** [Bible navigation history design](../specs/2026-09-08-BIBLE_NAVIGATION_HISTORY_DESIGN.md).
 
-**Status:** Production implementation authorized after native prototype approval. Fresh plan review completed; the pre-load and retry-race findings below are incorporated. Implementation and local QA are complete; PR delivery and CI review remain.
+**Status:** Production implementation authorized after native prototype approval. Rebased onto the repository snapshot rollback (main ba1161b1). Fresh plan review completed; the pre-load and retry-race findings below are incorporated. Implementation and local QA are complete; PR delivery and CI review remain.
 
 ## Global constraints
 
@@ -105,7 +105,7 @@ await model._waitForPendingPersist()
 - [x] Implement width fitting: full label, then a full-width selector row under utility controls. In the expanded SuperOS layout, put biblical chapter stepping in the utility row so the selector keeps the full available width. Grow/wrap at accessibility sizes and use a two-line rounded surface if needed. Preserve full VoiceOver citations and prevent hit-area overlap with shell hamburger/action buttons.
 - [x] Measure the resulting nav-bar height and pass a top content reserve into `BibleChapterReader`, replacing its fixed 68 pt padding. Compute the immersive hide distance from measured height plus safe-area clearance, replacing `BibleScreen`'s fixed 120 pt offset. Preserve current single-row spacing and avoid double-counting safe areas. Verify the long-name/large-type chapter heading remains visible and the entire toolbar hides on scroll.
 - [x] Preserve existing host chapter arrows and selection-pill behavior. Confirm SuperOS's larger cluster uses the fallback cleanly, while SuperBible's composer chapter controls remain independent.
-- [x] Reuse current light/dark, selection, narration, and font-scale captures. Add one bounded history-state gallery (first-only, oldest, middle, newest) and one compact-width/long-name accessibility case only if the existing suite cannot expose those defects. Proposed maximum inventory addition: **2 images**; from the current 623 to 625 total (Bible 276 to 278). Recount at implementation time and report actual delta/rationale; no generated PNGs in Git.
+- [x] Reuse current light/dark, selection, narration, and font-scale captures. Add one bounded history-state gallery (first-only, oldest, middle, newest) and one compact-width/long-name accessibility case only if the existing suite cannot expose those defects. Proposed maximum inventory addition: **2 images**; from the current 623 to 625 total (Bible 276 to 278). Recount at implementation time and report actual delta/rationale; explicitly record, inspect, and commit intentional PNG baselines.
 - [x] Validate independent taps, accessibility labels/disabled states, and boundary hit regions on the worktree simulator. Commit the selector and fixtures after targeted visual verification. Hardware keyboard and VoiceOver gesture traversal are not automated by the available simulator tooling; report that limitation.
 
 ## Task 5: Complete QA and delivery
@@ -115,7 +115,8 @@ await model._waitForPendingPersist()
 - [x] Build both `Super` and `SuperBible` against that simulator because the shared nav bar affects both hosts. Follow the exact commands in `docs/TESTING.md`.
 - [x] Manually visit A→B→C, back to B, relaunch from the local database, forward to C, back to B, then open D. Verify C disappears, D survives relaunch, translation remains current, and native controls fit long names and accessibility sizes. Verify no interaction goes to the adjacent biblical chapter accidentally.
 - [x] Have a separate review subagent review production changes; address serious actionable findings and rerun affected checks.
-- [ ] Create a draft PR using the repository template, with local results and capture-count rationale. Follow root `AGENTS.md` for CI/Codex review, current-revision approval, ready/auto-merge, and eventual merge verification. Monitor at the specified 10-minute cadence using a scheduled wakeup.
+- [x] Create draft PR #352 using the repository template, with local results and capture-count rationale.
+- [ ] Follow root `AGENTS.md` for CI/Codex review, current-revision approval, ready/auto-merge, and eventual merge verification. The scheduled monitor checks at the specified 10-minute cadence.
 
 ## Validation record
 
@@ -126,7 +127,7 @@ await model._waitForPendingPersist()
 - Native SuperBible smoke: `[1 Peter 2, John 3, Psalms 23]` at John survived relaunch with forward history; Forward opened Psalms, then an edge tap on Back returned to John. Selecting KJV preserved Forward. Opening Romans 8 removed Psalms, and relaunch restored Romans/KJV. Read-only SQLite inspection confirmed one matching row/payload/cursor.
 - Native large-text Song of Solomon layout kept the heading below the expanded toolbar; scrolling removed the full toolbar. Normal text size was restored. Accessibility labels, destinations, disabled states, and independent tap regions were inspected; hardware keyboard/VoiceOver gesture traversal and network-disconnected-device testing were not performed.
 - Storage and final whole-branch reviews passed. UI review identified restoration gating for composer actions and a toast hit-area regression; both were fixed and passed re-review. The final whole-branch reviewer found no serious actionable production issues.
-- Generated visual images remain ignored/local; Argos is the baseline store.
+- Repository PNGs are the baseline store after main PR354; scratch renders/diffs remain ignored.
 
 ## Production plan review
 
@@ -141,4 +142,14 @@ Codex identified two missed recovery cases on ac7a57aa:
 
 Risks: accidentally making write errors permanent, retaining a misleading close control, or collapsing the toast's existing tap regions. Validation: focused red/green regressions, full Bible package suite, targeted pinned simulator toast captures, integrated app build, and separate code re-review before push. No navigation-spacing change. Obtain renewed current-head Codex approval and passing CI before enabling auto-merge.
 
-Follow-up validation: both review findings reproduced in the red run (21 tests, six failed assertions); all 21 history tests then passed. Full Bible package suite passed 874 tests/86 suites. Targeted pinned simulator history and toast suites passed 23 tests/2 suites, with the persistent Retry gallery visually inspected. Capture inventory remains625 total, Bible278. Plan review and separate implementation re-review both passed without actionable findings. Both app host builds passed. Renewed current-head CI/Codex review remains required before merge.
+Follow-up validation: both review findings reproduced in the red run (21 tests, six failed assertions); all 21 history tests then passed. Full Bible package suite passed 874 tests/86 suites. Targeted pinned simulator history and toast suites passed 23 tests/2 suites, with the persistent Retry gallery visually inspected. Capture inventory remains 625 total, Bible 278. Plan review and separate implementation re-review both passed without actionable findings. Both app host builds passed. Renewed current-head CI/Codex review remains required before merge.
+
+## Snapshot rollback integration
+
+User authorized rebasing onto main PR #354 and adopting tracked repository baselines. The clean pre-rebase head is retained in `codex/history-352-before-snapshot-rebase`. Rebase conflicts were limited to testing documentation; keep the repository comparison workflow and feature inventory of 625 (Bible 278). No source behavior, dependency, migration, renderer, or pin changes are needed. The task monitor now follows repository snapshots and preserves its 10-minute cadence.
+
+Validation plan: run default comparisons first and inspect expected changes to the toast, navigation bar, and reader/gallery fixtures; explicitly record only reviewed intentional feature output; inspect every changed baseline and the two new history fixtures; rerun default Bible comparison and full Bible logic tests. Preserve all unrelated baselines and renderer tolerances. Review the rebase/baseline diff independently, push with the exact old remote head as a lease, and obtain current-head CI/Codex approval again.
+
+Reviewed baseline scope: 50 existing PNGs change and two new PNGs cover history states and narrow accessibility layout. All 34 reader-screen changes passed independent visual review; the 18 navigation/toast captures were inspected in full. Recorded images match the reviewed default-comparison output exactly. The nine selection-state reader baselines and all other baseline suites remain unchanged. The two new inventory rows use explicit test/capture names. After rebasing, the Bible package passed 874 tests in 86 suites, both app hosts built successfully, and all 27 visual-pipeline tests passed.
+
+The complete default comparison passed: 278 Bible images across 26 serialized suites. A separate final review approved the rebase, exact baseline scope, inventory metadata, source preservation, and unchanged workflow/renderer/pins. Current-head CI and Codex approval remain the merge gates.

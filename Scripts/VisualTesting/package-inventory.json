@@ -892,22 +892,24 @@
   {
     "package": "Bible",
     "suite": "BibleNavBarSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/historyNarrowAccessibility.history_narrow_accessibility.png",
     "image": "Bible_BibleNavBarSnapshotTests_historyNarrowAccessibility.history_narrow_accessibility.png",
     "pixels": [
       960,
       1080
-    ]
+    ],
+    "testName": "historyNarrowAccessibility",
+    "captureName": "history_narrow_accessibility"
   },
   {
     "package": "Bible",
     "suite": "BibleNavBarSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/historyStatesGallery.history_states.png",
     "image": "Bible_BibleNavBarSnapshotTests_historyStatesGallery.history_states.png",
     "pixels": [
       1206,
       960
-    ]
+    ],
+    "testName": "historyStatesGallery",
+    "captureName": "history_states"
   },
   {
     "package": "Bible",
