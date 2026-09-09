@@ -1,40 +1,8 @@
 import Core
 import Foundation
 
-/// `LLMProvider` conformer for Anthropic's **Messages API** (`POST
-/// /v1/messages`) — the default path for Claude models.
-///
-/// This is now the **default** Anthropic adapter: the catalog seeds
-/// `kind: .anthropicNative` and a migration flips pre-existing default rows, so
-/// every Anthropic turn rides the Messages API. The native path is required for
-/// two reasons — explicit `cache_control` prompt-cache breakpoints (the
-/// `/v1/openai/` compat shim can't carry them) and the `web_search` server tool
-/// with its `encrypted_content`/`encrypted_index` citations. A Custom-provider
-/// Anthropic URL may still use the compat shim via `OpenAICompatibleLLMProvider`.
-/// Like every native adapter it is a *complete* provider — text, extended
-/// thinking, regular client tool calls, and native search — since once a turn is
-/// on the Messages API there is no per-message fallback.
-///
-/// Native search is requested per-turn via the `__native_web_search__` sentinel
-/// tool (see ``NativeWebSearch``); when absent, no server tool is attached and
-/// the adapter behaves like a plain Messages client. The web-search tool ships
-/// the stable `web_search_20250305` version (see ``AnthropicWebSearch``).
-///
-/// **Encrypted round-trip (mandatory).** Anthropic requires each prior
-/// `web_search_tool_result` (with its `encrypted_content`) and citation
-/// `encrypted_index` be replayed verbatim or the citation is rejected on the
-/// next turn. They persist in `SourceCitation.providerEcho` →
-/// `MessageAttachments.sources`; `ContextAssembler` replays them as a
-/// `.searchResult` `LLMContent` block, which `translate(_:)` reconstructs into a
-/// synthetic `web_search_tool_result` block before the cited text. ⚠️ That
-/// replay shape is only *reachable* once the search sentinel is wired (PR4) and
-/// is not verified against the live API yet — see `translate`.
-///
-/// **Stream contract** matches the rest of the suite: every stream ends with
-/// `.messageComplete` and never throws — failures arrive as `.error(...)`
-/// immediately before the terminal event. Wire formats per the Messages +
-/// web-search references (2026-05-31); see
-/// `docs/superpowers/specs/2026-05-31-native-web-search-providers-design.md` §5.1.
+/// Anthropic's native Messages adapter. Search result encryption metadata and
+/// signed thinking blocks must round-trip verbatim on continuation requests.
 public struct AnthropicNativeLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -46,30 +14,12 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
 
     /// Anthropic accepts temperatures in `[0.0, 1.0]`; clamp rather than reject.
     private static let temperatureRange: ClosedRange<Double> = 0.0...1.0
-    /// Hard ceiling on the derived `max_tokens` (§0 #7: `min(ctx/4, 4096)`).
     private static let maxTokensCeiling = 4096
-    /// API version header value pinned per the web-search reference. Internal
-    /// (not private) so `LiveModelListingService` sends the same version on
-    /// the native `/v1/models` listing call.
+    /// Shared with model listing so both endpoints use the same API version.
     static let anthropicVersion = "2023-06-01"
-    /// Anthropic authenticates with `x-api-key`, never a Bearer token. One
-    /// constant for both the `/v1/messages` path here and the `/v1/models`
-    /// listing in `LiveModelListingService`, so an auth change can't update
-    /// one and strand the other.
+    /// Shared with model listing because Anthropic authenticates via `x-api-key`.
     static let apiKeyHeaderField = "x-api-key"
 
-    /// Designated initializer.
-    ///
-    /// - Parameters:
-    ///   - id: Stable identifier (typically the `ModelConfigurationRecord.id`).
-    ///   - displayName: User-visible label shown in the model picker.
-    ///   - model: The single `LLMModel` this provider routes requests to.
-    ///   - baseURL: Endpoint base, e.g. `https://api.anthropic.com/v1`. The
-    ///     `/messages` path is appended internally; trailing slashes and
-    ///     already-pathed URLs are normalized.
-    ///   - apiKey: BYOK (Bring Your Own Key) credential. Sent as `x-api-key`
-    ///     only when the destination passes the cleartext-safety guard.
-    ///   - http: Streaming HTTP client. Tests inject a fake.
     public init(
         id: String,
         displayName: String,
@@ -86,12 +36,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         self.http = http
     }
 
-    /// Convenience that derives identity + model from a stored
-    /// `ModelConfiguration`. The Keychain-backed key is resolved by the caller.
-    ///
-    /// Precondition: `configuration.kind == .anthropicNative` and
-    /// `configuration.baseURL != nil`. The boot path kind-dispatches before
-    /// reaching this init, so a wrong kind is a programmer error caught here.
+    /// Requires a native Anthropic configuration with a base URL.
     public init(configuration: ModelConfiguration, apiKey: String?, http: HTTPClient) {
         precondition(
             configuration.kind == .anthropicNative,

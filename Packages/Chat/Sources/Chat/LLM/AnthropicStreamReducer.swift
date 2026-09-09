@@ -1,25 +1,8 @@
 import Core
 import Foundation
 
-/// Stateful reducer turning the Anthropic Messages streaming event sequence
-/// into the normalized `LLMStreamEvent` stream every Super UI consumer expects,
-/// including the native web-search cases (`.searchStarted`, `.citations`).
-///
-/// Same ownership/policy as `OpenAIStreamReducer` / `OpenAIResponsesStreamReducer`:
-/// a struct that owns the sequencing state for one in-flight response (block
-/// index mapping, partial tool-call buffers, captured usage, stashed search
-/// results) and is driven purely by `consume(_:)` + `finish()`. Neither method
-/// throws — a malformed tool-call argument string surfaces as an `.error(...)`
-/// event in the returned array. (`ChatSession` treats a surfaced `.error` as a
-/// failed turn and discards the partial buffers rather than persisting them —
-/// the events exist so the UI can render what streamed before the failure.)
-///
-/// Anthropic assigns its own monotonic block indices; this reducer maps each to
-/// its own normalized index space, because `server_tool_use` and
-/// `web_search_tool_result` blocks produce *no* normalized content block (they
-/// drive `.searchStarted` / `.citations` instead), so the wire indices would
-/// otherwise leave gaps. Terminates on `message_stop`; `finish()` is the safety
-/// net for a stream that closes without it.
+/// Maps Anthropic's sparse wire block indices into contiguous normalized indices;
+/// server-search blocks emit events without occupying a normalized content block.
 struct AnthropicStreamReducer {
     private var emittedMessageStart = false
     private var capturedID: String?
@@ -41,11 +24,8 @@ struct AnthropicStreamReducer {
     /// cause.
     private var hadError = false
 
-    /// Monotonic *normalized* content-block index. Distinct from Anthropic's
-    /// wire index (see type doc).
     private var nextBlockIndex = 0
 
-    /// `.searchStarted` is emitted at most once per turn.
     private var emittedSearchStarted = false
 
     /// Per-citation ordinal so each `SourceCitation.id` is unique even when two
@@ -74,20 +54,15 @@ struct AnthropicStreamReducer {
     /// valid on later turns.
     private var encryptedContentByURL: [String: String] = [:]
 
-    /// In-flight block state keyed by Anthropic's wire index.
     private enum OpenBlock {
         case text(normalizedIndex: Int)
         case thinking(normalizedIndex: Int, signature: String)
         case toolUse(normalizedIndex: Int, callID: String, name: String, arguments: String)
-        /// The `web_search` server call; accumulates its query JSON until stop.
         case serverToolUse(arguments: String)
-        /// A `web_search_tool_result` block; results already stashed at start.
         case webSearchResult
     }
     private var blocks: [Int: OpenBlock] = [:]
 
-    /// Process one decoded Messages event and return the normalized events it
-    /// produced, in the order downstream consumers should observe them.
     mutating func consume(_ event: AnthropicStreamEvent) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
@@ -106,8 +81,6 @@ struct AnthropicStreamReducer {
                 if let input = message.usage?.inputTokens { inputTokens = input }
                 captureCacheTokens(from: message.usage)
             }
-            // We have id/model now, so emit the start immediately (unlike the
-            // Responses reducer, which defers until it learns them).
             ensureMessageStart(into: &events)
 
         case "content_block_start":
@@ -145,16 +118,13 @@ struct AnthropicStreamReducer {
             )))
 
         default:
-            // `ping` and any unmodeled event types carry no normalized signal.
             break
         }
 
         return events
     }
 
-    /// Final-flush hook. Closes open blocks and emits the terminal
-    /// `.messageComplete(usage:)`. Idempotent — a no-op after `message_stop`
-    /// already drove the close.
+    /// Idempotently closes a stream that ended without `message_stop`.
     mutating func finish() -> [LLMStreamEvent] {
         closeOut()
     }
@@ -169,13 +139,9 @@ struct AnthropicStreamReducer {
         return events
     }
 
-    /// Whether an `.error` has already surfaced. The provider reads this in its
-    /// catch path to avoid yielding a second, less-specific transport `.error`
-    /// over an already-emitted SSE one.
+    /// Prevents a transport error from masking a more specific streamed error.
     var hasErrored: Bool { hadError }
 
-    /// Record that the provider already surfaced an error (its thrown-error
-    /// catch path). Suppresses any further block flushing.
     mutating func markErrored() {
         hadError = true
     }
@@ -199,8 +165,7 @@ struct AnthropicStreamReducer {
             blocks[index] = .thinking(normalizedIndex: normalized, signature: "")
             events.append(.contentBlockStart(index: normalized, type: .thinking))
         case "redacted_thinking":
-            // Carries no displayable content (no normalized block), but
-            // poisons replayability for the turn — see `sawRedactedThinking`.
+            // Its opaque payload cannot be replayed from our persistence model.
             sawRedactedThinking = true
         case "tool_use":
             ensureMessageStart(into: &events)
@@ -272,7 +237,6 @@ struct AnthropicStreamReducer {
                 )
             }
         default:
-            // Other delta types carry no normalized signal.
             break
         }
     }
@@ -316,9 +280,7 @@ struct AnthropicStreamReducer {
         return index
     }
 
-    /// Build a `SourceCitation` from a `web_search_result_location` and emit it.
-    /// Skips (without dropping the rest of the turn) a citation whose URL is
-    /// malformed, mirroring the Responses reducer's per-citation tolerance.
+    /// A malformed citation URL is skipped without dropping the turn.
     private mutating func appendCitation(
         _ citation: AnthropicStreamEvent.Citation,
         into events: inout [LLMStreamEvent]

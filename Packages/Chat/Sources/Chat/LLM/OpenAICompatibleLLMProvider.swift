@@ -1,22 +1,7 @@
 import Core
 import Foundation
 
-/// `LLMProvider` conformer for any endpoint speaking the OpenAI Chat
-/// Completions API (Application Programming Interface). Targets the hosted
-/// OpenAI service, DeepSeek, Together, Groq, and local servers
-/// (Ollama / LM Studio / MLX) interchangeably — the wire format is
-/// identical and `apiKey` is optional so unauthenticated local endpoints
-/// work without ceremony.
-///
-/// One provider instance corresponds to one configured model. The shape
-/// matches Chat's `ModelConfigurationRecord`: each saved configuration
-/// instantiates one provider, and the registry holds them all.
-///
-/// **Stream contract**: every stream terminates with `.messageComplete`
-/// and never throws. Failures (transport, decoding, cancellation, etc.)
-/// arrive as `.error(...)` events immediately before the terminal
-/// `.messageComplete`, so consumers always get a clean signal that the
-/// stream is done and can persist whatever did make it through.
+/// Adapter for hosted or local endpoints that implement OpenAI Chat Completions.
 public struct OpenAICompatibleLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -31,21 +16,6 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     /// reject out-of-range values.
     private static let temperatureRange: ClosedRange<Double> = 0.0...2.0
 
-    /// Designated initializer.
-    ///
-    /// - Parameters:
-    ///   - id: Stable identifier (typically the `ModelConfigurationRecord.id`).
-    ///   - displayName: User-visible label shown in the model picker.
-    ///   - model: The single `LLMModel` this provider routes requests to.
-    ///   - baseURL: Endpoint base, e.g. `https://api.openai.com/v1` or
-    ///     `http://127.0.0.1:1111/v1` for a local MLX server. The
-    ///     `/chat/completions` path is appended internally; trailing
-    ///     slashes and already-pathed URLs are normalized.
-    ///   - apiKey: BYOK (Bring Your Own Key) credential. `nil` skips the
-    ///     `Authorization` header — required for most local servers, which
-    ///     otherwise reject unrecognized auth.
-    ///   - http: Streaming HTTP (HyperText Transfer Protocol) client. Tests
-    ///     inject a fake; production uses `URLSessionHTTPClient`.
     public init(
         id: String,
         displayName: String,
@@ -62,16 +32,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         self.http = http
     }
 
-    /// Convenience that derives the provider's identity and target model
-    /// from a stored `ModelConfiguration`. The Keychain-backed key must be
-    /// resolved by the caller (the registry layer) before construction
-    /// because Core has no Keychain dependency on this path.
-    ///
-    /// Precondition: `configuration.kind == .openAICompatible` and
-    /// `configuration.baseURL != nil`. The boot path is responsible for
-    /// kind-dispatching before reaching this init — passing an
-    /// `.appleFoundation` row would be a programmer error and is caught
-    /// at boot rather than first-stream.
+    /// Requires an OpenAI-compatible configuration with a base URL.
     public init(configuration: ModelConfiguration, apiKey: String?, http: HTTPClient) {
         precondition(
             configuration.kind == .openAICompatible,
@@ -242,10 +203,6 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         return request
     }
 
-    /// Resolve the request URL (Uniform Resource Locator). Uses
-    /// `URLComponents` rather than string concatenation so trailing
-    /// slashes and already-pathed inputs both produce the same canonical
-    /// `/.../chat/completions` URL.
     private func chatCompletionsURL() -> URL {
         let suffix = "/chat/completions"
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {

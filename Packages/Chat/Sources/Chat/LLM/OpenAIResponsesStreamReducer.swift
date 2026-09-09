@@ -1,21 +1,7 @@
 import Core
 import Foundation
 
-/// Stateful reducer turning the OpenAI Responses streaming event sequence
-/// into the normalized `LLMStreamEvent` stream every Super UI consumer
-/// expects, including the native web-search cases (`.searchStarted`,
-/// `.citations`).
-///
-/// Same ownership/policy as `OpenAIStreamReducer`: a struct that owns the
-/// sequencing state for one in-flight response (block indices, partial
-/// tool-call buffers, captured usage) and is driven purely by `consume(_:)`
-/// + `finish()`. Neither method throws — a malformed tool-call argument
-/// string surfaces as an `.error(...)` event in the returned array so the
-/// caller persists whatever did arrive.
-///
-/// Terminates on the `response.completed` event (the Responses API has no
-/// `[DONE]` sentinel); `finish()` is the safety net for a stream that closes
-/// without it.
+/// Normalizes Responses events and uses `finish()` when `response.completed` is absent.
 struct OpenAIResponsesStreamReducer {
     private var emittedMessageStart = false
     private var capturedID: String?
@@ -23,9 +9,6 @@ struct OpenAIResponsesStreamReducer {
     private var capturedUsage: TokenUsage?
     private var emittedComplete = false
 
-    /// Monotonic content-block index, same role as in `OpenAIStreamReducer`.
-    /// The `…Index` suffix keeps the stored state distinct from the
-    /// `openTextBlock(into:)` / `openThinkingBlock(into:)` opener methods below.
     private var nextBlockIndex = 0
     private var openTextBlockIndex: Int?
     private var openThinkingBlockIndex: Int?
@@ -53,8 +36,6 @@ struct OpenAIResponsesStreamReducer {
     private var toolBuilders: [String: ToolCallBuilder] = [:]
     private var toolOrder: [String] = []
 
-    /// Process one decoded Responses event and return the normalized events
-    /// it produced, in the order downstream consumers should observe them.
     mutating func consume(_ event: OpenAIResponsesStreamEvent) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
@@ -189,9 +170,7 @@ struct OpenAIResponsesStreamReducer {
         return events
     }
 
-    /// Final-flush hook. Closes open blocks, flushes pending tool calls, and
-    /// emits the terminal `.messageComplete(usage:)`. Idempotent — a no-op
-    /// after `response.completed` already drove the close.
+    /// Idempotently closes blocks, flushes tool calls, and emits completion.
     mutating func finish() -> [LLMStreamEvent] {
         closeOut()
     }
@@ -207,10 +186,7 @@ struct OpenAIResponsesStreamReducer {
         return events
     }
 
-    /// Whether an `.error` has already been surfaced (an SSE `response.error`,
-    /// or a prior `markErrored()`). The provider reads this in its catch path
-    /// to avoid yielding a second, less-specific transport `.error` over the
-    /// already-emitted SSE one (`ChatSession` keeps the last `.error`).
+    /// Prevents a transport error from masking a more specific streamed error.
     var hasErrored: Bool { hadError }
 
     /// Record that the provider already surfaced an error (its thrown-error

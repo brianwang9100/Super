@@ -2,34 +2,15 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.lookup` tool call
-/// with `action:'read'` from the scripture reference in the user's turn, so the
-/// lookup pipeline — tool execution, verse load, result write-back — is
-/// exercisable end-to-end with no API key, network, or on-device model.
-///
-/// Parses standard notation ("John 3:16-17", "Psalm 23", "Romans") out of the
-/// turn via `DebugBibleTarget.parse`, then maps it onto `bible.lookup`'s read
-/// parameters: a verse reference reads that range, a chapter reference reads
-/// the whole chapter, and a bare book reads its first chapter (the tool
-/// requires a chapter). The `translation` argument is omitted, so the read uses
-/// the user's currently selected translation — the same default the tool's
-/// prompt steers real models toward.
-///
-/// Selected via a seeded `kind == .debug` row whose `modelId` is `Self.modelID`;
-/// the file is gated on `#if DEBUG` and compiles out of Release entirely.
-/// References the tool by its name string (no `Bible` import), matching the
-/// other debug Bible providers.
 public struct DebugReadLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (read)"
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`, and the
-    /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-read"
     public static let modelDisplayName = "Debug read"
     public static let maxContextTokens = 8_192
 
-    /// Bible lookup tool id, held as a literal so Chat needn't import Bible.
+    /// Kept as a literal so Chat does not import Bible.
     static let toolName = "bible.lookup"
 
     public var supportedModels: [LLMModel] {
@@ -69,7 +50,6 @@ public struct DebugReadLLMProvider: LLMProvider {
                 }
 
                 do {
-                    // Brief pre-stream pause so the "Waiting" spark is visible.
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     let target = DebugBibleTarget.parse(from: messages)
                     continuation.yield(.contentBlockStart(index: 0, type: .toolUse))
@@ -106,12 +86,7 @@ public struct DebugReadLLMProvider: LLMProvider {
 
     // MARK: - Canned payload
 
-    /// Build the `bible.lookup` `JSONValue` input for `target`, matching the
-    /// tool's read-action schema: `action:'read'` plus a single-element
-    /// `references` array. A `book` target carries no chapter, so it defaults to
-    /// chapter 1 (the tool requires one); verse bounds are passed only when the
-    /// reference named them. `translation` is omitted, so the read uses the
-    /// user's currently selected translation.
+    /// A whole-book target defaults to chapter 1 because the tool requires a chapter.
     static func readInput(for target: DebugBibleTarget) -> JSONValue {
         var reference: [String: JSONValue] = [
             "book": .string(target.bookId),

@@ -1,27 +1,7 @@
 import Core
 import Foundation
 
-/// `LLMProvider` conformer for OpenAI's **Responses API** (`POST
-/// /v1/responses`) — the native-web-search path for OpenAI models.
-///
-/// The default (non-search) OpenAI path stays on
-/// `OpenAICompatibleLLMProvider` (`/chat/completions`); this adapter is
-/// hydrated only for a model whose `searchBackend == "native"`, because the
-/// Chat Completions shim can't carry the `web_search` server tool or its
-/// `url_citation` annotations. Like every native adapter it is a *complete*
-/// provider — text, reasoning summaries, regular client tool calls, and
-/// native search — since once a turn is on the Responses API there is no
-/// per-message fallback.
-///
-/// Native search is requested per-turn via the `__native_web_search__`
-/// sentinel tool (see ``NativeWebSearch``); when absent, no server tool is
-/// attached and the adapter behaves like a plain Responses client.
-///
-/// **Stream contract** matches the rest of the suite: every stream ends with
-/// `.messageComplete` and never throws — failures arrive as `.error(...)`
-/// immediately before the terminal event. Wire formats verified against the
-/// Responses streaming reference (2026-05-31); see
-/// `docs/superpowers/specs/2026-05-31-native-web-search-providers-design.md` §5.3.
+/// OpenAI Responses adapter for reasoning summaries and native web search.
 public struct OpenAIResponsesLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -34,18 +14,6 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     /// OpenAI accepts temperatures in `[0.0, 2.0]`; clamp rather than reject.
     private static let temperatureRange: ClosedRange<Double> = 0.0...2.0
 
-    /// Designated initializer.
-    ///
-    /// - Parameters:
-    ///   - id: Stable identifier (typically the `ModelConfigurationRecord.id`).
-    ///   - displayName: User-visible label shown in the model picker.
-    ///   - model: The single `LLMModel` this provider routes requests to.
-    ///   - baseURL: Endpoint base, e.g. `https://api.openai.com/v1`. The
-    ///     `/responses` path is appended internally; trailing slashes and
-    ///     already-pathed URLs are normalized.
-    ///   - apiKey: BYOK (Bring Your Own Key) credential. Attached as a bearer
-    ///     token only when the destination passes the cleartext-safety guard.
-    ///   - http: Streaming HTTP client. Tests inject a fake.
     public init(
         id: String,
         displayName: String,
@@ -62,12 +30,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         self.http = http
     }
 
-    /// Convenience that derives identity + model from a stored
-    /// `ModelConfiguration`. The Keychain-backed key is resolved by the caller.
-    ///
-    /// Precondition: `configuration.kind == .openAIResponses` and
-    /// `configuration.baseURL != nil`. The boot path kind-dispatches before
-    /// reaching this init, so a wrong kind is a programmer error caught here.
+    /// Requires an OpenAI Responses configuration with a base URL.
     public init(configuration: ModelConfiguration, apiKey: String?, http: HTTPClient) {
         precondition(
             configuration.kind == .openAIResponses,
@@ -188,11 +151,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         }
     }
 
-    /// Decode one SSE frame's data and feed it to the reducer. Unparseable
-    /// frames are skipped rather than thrown: the Responses stream emits a
-    /// large vocabulary of event types, and an unmodeled-but-harmless shape
-    /// must not abort the turn. Genuine provider failures arrive as a typed
-    /// `error`/`response.error` event, which the reducer maps to `.error`.
+    /// Skips unmodeled SSE frames; typed provider errors still surface.
     private func consume(
         _ data: String,
         into reducer: inout OpenAIResponsesStreamReducer,

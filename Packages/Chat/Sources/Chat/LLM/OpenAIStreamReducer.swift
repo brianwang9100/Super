@@ -1,25 +1,8 @@
 import Core
 import Foundation
 
-/// Stateful reducer that turns the OpenAI Chat Completions stream of
-/// `OpenAIStreamChunk`s into the normalized `LLMStreamEvent` sequence
-/// every Super UI consumer expects.
-///
-/// Why a struct: the reducer owns sequencing state for one in-flight
-/// response (block indices, partial tool-call buffers, captured token
-/// usage) but has no identity beyond the call site that drives it. That
-/// matches our project policy of structs-for-data, actors-for-identity.
-///
-/// The reducer is intentionally pure: callers feed parsed chunks in via
-/// `consume(_:)` and a final `finish()`, and receive flat `LLMStreamEvent`
-/// arrays back. Neither method throws — internal failures (a malformed
-/// tool-call argument string, etc.) are surfaced as `.error(...)` events
-/// inside the returned array so the caller can persist whatever did make
-/// it through. No I/O (Input/Output), no concurrency, easy to fixture-test.
+/// Normalizes one Chat Completions stream, including fragmented tool calls.
 struct OpenAIStreamReducer {
-    /// True after we have emitted `.messageStart`. Prevents duplicate
-    /// emission across chunks (OpenAI repeats `id` and `model` on every
-    /// chunk; we emit on first-seen).
     private var emittedMessageStart = false
     /// Captured from the first chunk that reports them; used to defer
     /// `.messageStart` until any content event would be emitted, and to
@@ -47,16 +30,9 @@ struct OpenAIStreamReducer {
     /// intermediate chunks. Stashed here so `finish()` can attach it.
     private var capturedUsage: TokenUsage?
 
-    /// True after we have emitted `.messageComplete`. Guards against
-    /// double-emission if `finish()` is called more than once.
     private var emittedComplete = false
 
-    /// Process one decoded SSE (Server-Sent Events) chunk and return the
-    /// normalized events it produced. Order within the returned array
-    /// reflects the order downstream consumers should observe them in.
-    /// `messageStart` is always emitted before any content event from the
-    /// same call, even when the upstream chunk lacks `id`/`model`
-    /// (placeholders are substituted so the contract holds).
+    /// Always emits `.messageStart` before content, even when identifiers are absent.
     mutating func consume(_ chunk: OpenAIStreamChunk) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
@@ -144,10 +120,6 @@ struct OpenAIStreamReducer {
         emittedMessageStart = true
     }
 
-    /// Opens a text block if none is open and returns its index. Returns
-    /// the existing block's index when one is already open. The caller
-    /// uses the returned index directly so we never need a force-unwrap on
-    /// `openTextBlock`.
     private mutating func openTextBlock(into events: inout [LLMStreamEvent]) -> Int {
         if let existing = openTextBlock { return existing }
         let index = nextBlockIndex
@@ -157,8 +129,6 @@ struct OpenAIStreamReducer {
         return index
     }
 
-    /// Opens a thinking block if none is open and returns its index.
-    /// Returns the existing block's index when one is already open.
     private mutating func openThinkingBlock(into events: inout [LLMStreamEvent]) -> Int {
         if let existing = openThinkingBlock { return existing }
         let index = nextBlockIndex

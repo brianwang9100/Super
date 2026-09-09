@@ -2,43 +2,17 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.highlight` tool
-/// call from the user's turn, so the highlight pipeline — tool execution,
-/// repository read/write, reactive `@Query` render — is exercisable end-to-end
-/// with no API key, network, or on-device model.
-///
-/// The turn drives all three pieces of the call:
-/// - **action**: an explicit `action:<read|search|set|clear>` directive wins;
-///   otherwise it is inferred — "clear"/"unhighlight"/"remove" → `clear`; a
-///   colour plus a "search"/"find"/"list"/"which" word → `search`; a bare
-///   colour → `set`; nothing else → `read`.
-/// - **reference**: parsed by `DebugBibleTarget` (the same notation parser the
-///   read/annotate debug providers use), e.g. "John 3:16-17", "Psalm 23".
-/// - **colour**: the first of yellow/green/blue/pink/lavender named in the turn
-///   (defaulting to yellow for `set`/`search`, which require one).
-///
-/// Examples: "highlight John 3:16 green" → `set`; "what did I highlight in
-/// John 3" → `read`; "find my yellow highlights" → `search`; "clear the
-/// highlight on John 3:16" → `clear`.
-///
-/// Selected via a seeded `kind == .debug` row whose `modelId` is `Self.modelID`;
-/// the file is gated on `#if DEBUG` and compiles out of Release entirely.
-/// References the tool by its name string (no `Bible` import), matching the
-/// other debug Bible providers.
 public struct DebugHighlightLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (highlight)"
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`, and the
-    /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-highlight"
     public static let modelDisplayName = "Debug highlight"
     public static let maxContextTokens = 8_192
 
-    /// Bible highlight tool id, held as a literal so Chat needn't import Bible.
+    /// Kept as a literal so Chat does not import Bible.
     static let toolName = "bible.highlight"
 
-    /// Colour used when `set`/`search` need one and the turn names none.
     static let fallbackColor = "yellow"
 
     /// The five highlight colours, mirroring `BibleHighlightColor` (Chat can't
@@ -81,7 +55,6 @@ public struct DebugHighlightLLMProvider: LLMProvider {
                 }
 
                 do {
-                    // Brief pre-stream pause so the "Waiting" spark is visible.
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     continuation.yield(.contentBlockStart(index: 0, type: .toolUse))
                     continuation.yield(.toolUse(
@@ -117,11 +90,7 @@ public struct DebugHighlightLLMProvider: LLMProvider {
 
     // MARK: - Canned payload
 
-    /// Build the `bible.highlight` `JSONValue` input from the turn, matching
-    /// `HighlightBibleTool.descriptor`'s parameter schema. `set`/`clear` always
-    /// carry a verse range (defaulting to verse 1 when the reference names only
-    /// a book or chapter); `read` omits the range for a whole-chapter reference;
-    /// `search` carries the colour and, when the turn names a book, that scope.
+    /// `set` and `clear` require a range; `read` may address a whole chapter.
     static func highlightInput(from messages: [LLMMessage]) -> JSONValue {
         let action = self.action(from: messages)
         switch action {
@@ -130,7 +99,6 @@ public struct DebugHighlightLLMProvider: LLMProvider {
                 "action": .string("search"),
                 "color": .string(color(from: messages) ?? fallbackColor),
             ]
-            // Scope to a book only when the turn explicitly names one.
             if let book = DebugBibleTarget.parseFreeText(lastUserText(from: messages))?.bookId {
                 fields["book"] = .string(book)
             }
@@ -166,9 +134,6 @@ public struct DebugHighlightLLMProvider: LLMProvider {
         }
     }
 
-    /// Copy the target's verse range into `fields`. `set`/`clear` need a range,
-    /// so a reference without one defaults to verse 1; `read` leaves the range
-    /// off for a whole-chapter reference.
     private static func applyRange(
         _ target: DebugBibleTarget, into fields: inout [String: JSONValue], requireRange: Bool
     ) {
@@ -207,8 +172,6 @@ public struct DebugHighlightLLMProvider: LLMProvider {
         return "read"
     }
 
-    /// The first highlight colour named in the turn (word-bounded,
-    /// case-insensitive), or `nil` when none is present.
     static func color(from messages: [LLMMessage]) -> String? {
         let lower = lastUserText(from: messages).lowercased()
         return colors.first { color in
@@ -216,7 +179,6 @@ public struct DebugHighlightLLMProvider: LLMProvider {
         }
     }
 
-    /// The trimmed text of the most recent user turn, or `""` when there is none.
     static func lastUserText(from messages: [LLMMessage]) -> String {
         guard let lastUser = messages.last(where: { $0.role == .user }) else { return "" }
         return lastUser.content

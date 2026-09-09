@@ -2,30 +2,15 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `todo.create` tool call
-/// instead of a chat reply, so the Todo create pipeline — tool execution,
-/// repository write, reactive `@Query` render — is exercisable end-to-end with
-/// no API key, network, or on-device model.
-///
-/// Titles come from the user's turn ("add milk, eggs and bread" → three
-/// tasks); a message with no parseable titles falls back to a rich canned
-/// payload that exercises the optional `priority` / `dueAt` / `notes` fields.
-/// Selected via a seeded `kind == .debug` row whose `modelId` is
-/// `Self.modelID`; the file is gated on `#if DEBUG` and compiles out of
-/// Release entirely. References the tool by its name string (no `Todo`
-/// import), the same approach the Bible debug providers take.
 public struct DebugTodoLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (todo)"
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`, and the
-    /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-todo"
     public static let modelDisplayName = "Debug todo"
     public static let maxContextTokens = 8_192
 
-    /// Todo create tool id, held as a literal so Chat needn't import Todo.
-    /// Matches `TodoCreateTool.toolID`.
+    /// Kept as a literal so Chat does not import Todo.
     static let toolName = "todo.create"
 
     public var supportedModels: [LLMModel] {
@@ -103,9 +88,6 @@ public struct DebugTodoLLMProvider: LLMProvider {
         var notes: String?
     }
 
-    /// Build the `todo.create` `JSONValue` input — a single `tasks` parameter
-    /// holding the JSON-array string the tool parses, matching
-    /// `TodoCreateTool.descriptor`'s schema.
     static func createInput(from messages: [LLMMessage]) -> JSONValue {
         .object(["tasks": .string(tasksJSON(from: messages))])
     }
@@ -158,8 +140,6 @@ public struct DebugTodoLLMProvider: LLMProvider {
         return Array(titles.prefix(5))
     }
 
-    /// The most recent user message's flattened text. Empty when there's no
-    /// user turn.
     private static func lastUserText(_ messages: [LLMMessage]) -> String {
         guard let last = messages.last(where: { $0.role == .user }) else { return "" }
         return last.content.compactMap { block in

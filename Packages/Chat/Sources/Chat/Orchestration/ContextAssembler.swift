@@ -1,27 +1,11 @@
 import Core
 import Foundation
 
-/// Result of one assembly pass. The orchestrator hands `messages` straight
-/// to `LLMProvider.stream(...)` and consults `isOverThreshold(_:)` to
-/// decide whether to compact first.
 public struct ContextAssembly: Sendable, Equatable {
-    /// Prompt projected from the persisted history (with the live
-    /// checkpoint, if any, prepended as a synthetic system message).
     public let messages: [LLMMessage]
-    /// Token estimate for `messages` per the assembler's `TokenEstimator`,
-    /// plus the tool-schema cost (and, on the compact tier, the calibration
-    /// the assembler applies).
     public let totalTokens: Int
-    /// The *incompressible* slice of `totalTokens`: the assembler-injected
-    /// system blocks (briefings, web-search guidance, memories), the tool
-    /// schemas, and the compact-tier fixed allowance. Compaction summarizes
-    /// history only — this floor survives every checkpoint, so gates that
-    /// decide whether compaction is worth running must compare the
-    /// *compressible* remainder against the window that's actually left
-    /// (see `compressibleRatio`). `0` for assemblies built without briefings
-    /// or tools.
+    /// Prompt cost that survives compaction: injected system blocks, tools, and fixed allowance.
     public let fixedTokens: Int
-    /// `LLMModel.maxContextTokens` as supplied at assembly time.
     public let maxTokens: Int
 
     public init(messages: [LLMMessage], totalTokens: Int, fixedTokens: Int = 0, maxTokens: Int) {
@@ -31,54 +15,30 @@ public struct ContextAssembly: Sendable, Equatable {
         self.maxTokens = maxTokens
     }
 
-    /// Fraction of the model's context window the prompt currently fills.
-    /// Returns 0 when `maxTokens <= 0` rather than crashing on a misconfigured
-    /// model — a misconfigured ratio simply suppresses auto-compaction.
+    /// Returns zero for a misconfigured nonpositive context window.
     public var ratio: Double {
         guard maxTokens > 0 else { return 0 }
         return Double(totalTokens) / Double(maxTokens)
     }
 
-    /// `true` when `ratio >= threshold`. The orchestrator drives
-    /// auto-compaction off this. Threshold is read from settings; default
-    /// `ChatSettings.defaultAutoCompactThreshold`.
     public func isOverThreshold(_ threshold: Double) -> Bool {
         ratio >= threshold
     }
 
-    /// The summarizable slice of the prompt: history rows + the live
-    /// checkpoint summary — everything `totalTokens` counts beyond the
-    /// fixed floor.
     public var compressibleTokens: Int { max(0, totalTokens - fixedTokens) }
 
-    /// How full the *compressible* budget is: history tokens over the
-    /// window that remains after the fixed floor. This is the honest
-    /// compaction signal on small-window models — their floor alone can
-    /// exceed a total-ratio threshold forever, which would re-fire
-    /// compaction on every turn without ever bringing the total down.
-    /// When the floor consumes the entire window, any history at all
-    /// reads as `.infinity` (compaction is still the only lever left);
-    /// an empty prompt reads 0.
+    /// History usage against capacity remaining after the fixed prompt floor.
     public var compressibleRatio: Double {
         let available = maxTokens - fixedTokens
         guard available > 0 else { return compressibleTokens > 0 ? .infinity : 0 }
         return Double(compressibleTokens) / Double(available)
     }
 
-    /// `true` when `compressibleRatio >= threshold` — the compact-tier
-    /// counterpart of `isOverThreshold(_:)`.
     public func isCompressibleOverThreshold(_ threshold: Double) -> Bool {
         compressibleRatio >= threshold
     }
 }
 
-/// Projects persisted Chat rows into the `[LLMMessage]` array shipped to a
-/// provider, folding the live `CompactionCheckpointRecord` (if any) in as
-/// a single leading system message that replaces the messages it covers.
-///
-/// Walks the inputs newest-first to find the cutoff implied by
-/// `checkpoint.uptoMessageId` (inclusive); messages at or before the cutoff
-/// are dropped from the prompt and the summary stands in for them.
 public struct ContextAssembler: Sendable {
     private let estimator: any TokenEstimator
 
@@ -86,45 +46,7 @@ public struct ContextAssembler: Sendable {
         self.estimator = estimator
     }
 
-    /// - Parameters:
-    ///   - messages: Conversation history in `(createdAt, rowid)` ascending
-    ///     order — exactly what `MessageRepository.fetchAll(conversationId:)`
-    ///     returns.
-    ///   - toolCalls: Tool-call rows for the conversation, used to fold
-    ///     `.toolUse` blocks back onto assistant messages and to mark
-    ///     `isError: true` on tool-result rows whose call failed.
-    ///   - checkpoint: Latest live compaction checkpoint, or nil.
-    ///   - model: Active model — its `maxContextTokens` drives the budget.
-    ///   - chatBriefing: The Chat-assistant base prompt, loaded once at
-    ///     app launch from `Resources/DefaultSystemPrompt.md`. Rendered
-    ///     under a `## Chat assistant` header inside the leading
-    ///     concatenated `.system` block. Defaults to empty so fixtures
-    ///     and tests that don't carry the Chat bundle continue to work.
-    ///   - appletBriefings: Per-applet prompts contributed by registered
-    ///     `MiniApplet`s, already trimmed and ordered (see
-    ///     `AppletRegistry.resolvedBriefings()`). Each renders under its
-    ///     own `## <Name> applet` header inside the leading block.
-    ///   - userPersonalization: Free-form user text (was
-    ///     `ChatSettings.systemPrompt`). Rendered under a
-    ///     `## User personalization` header at the end of the leading
-    ///     block so it follows — never overrides — the authoritative
-    ///     chat and applet sections. Empty/whitespace skips injection.
-    ///   - memories: Stored user-preference memories surfaced by the
-    ///     `memory` tool. Rendered as a bulleted "What I remember about
-    ///     you" block in its own `.system` message immediately after the
-    ///     leading block (memories change far more frequently than the
-    ///     chat/applet/personalization stack; keeping them in their own
-    ///     block isolates the prompt-cache-busting churn). Each bullet
-    ///     carries the entry's id (`- [<id>] <text>`) so the LLM can
-    ///     call `memory(op:'update'|'forget', id:...)` in conversations
-    ///     where it didn't perform the original `save` and therefore
-    ///     has no other source for the id. Empty array = no block
-    ///     injected.
-    ///   - tools: Tool definitions sent alongside the prompt. Their schema
-    ///     cost is added to `totalTokens` so the context meter reflects the
-    ///     fixed tool overhead the provider counts against the window.
-    ///     Defaults to empty (no tool overhead) so non-tool callers and the
-    ///     post-compaction projection are unaffected.
+    /// `messages` must use repository order: `(createdAt, rowid)` ascending.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
@@ -139,10 +61,7 @@ public struct ContextAssembler: Sendable {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls, activeModelId: model.id)
         if let checkpoint {
-            // Re-emit any `.system` rows that the checkpoint window
-            // covered, so the conversation's original system prompt
-            // doesn't get summarized away. The summary itself is then
-            // inserted right after them as a synthetic system row.
+            // Preserve leading system rows covered by the checkpoint.
             let systemPrefix = try project(
                 messages: leadingSystemRowsCovered(by: checkpoint, in: messages),
                 toolCalls: toolCalls,
@@ -151,37 +70,13 @@ public struct ContextAssembler: Sendable {
             prompt.insert(checkpointMessage(for: checkpoint), at: 0)
             prompt.insert(contentsOf: systemPrefix, at: 0)
         }
-        // Insert order is bottom-up — each `insert(at: 0)` puts the new
-        // block ahead of everything inserted so far. The final on-the-wire
-        // order is therefore:
-        //   [leading block, memories, historical .system rows, checkpoint
-        //    summary, user/assistant/tool history].
-        // The leading block (chat assistant + applets + personalization)
-        // sits first because it is the most stable across turns — the
-        // Anthropic prompt cache rewards a stable prefix. Memories change
-        // every time the `memory` tool runs, so they live in their own
-        // block immediately after the leading one, isolating the cache
-        // bust to just that block.
-        // The assembler-injected system blocks are the *fixed* part of the
-        // prompt — compaction summarizes history, never these — so their
-        // cost is tracked separately and surfaced as
-        // `ContextAssembly.fixedTokens` for the compressible-budget gates.
+        // Insert bottom-up: stable briefing, volatile memories, preserved system rows, summary, history.
         var fixedBlockTokens = 0
         if let memoriesBlock = Self.formatMemoriesBlock(memories) {
             prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
             fixedBlockTokens += estimator.estimate(memoriesBlock)
         }
-        // Native-search guidance sits ahead of the volatile memories block
-        // (it depends only on the model, so it's stable across turns and
-        // cache-friendly there) and behind the leading briefing. Absent for
-        // non-search models, so the prompt is byte-identical to before for
-        // them.
-        // The leading briefing and web-search guidance form a contiguous,
-        // rarely-changing run at the front of the prompt, so they're tagged
-        // `.stablePrefix`: the Anthropic native adapter places its first cache
-        // breakpoint right after them (covering tools + this stable system
-        // text), while the volatile memories block that follows busts only
-        // itself. Every other provider ignores the hint.
+        // Anthropic caches the stable briefing prefix separately from volatile memories.
         if let webSearchBlock = Self.formatWebSearchBlock(model: model) {
             prompt.insert(LLMMessage(role: .system, text: webSearchBlock, cacheHint: .stablePrefix), at: 0)
             fixedBlockTokens += estimator.estimate(webSearchBlock)
@@ -194,37 +89,11 @@ public struct ContextAssembler: Sendable {
             prompt.insert(LLMMessage(role: .system, text: leadingBlock, cacheHint: .stablePrefix), at: 0)
             fixedBlockTokens += estimator.estimate(leadingBlock)
         }
-        // The projected prompt can carry several consecutive `.system`
-        // entries (leading block, memories, historical leading `.system`
-        // rows, checkpoint summary). The Anthropic Messages API accepts
-        // that natively and `OpenAICompatibleLLMProvider` forwards each
-        // one as its own message — which the OpenAI Chat Completions API
-        // also accepts (it concatenates internally). If a future
-        // provider with a stricter single-system contract is added,
-        // merge these blocks into a single newline-joined `.system`
-        // entry at this insertion point.
-        // Tool *definitions* ride alongside the prompt in every provider
-        // request and count against the model's context window, but they live
-        // outside `prompt` — so fold their schema cost into the budget here.
-        // Without it the meter undercounts by the fixed tool overhead, which
-        // on a small-window model (AFM) can silently overflow before
-        // auto-compaction ever fires.
+        // Tool schemas consume context even though they sit outside `messages`.
         var toolTokens = estimator.estimate(tools: tools)
         var allowanceTokens = 0
         if ModelContextTier(maxContextTokens: model.maxContextTokens) == .compact {
-            // Small-window models typically run on-device (the Apple
-            // Foundation Model), whose framework counts far more against the
-            // window than our chars/4 heuristic sees: it serializes each tool
-            // into a full JSON-schema declaration with scaffolding, and it
-            // prepends its own base instructions + guardrails we never
-            // observe. Measured on-device (iPhone 15 Pro Max, iOS 27): AFM
-            // reported ~11k tokens for a request our raw heuristic put at
-            // ~3k, with tool schemas dominating the gap. Calibrate so the
-            // meter — and therefore the compaction gates reading it —
-            // approximates what the on-device tokenizer actually counts.
-            // (The tier keys on window size, so a user-added ≤8K BYOK model
-            // is calibrated too — a conservative over-count for it.)
-            // Full-tier models are untouched.
+            // AFM reports roughly 11K tokens for requests our raw heuristic estimates near 3K.
             toolTokens = Int((Double(toolTokens) * Self.compactTierToolSchemaInflation).rounded(.up))
             allowanceTokens = Self.compactTierFixedOverheadTokens
         }
@@ -237,23 +106,12 @@ public struct ContextAssembler: Sendable {
         )
     }
 
-    /// Multiplier applied to the heuristic tool-schema estimate on the
-    /// compact tier, approximating the on-device provider's JSON-schema
-    /// scaffolding + real-tokenizer expansion of each tool declaration
-    /// (the chars/4 heuristic counts only the raw descriptive text).
+    /// Compensates for on-device JSON-schema scaffolding absent from the heuristic.
     static let compactTierToolSchemaInflation: Double = 1.8
 
-    /// Flat allowance, in tokens, for the on-device provider's own base
-    /// instructions and guardrails — prompt weight Apple injects that we
-    /// can neither read nor count. Added to compact-tier budgets only.
+    /// Allowance for compact-tier provider instructions that the app cannot inspect.
     static let compactTierFixedOverheadTokens = 800
 
-    /// Concatenates the chat-assistant briefing, per-applet briefings, and
-    /// user-personalization text into a single labeled markdown body, or
-    /// returns `nil` when every section is empty. Each section is
-    /// preceded by a `## <heading>` so the Large Language Model (LLM)
-    /// can scope rules to the right applet and so user personalization is
-    /// visibly distinct from authoritative orchestration text.
     static func formatLeadingSystemBlock(
         chatBriefing: String,
         appletBriefings: [AppletBriefing],
@@ -265,9 +123,6 @@ public struct ContextAssembler: Sendable {
             sections.append("## Chat assistant\n\n\(trimmedChat)")
         }
         for briefing in appletBriefings {
-            // Bodies are already trimmed by `AppletRegistry.resolvedBriefings()`,
-            // but trim again defensively for callers that build briefings
-            // by hand (tests, fixtures).
             let trimmedBody = briefing.body.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedBody.isEmpty else { continue }
             sections.append("## \(briefing.label)\n\n\(trimmedBody)")
@@ -280,14 +135,6 @@ public struct ContextAssembler: Sendable {
         return sections.joined(separator: "\n\n")
     }
 
-    /// Native web-search guidance, injected only for models whose
-    /// `searchBackend == "native"` (`nil` for every other model, so their
-    /// prompt is unchanged). Teaches economy (search only for current /
-    /// post-training / fast-changing facts, one well-formed query),
-    /// grounding, and that searches may need the user's approval. The exact
-    /// "call `request_web_search` and don't answer yet" mechanic lives in
-    /// the proposal tool's own description (`NativeWebSearch.proposalTool`),
-    /// so it stays correct whether or not the cost gate is on.
     static func formatWebSearchBlock(model: LLMModel) -> String? {
         guard NativeWebSearch.usesNativeSearch(model) else { return nil }
         return """
@@ -304,14 +151,7 @@ public struct ContextAssembler: Sendable {
         """
     }
 
-    /// Format the bulleted "What I remember about you" block, or `nil`
-    /// when there's nothing to surface (skipping the insert entirely
-    /// avoids a stray blank `.system` row when memory is enabled but
-    /// empty). Each bullet leads with `[<id>]` so the LLM can pass the
-    /// id back to `memory(op:'update'|'forget', id:...)` in a follow-up
-    /// turn — without it, those ops would only be callable on the same
-    /// turn that produced the `save` artifact. Text is trimmed so the
-    /// LLM doesn't see ragged whitespace from copy-pasted input.
+    /// Includes stable IDs so later turns can update or forget an entry.
     static func formatMemoriesBlock(_ memories: [MemoryEntry]) -> String? {
         let cleaned = memories
             .map { (id: $0.id, text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -321,11 +161,7 @@ public struct ContextAssembler: Sendable {
         return "What I remember about you:\n\(bullets)"
     }
 
-    /// Returns the `.system` rows that sit at or before the checkpoint's
-    /// `uptoMessageId` — the rows we'd otherwise drop. Stops at the first
-    /// non-`.system` row so a mid-conversation `.system` insertion (rare,
-    /// but possible) still gets summarized; only a true *leading*
-    /// system-prompt prefix is preserved verbatim.
+    /// Preserves only the leading system prefix covered by the checkpoint.
     private func leadingSystemRowsCovered(
         by checkpoint: CompactionCheckpointRecord,
         in messages: [MessageRecord]
@@ -346,10 +182,7 @@ public struct ContextAssembler: Sendable {
         checkpoint: CompactionCheckpointRecord?
     ) -> [MessageRecord] {
         guard let checkpoint else { return messages }
-        // `uptoMessageId` is inclusive; drop everything up to and including
-        // that row. If the id is absent (deleted message, mismatched
-        // conversation) fall back to keeping every message — losing the
-        // tail is worse than ignoring a stale checkpoint.
+        // A stale checkpoint keeps all messages rather than risking tail loss.
         guard let cutoff = messages.firstIndex(where: { $0.id == checkpoint.uptoMessageId }) else {
             return messages
         }
@@ -375,26 +208,8 @@ public struct ContextAssembler: Sendable {
             toolCallsByID[record.id] = record
         }
 
-        // Pairing totality: strict providers (OpenAI, Anthropic) reject a
-        // history carrying a `tool_use` with no matching `tool_result`, or a
-        // `tool_result` whose `tool_use` is absent — and they reject it on
-        // *every* later turn, permanently wedging the conversation. A healthy
-        // turn never persists such a shape, but a cancel/crash between the
-        // assistant row landing and the result write can (and a compaction
-        // checkpoint can drop an assistant row whose result row survives).
-        // The projection therefore repairs both shapes instead of replaying
-        // them verbatim:
-        //   - a projected `toolUse` whose result row does not follow it in
-        //     the window gets a synthesized error `tool_result` right after
-        //     its turn;
-        //   - a role-`.tool` row whose `toolUse` was never projected is
-        //     dropped.
-        // Both predicates are *positional*, not presence-based: a result row
-        // that sorts anywhere except after its issuing assistant row cannot
-        // pair on the wire, so it must not suppress the in-place synthesis
-        // (and is itself dropped by the second rule). Presence-based
-        // suppression would let one out-of-position row re-wedge the
-        // history the synthesis exists to repair.
+        // Strict providers require adjacent use/result pairs. Synthesize missing results and drop
+        // orphaned or out-of-position results after cancellation, crashes, or compaction.
         var messageIndexByID: [String: Int] = [:]
         var resultRowIndicesByCallID: [String: [Int]] = [:]
         for (index, record) in messages.enumerated() {
@@ -421,42 +236,16 @@ public struct ContextAssembler: Sendable {
                 llmMessages.append(LLMMessage(role: .user, text: Self.expandedUserText(for: record)))
             case .assistant:
                 var blocks: [LLMContent] = []
-                // Replay the stored thinking trace FIRST — Anthropic requires
-                // the last assistant turn of a tool loop to *start* with its
-                // original thinking block (content + signature, verbatim).
-                // Projected whenever a trace exists; the adapter decides
-                // replayability (only a signed block ships on the wire) and
-                // every other adapter ignores `.thinking`.
+                // Anthropic requires signed thinking first and verbatim in a tool-loop replay.
                 //
-                // The signature only rides along when the row was produced by
-                // the model we're about to call: an Anthropic thinking
-                // signature is model-specific, and replaying one minted by a
-                // *different* model (the user switched models mid-conversation)
-                // is the same "latest assistant thinking block was modified"
-                // 400 the verbatim-replay rule exists to avoid. On a mismatch
-                // we drop just the signature — the adapter then skips the
-                // unreplayable block and `buildRequest`'s gate disables
-                // thinking for that request (which the API tolerates),
-                // completing the turn instead of wedging it.
+                // Thinking signatures are model-specific; omit them after a model switch.
                 if let thinking = record.thinkingContent, !thinking.isEmpty {
                     let signature = record.thinkingModelId == activeModelId
                         ? record.thinkingSignature
                         : nil
                     blocks.append(.thinking(content: thinking, signature: signature))
                 }
-                // Replay stored web-search results (with their encrypted echoes)
-                // so providers that require it (Anthropic) keep prior-turn
-                // citations valid. Gated on a present `providerEcho` — only
-                // those carry the opaque blob worth round-tripping; OpenAI /
-                // Gemini citations have none, so we don't emit a `.searchResult`
-                // they'd just ignore. Positioned before the text block, matching
-                // the on-the-wire order (results precede the text that cites
-                // them); adapters that don't need it skip the block. Invariant:
-                // a `.searchResult` always rides alongside non-empty assistant
-                // text (citations only attach to a grounded answer), so a model
-                // switched mid-conversation to `OpenAICompatibleLLMProvider`
-                // — which drops `.searchResult` via `compactMap` — never reaches
-                // its empty-content assertion on a citations-bearing turn.
+                // Replay opaque search echoes before cited text for providers such as Anthropic.
                 if let sources = record.attachments?.sources,
                    sources.contains(where: { $0.providerEcho != nil }) {
                     blocks.append(.searchResult(sources))
@@ -467,8 +256,7 @@ public struct ContextAssembler: Sendable {
                 let calls = toolCallsByMessageID[record.id] ?? []
                 for call in calls {
                     let input = try call.decodedParameters()
-                    // Replay the provider continuation token (Gemini thought
-                    // signature) so the next turn's functionCall carries it.
+                    // Gemini requires its continuation signature on replayed function calls.
                     blocks.append(.toolUse(
                         id: call.id,
                         name: call.toolName,
@@ -508,14 +296,7 @@ public struct ContextAssembler: Sendable {
         return llmMessages
     }
 
-    /// A user row's text with any verse-reference attachments prepended as
-    /// citation + verbatim snapshot blocks, so the model is handed exact
-    /// scripture rather than asked to recall it (BYOK small/local models
-    /// misquote translations). With no attachments this returns
-    /// `record.content` unchanged; the on-disk `content` always stays the
-    /// user's typed text only — the expansion exists only in the prompt.
-    /// When the typed text is empty (a pill-only message) the result is
-    /// just the reference blocks.
+    /// Prepends verbatim verse snapshots in the prompt so small/local models cannot misquote them.
     static func expandedUserText(for record: MessageRecord) -> String {
         guard let references = record.attachments?.references, !references.isEmpty else {
             return record.content

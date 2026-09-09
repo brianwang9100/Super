@@ -2,14 +2,6 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that streams canned markdown responses
-/// with randomized delays. Lets the UI streaming path (scroll behavior,
-/// `MessageList` content-growth, thinking blocks, code-block rendering)
-/// be exercised end-to-end without a real LLM endpoint, an API key, or
-/// the on-device Apple Foundation Model. Picked up by the host bootstrap
-/// when a `ModelConfigurationRecord` with `kind == .debug` exists; that
-/// row is auto-seeded on first launch in DEBUG builds and never in
-/// Release (the entire file is gated on `#if DEBUG`).
 public struct DebugLLMProvider: LLMProvider {
     /// Matches the registering `ModelConfigurationRecord.id` so
     /// `LLMProviderRegistry.setActive(id:)` finds this provider when the
@@ -28,11 +20,6 @@ public struct DebugLLMProvider: LLMProvider {
     /// the simulator with no key. `nil` for the plain canned-stream row.
     public let searchBackend: String?
 
-    /// Label shown in the chat model picker for this row's vended model.
-    /// Carried from the seeded row's `name` so the two `DebugLLMProvider`-backed
-    /// rows ("Debug (canned)" and "Debug (mock search)") read distinctly —
-    /// they otherwise shared one static label and one static model id, which
-    /// collided in the picker and made the mock-search row unselectable.
     public let modelDisplayName: String
 
     /// Stable `ModelConfigurationRecord.modelId` the factory dispatches on to
@@ -102,8 +89,6 @@ public struct DebugLLMProvider: LLMProvider {
 
                 let canned = Self.pickResponse()
                 do {
-                    // Pre-stream pause so the "Waiting" spark UI is
-                    // briefly visible before any delta arrives.
                     try await Self.sleep(milliseconds: Int.random(in: 150...500))
 
                     // Track block index dynamically so the text block
@@ -156,10 +141,7 @@ public struct DebugLLMProvider: LLMProvider {
     }
 
     private static func pickResponse() -> CannedResponse {
-        // `randomElement()` only returns `nil` when the bank is empty; the
-        // previous `?? responseBank[0]` traded one crash for another. If a
-        // developer empties the bank while iterating, surface that
-        // explicitly as a debug-visible chat response instead of a trap.
+        // Surface an emptied debug bank in-chat instead of trapping.
         guard let response = responseBank.randomElement() else {
             return CannedResponse(thinking: "", text: "Debug provider: responseBank is empty.")
         }
@@ -336,8 +318,6 @@ public struct DebugLLMProvider: LLMProvider {
         }
     }
 
-    /// The most recent user message's flattened text, used for trigger
-    /// detection. Empty when there is no user turn.
     private static func lastUserText(_ messages: [LLMMessage]) -> String {
         guard let last = messages.last(where: { $0.role == .user }) else { return "" }
         return last.content.compactMap { block in

@@ -2,18 +2,8 @@
 import Core
 import Foundation
 
-/// A resolved Bible target for the debug annotate/note providers — which
-/// scripture unit a canned `bible.annotate` / `bible.note` tool call should
-/// attach to. Mirrors the position fields of `AnnotateBibleTool` /
-/// `NoteBibleTool` (`target` is `"book"` / `"chapter"` / `"verse"`), so a
-/// provider maps it straight into the tool's `JSONValue` input.
-///
-/// DEBUG-only: exists solely to drive the fake Bible-tool providers without
-/// a real LLM. See `DebugAnnotateLLMProvider` / `DebugNoteLLMProvider`.
 struct DebugBibleTarget: Equatable {
-    /// `"book"`, `"chapter"`, or `"verse"` — the tool's `target` enum.
     let target: String
-    /// Three-letter UPPERCASE book code, e.g. `"ROM"`, `"JHN"`, `"1CO"`.
     let bookId: String
     let chapterNumber: Int?
     let verseStart: Int?
@@ -27,19 +17,14 @@ struct DebugBibleTarget: Equatable {
     ///    8:28-30"), matched against `Core.BibleBookIndex`;
     /// 3. a fixed John 3:16 fallback when neither is present.
     static func parse(from messages: [LLMMessage]) -> DebugBibleTarget {
-        // (1) Scan every message for the dispatcher's `Reference id:` line —
-        // it arrives as a user turn, but scanning all turns is cheap and
-        // robust to future briefing tweaks.
         for text in allTexts(in: messages) {
             if let target = parseReferenceIDLine(in: text) { return target }
         }
-        // (2) Free-text reference in the most recent user turn only — older
-        // turns are prior context, not this turn's request.
+        // Older free-text references are context, not the current request.
         if let lastUser = messages.last(where: { $0.role == .user }) {
             let userText = texts(in: lastUser).joined(separator: " ")
             if let target = parseFreeText(userText) { return target }
         }
-        // (3) Fallback.
         return DebugBibleTarget(
             target: "verse", bookId: "JHN", chapterNumber: 3, verseStart: 16, verseEnd: 16
         )
@@ -60,7 +45,6 @@ struct DebugBibleTarget: Equatable {
         return nil
     }
 
-    /// Parse a `BibleAnnotationTargetSpec.id`-shaped string into a target.
     static func parse(sourceID: String) -> DebugBibleTarget? {
         let parts = sourceID.split(separator: ":").map(String.init)
         guard let kind = parts.first else { return nil }
@@ -142,8 +126,6 @@ struct DebugBibleTarget: Equatable {
         )
     }
 
-    /// Whether `range` is flanked by non-alphanumeric characters (or string
-    /// ends) — so a book spelling only matches as a whole word.
     private static func isWordBounded(_ range: Range<String.Index>, in text: String) -> Bool {
         if range.lowerBound > text.startIndex {
             let before = text[text.index(before: range.lowerBound)]
@@ -165,8 +147,6 @@ struct DebugBibleTarget: Equatable {
         // swiftlint:disable:next force_try
         try! Regex(#"\s*(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+))?"#)
     }
-    /// Leading whitespace then a bare chapter number — the chapter, when no
-    /// `chapter:verse` follows (e.g. "Romans 8").
     private static var chapterRegex: Regex<AnyRegexOutput> {
         // Compile-constant pattern: an invalid literal is a programmer error, caught on first run.
         // swiftlint:disable:next force_try

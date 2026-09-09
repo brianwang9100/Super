@@ -2,33 +2,15 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.annotate` tool
-/// call instead of a chat reply, so the Bible annotation pipeline — tool
-/// execution, repository write, reactive `@Query` render — is exercisable
-/// end-to-end with no API key, network, or on-device model.
-///
-/// Works in *both* annotation entry points unchanged, because both funnel
-/// through `ChatSession` → active `provider.stream(...)` → the tool loop:
-/// in-chat ("annotate Romans 8:28-30") and the headless verse-tap "Add
-/// annotation" flow (`BibleAnnotateDispatcher`, which sends a structured
-/// `Reference id: …` prompt this provider parses). Selected via a seeded
-/// `kind == .debug` row whose `modelId` is `Self.modelID`; the file is gated
-/// on `#if DEBUG` and compiles out of Release entirely.
-///
-/// References the tool by its name string (no `Bible` import) — the same
-/// approach `BibleAnnotateDispatcher` takes.
 public struct DebugAnnotateLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (annotate)"
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`, and the
-    /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-annotate"
     public static let modelDisplayName = "Debug annotate"
     public static let maxContextTokens = 8_192
 
-    /// Bible annotation tool id, held as a literal so Chat needn't import
-    /// Bible — matches `BibleAnnotateDispatcher.bibleAnnotateToolID`.
+    /// Kept as a literal so Chat does not import Bible.
     static let toolName = "bible.annotate"
 
     public var supportedModels: [LLMModel] {
@@ -71,7 +53,6 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
                 }
 
                 do {
-                    // Brief pre-stream pause so the "Waiting" spark is visible.
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     let target = DebugBibleTarget.parse(from: messages)
                     continuation.yield(.contentBlockStart(index: 0, type: .toolUse))
@@ -108,9 +89,6 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
 
     // MARK: - Canned payload
 
-    /// Build the `bible.annotate` `JSONValue` input for `target`, matching
-    /// `AnnotateBibleTool.descriptor`'s parameter schema. Position fields are
-    /// included only when the target carries them.
     static func annotateInput(for target: DebugBibleTarget) -> JSONValue {
         var fields: [String: JSONValue] = [
             "target": .string(target.target),
@@ -123,12 +101,7 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
         return .object(fields)
     }
 
-    /// Canned markdown summary shaped by target kind, mirroring
-    /// `BibleAnnotateDispatcher.sectionGuidance`'s per-scope sections.
-    /// Deliberately exercises the renderer paths the real contract asks
-    /// for — `###` headings, bold, a bullet list, a blockquote, and a
-    /// canonical full-book-name citation that the shared renderer
-    /// linkifies into a tappable `super://bible/...` reference.
+    /// Exercises headings, emphasis, lists, blockquotes, and Bible reference links.
     private static func summary(for target: DebugBibleTarget) -> String {
         switch target.target {
         case "book":

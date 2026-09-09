@@ -1,13 +1,6 @@
 import Core
 import Foundation
 
-/// Wire-level Codable shapes for the OpenAI Chat Completions API
-/// (Application Programming Interface). Internal — every public surface is
-/// kept on `OpenAICompatibleLLMProvider`. Snake_case JSON (JavaScript
-/// Object Notation) keys are bridged to camelCase Swift properties via
-/// the encoder/decoder's snake-case strategy, so call sites read normally.
-
-/// Request body for `POST {baseURL}/chat/completions`.
 struct OpenAIChatRequest: Encodable {
     let model: String
     let messages: [OpenAIRequestMessage]
@@ -15,24 +8,14 @@ struct OpenAIChatRequest: Encodable {
     let temperature: Double
     let tools: [OpenAITool]?
     let streamOptions: StreamOptions?
-    /// Optional cache-routing affinity key (`prompt_cache_key` via the
-    /// snake-case strategy). Host-gated to OpenAI by the provider — `nil`
-    /// (and so omitted) for every other compatible endpoint. See
-    /// ``CacheRoutingKey``.
+    /// Host-gated to OpenAI because compatible endpoints may reject unknown fields.
     let promptCacheKey: String?
 
-    /// Mirror of OpenAI's `stream_options` object. Setting `includeUsage`
-    /// asks the provider to attach a `usage` object to the final stream
-    /// chunk so we can emit `.messageComplete(usage:)` with real numbers
-    /// instead of zeroes.
     struct StreamOptions: Encodable {
         let includeUsage: Bool
     }
 }
 
-/// One message in the outgoing request. `content` is nil on assistant rows
-/// that only carry tool calls; `toolCallId` is set on `tool` rows that
-/// return a tool's result.
 struct OpenAIRequestMessage: Encodable {
     let role: String
     let content: String?
@@ -52,15 +35,7 @@ struct OpenAIRequestMessage: Encodable {
     }
 }
 
-/// Assistant-side tool invocation echoed back into the next request. The
-/// `arguments` field is a JSON string per the OpenAI spec — not a nested
-/// object — so we stringify the input before placing it here.
-///
-/// `extraContent` carries Google's `extra_content.google.thought_signature`
-/// extension (the encoder's snake_case strategy renders the keys): Gemini's
-/// thinking models route through this OpenAI-compat shim and **require** the
-/// signature echoed back on the assistant tool call, or the follow-up turn
-/// fails with HTTP 400. Omitted (nil) for non-Gemini providers.
+/// Gemini-compatible calls must replay Google's opaque thought signature.
 struct OutgoingToolCall: Encodable {
     let id: String
     let type: String
@@ -95,8 +70,6 @@ struct OutgoingExtraContent: Encodable {
     }
 }
 
-/// Tool advertisement entry in the request. OpenAI nests the metadata one
-/// level deeper than our `LLMTool`, so we project at the call site.
 struct OpenAITool: Encodable {
     let type: String
     let function: OpenAIFunctionDefinition
@@ -113,10 +86,7 @@ struct OpenAIFunctionDefinition: Encodable {
     let parameters: JSONValue
 }
 
-/// One streamed chunk decoded from a `data: {...}` SSE (Server-Sent Events)
-/// frame. All fields are optional because OpenAI emits the role on the first
-/// chunk only, finish reasons on the last chunk only, and usage on a
-/// separate trailing chunk when `stream_options.include_usage` is set.
+/// Partial SSE chunk; usage may arrive in a separate trailing chunk.
 struct OpenAIStreamChunk: Decodable {
     let id: String?
     let model: String?
@@ -130,10 +100,7 @@ struct OpenAIStreamChoice: Decodable {
     let finishReason: String?
 }
 
-/// The actual delta payload. `reasoningContent` is DeepSeek's field name;
-/// `reasoning` is the field used by OpenAI's o-series spec — both are
-/// surfaced through `LLMStreamEvent.thinkingDelta` so the UI doesn't need
-/// to know which dialect produced them.
+/// Supports both DeepSeek and OpenAI reasoning field names.
 struct OpenAIDelta: Decodable {
     let role: String?
     let content: String?
@@ -142,10 +109,7 @@ struct OpenAIDelta: Decodable {
     let toolCalls: [OpenAIToolCallDelta]?
 }
 
-/// Streamed tool-call fragment. `index` identifies which tool call this
-/// fragment belongs to (the model may stream multiple tool calls
-/// interleaved); `function.arguments` arrives as a partial JSON string and
-/// is concatenated by the reducer until the call completes.
+/// `index` keys interleaved calls whose JSON arguments arrive in fragments.
 struct OpenAIToolCallDelta: Decodable {
     let index: Int?
     let id: String?
@@ -156,9 +120,6 @@ struct OpenAIToolCallDelta: Decodable {
     /// tool calls over the OpenAI-compat shim; must be replayed next turn.
     let extraContent: OpenAIExtraContent?
 
-    // Explicit memberwise init (the synthesized one would force every call
-    // site to pass `extraContent`); `Decodable` synthesis is unaffected since
-    // its `init(from:)` keys off the stored property names, not this init.
     init(
         index: Int? = nil,
         id: String? = nil,
@@ -202,10 +163,6 @@ struct OpenAIUsage: Decodable {
         let cachedTokens: Int?
     }
 
-    // Explicit memberwise init so existing call sites (test doubles) needn't
-    // pass `promptTokensDetails`; the synthesized `Decodable init(from:)` keys off
-    // the stored property names, not this init, so wire decoding is unaffected.
-    // (Same pattern as `OpenAIToolCallDelta`.)
     init(
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
