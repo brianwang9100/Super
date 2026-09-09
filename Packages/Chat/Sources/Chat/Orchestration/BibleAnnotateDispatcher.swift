@@ -15,7 +15,7 @@ private let bibleAnnotateLog = Logger(
 /// the Bible UI's spark button, Annotate action tile, and empty
 /// book-picker bubbles.
 ///
-/// Mirrors `ChatReferenceInbox`'s shape: shell-owned, observable,
+/// Shell-owned and observable,
 /// attaches to the `SuperEventBus` once at app bootstrap, drains
 /// `SuperEvent.bibleAnnotateRequested` envelopes off the bus, and
 /// publishes one `SuperEvent.bibleAnnotateCompleted` per request.

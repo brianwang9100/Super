@@ -1,5 +1,7 @@
 # Preserve ordered Chat reference handoffs
 
+Follow-up: [Shell event ordering](SHELL_EVENT_ORDERING.md) unifies this reference path with all shell navigation and removes the separate reference inbox and adjacent batching described below.
+
 ## Finding and approach
 
 Codex finding `3966269494` on PR #353 identifies a lost destination: Add to chat followed by New chat before SwiftUI observes the inbox replaces the first attention request, leaving its reference for the new composer to drain.

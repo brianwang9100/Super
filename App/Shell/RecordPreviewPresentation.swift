@@ -133,7 +133,7 @@ final class RecordPreviewPresentation {
 }
 
 /// Shell-owned transitions, dispatched by a fresh body to honor live Reduce Motion.
-enum ShellNavigation: Equatable {
+enum ShellNavigation: Equatable, Sendable {
     case openConversation(id: String)
     case newConversation
     case openApplet(id: String)
@@ -143,7 +143,7 @@ enum ShellNavigation: Equatable {
 }
 
 /// An ordered bus inbox avoids coalescing preview and authoritative navigation.
-enum ShellRequest: Equatable {
+enum ShellRequest: Equatable, Sendable {
     case preview(RecordReference)
     case navigation(ShellNavigation)
 }

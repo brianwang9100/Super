@@ -8,7 +8,8 @@ import Foundation
 /// Delivery is fire-and-forget: an event published before a subscriber
 /// calls `events()` is not buffered for it. A receiver that must not miss
 /// an event keeps a long-lived subscriber and buffers pending payloads
-/// itself — see `ChatReferenceInbox` in the Chat applet.
+/// itself. The shell uses one subscriber and an `OrderedInbox` so reference
+/// handoffs and conversation navigation retain their shared bus order.
 ///
 /// The fan-out mirrors `ChatSession`'s per-turn subscriber map: a
 /// `[UUID: Continuation]` dictionary, with `onTermination` removing a

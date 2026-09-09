@@ -73,12 +73,6 @@ struct AppShell: View {
     /// frame draws a sensible curve before the overlay reports.
     @State private var chatSemiProgress: Double = 0.52
     @State private var viewModel: ChatScreenViewModel?
-    /// App-session-lived inbox: subscribes to the `SuperEventBus` and
-    /// buffers verse references handed in from Bible until a composer
-    /// drains them. Outlives the per-conversation `viewModel`. Attached
-    /// to the bus from `ensureViewModel`'s `.task` — `attach(to:)` is
-    /// idempotent so the call is safe to repeat across identity changes.
-    @State private var referenceInbox = ChatReferenceInbox()
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
@@ -126,7 +120,7 @@ struct AppShell: View {
     /// `@State` storage is reference-backed and survives the copy,
     /// and body re-eval gives the dispatcher fresh `@Environment`
     /// values so `withAnimation` honors the live `reduceMotion`.
-    @State private var pendingRequests: [ShellRequest] = []
+    @State private var requestInbox = OrderedInbox<ShellRequest>()
     @State private var navigationQueue = SerialActionQueue()
     // Queued transitions can outlive the environment captured when they were enqueued.
     @State private var navigationReduceMotion = false
@@ -169,15 +163,6 @@ struct AppShell: View {
                 )
             }
         }())
-        // The `referenceInbox` attaches to `SuperEventBus` from
-        // `ensureViewModel`'s `.task`. That `.task` fires within a
-        // runloop tick of first-render commit — orders of magnitude
-        // faster than the human reaction time needed to perceive the
-        // Bible reader, recognize a verse, tap it, see the action
-        // sheet, and tap "Add to chat". So no `recordAddedToChat`
-        // event can fire before the inbox subscribes in practice, and
-        // a one-shot init-side `Task` would only introduce ghost
-        // subscriptions on every parent re-render of `AppShell`.
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
@@ -406,13 +391,6 @@ struct AppShell: View {
             // when the user opens the next chat.
             viewModel?.applyExternalVerbosity(newValue)
         }
-        // Move complete handoffs into the serial navigation queue together.
-        // Composer mounting never consumes or changes their destinations.
-        .onChange(of: referenceInbox.attentionRevision) { _, _ in
-            while let request = referenceInbox.consumeAttention() {
-                route(.composerAttention(request))
-            }
-        }
         // Owner-side keyboard dismissal: every minimize-like transition
         // clears the shell's `@FocusState` *directly*, rather than
         // relying on `ChatScreen`'s in-screen `.onChange(of: progress)`
@@ -458,23 +436,11 @@ struct AppShell: View {
         // task. This observer fires inside a body re-eval, so the
         // dispatch runs on a fresh `self` whose `@Environment` reflects
         // the live OS state (notably `reduceMotion` for `withAnimation`).
-        .onChange(of: pendingRequests) { _, requests in
-            pendingRequests.removeAll()
-            for request in requests {
-                switch request {
-                case .navigation(let navigation): route(navigation)
-                case .preview(let reference):
-                    guard !navigationQueue.isBusy, !settingsOwnsPresentation, !sidebarOpen,
-                          let applet = registry.applets.first(where: { $0.appletID == reference.appletID })
-                    else { continue }
-                    if recordPreview.present(reference: reference, applet: applet) {
-                        dismissKeyboard()
-                    }
-                }
-            }
+        .onChange(of: requestInbox.revision) { _, _ in
+            drainRequests()
         }
         // One bus instance shared by every applet — the Bible backdrop
-        // publishes verse references, the Chat overlay's inbox consumes.
+        // publishes verse references, the shell routes them in navigation order.
         .environment(\.superEventBus, dependencies.eventBus)
         .hapticsEngine(dependencies.hapticsEngine)
         // External `super://bible/verse?...` deep links — from Safari,
@@ -488,10 +454,30 @@ struct AppShell: View {
         }
     }
 
-    /// Arbitrate every authoritative shell action before changing visible state.
-    /// Deferred actions execute from native onDismiss with fresh environment values.
+    /// Direct UI actions follow any bus work already received, while an idle
+    /// synchronous action retains this caller's SwiftUI transaction.
     private func route(_ navigation: ShellNavigation) {
-        pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
+        enqueueNavigation(navigation)
+        drainRequests()
+    }
+
+    private func drainRequests() {
+        for request in requestInbox.drain() {
+            switch request {
+            case .navigation(let navigation): dispatchNavigation(navigation)
+            case .preview(let reference):
+                guard !navigationQueue.isBusy, !settingsOwnsPresentation, !sidebarOpen,
+                      let applet = registry.applets.first(where: { $0.appletID == reference.appletID })
+                else { continue }
+                if recordPreview.present(reference: reference, applet: applet) {
+                    dismissKeyboard()
+                }
+            }
+        }
+    }
+
+    /// Dispatch once, preserving order through native dismissal and suspension.
+    private func dispatchNavigation(_ navigation: ShellNavigation) {
         guard !recordPreview.deferNavigation(navigation) else { return }
         navigationReduceMotion = reduceMotion
         switch navigation {
@@ -514,7 +500,9 @@ struct AppShell: View {
         guard let action = recordPreview.didDismiss() else { return }
         switch action {
         case .navigation(let actions):
-            for navigation in actions { route(navigation) }
+            // These actions arrived before any inbox work awaiting a UI drain.
+            for navigation in actions { dispatchNavigation(navigation) }
+            drainRequests()
         case .completion(let completion):
             let event: SuperEvent
             switch completion {
@@ -647,8 +635,8 @@ struct AppShell: View {
     /// transition waits for body dispatch so Reduce Motion never freezes at boot.
     private func enqueueNavigation(_ navigation: ShellNavigation) {
         recordPreview.invalidateCompletion()
-        pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
-        pendingRequests.append(.navigation(navigation))
+        requestInbox.remove { if case .preview = $0 { true } else { false } }
+        requestInbox.enqueue(.navigation(navigation))
     }
 
     private func ensureViewModel() async {
@@ -659,10 +647,6 @@ struct AppShell: View {
     }
 
     private func initializeViewModels() async {
-        // Begin draining the cross-applet bus before any composer
-        // mounts, so a verse added early is buffered, not lost.
-        await referenceInbox.attach(to: dependencies.eventBus)
-
         // Drain the Chats applet's "open this chat" / "new chat"
         // requests onto the shell's existing routing. The bus
         // does no buffering before subscription, so any event the
@@ -671,7 +655,8 @@ struct AppShell: View {
         // long-lived — `AppShell` lives for the whole app session,
         // so cancellation isn't load-bearing.
         //
-        // Writes land in `pendingRequests`, a `@State` whose
+        // All destination-sensitive events share this one subscription.
+        // Writes land in `requestInbox`, a `@State` whose
         // reference-backed storage survives the struct copy this
         // closure captures. The body's `.onChange` then dispatches
         // from a fresh `self` so `@Environment` reads (notably
@@ -679,28 +664,28 @@ struct AppShell: View {
         // moment of navigation — not the value frozen into this
         // captured copy at task-spawn time.
         let eventBus = dependencies.eventBus
+        let events = await eventBus.events()
         Task { [self] in
-            for await event in await eventBus.events() {
+            for await event in events {
                 switch event {
                 case .openConversationRequested(let id):
                     enqueueNavigation(.openConversation(id: id))
                 case .newConversationRequested:
                     enqueueNavigation(.newConversation)
-                case .recordAddedToChat:
-                    // Attention is routed by ChatReferenceInbox; invalidate here
-                    // immediately without also routing the same handoff.
-                    recordPreview.invalidateCompletion()
-                    pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
+                case .recordAddedToChat(let reference, let startNew):
+                    enqueueNavigation(.composerAttention(ComposerAttentionRequest(
+                        startNew: startNew, references: [reference]
+                    )))
                 case .previewRecord(let reference):
                     guard !navigationQueue.isBusy, !recordPreview.isActive,
                           !settingsOwnsPresentation, !sidebarOpen else { continue }
-                    pendingRequests.append(.preview(reference))
+                    requestInbox.enqueue(.preview(reference))
                 case .openRecord(let reference):
                     // The receiving applet's own bus subscriber
                     // performs the within-applet navigation; the
                     // shell's job is only to make that applet's
                     // backdrop visible. Route through
-                    // `pendingRequests` so the dispatch runs
+                    // `requestInbox` so the dispatch runs
                     // inside a body re-eval and `@Environment`
                     // reads (notably `reduceMotion`) are fresh.
                     enqueueNavigation(.openApplet(id: reference.appletID))
@@ -716,7 +701,7 @@ struct AppShell: View {
                 case .sidebarOpened:
                     // Invalidate synchronously, including the dismissal window.
                     recordPreview.invalidateCompletion()
-                    pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
+                    requestInbox.remove { if case .preview = $0 { true } else { false } }
                 case .shellChromeVisibilityRequested(let visible):
                     // An applet (today only Bible, on scroll) asks the shell
                     // to hide/show its global chrome. No `withAnimation` here:

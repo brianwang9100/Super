@@ -46,8 +46,9 @@ if a preview is open, only the shell's visible transition waits for dismissal,
 because the Bible inbox already consumed the original event.
 
 Cross-applet reference handoffs stay in ordered, reference-bearing requests until
-the shell routes them. Adjacent requests for the same destination are batched;
-New chat boundaries preserve delivery order. The shell attaches each current-chat
+the shell routes them. One shell subscription and one inbox preserve order across
+references, conversation changes and direct UI navigation. Each event remains a
+separate request. The shell attaches each current-chat
 batch before suspending and initializes a new composer with only its own batch.
 ChatScreen never drains the session inbox on mount. Requests received during a
 native preview remain ordered through outer dismissal, then enter the same serial
