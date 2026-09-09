@@ -38,6 +38,7 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.addNoteForSelection()
         #expect(model.selectedVerses.isEmpty)
         #expect(model.presentedNoteList == nil)
@@ -51,6 +52,7 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.annotateSelection()
         #expect(!model.isAnnotationDisclaimerPresented)
         presentation.didDismiss(.bottom, identity: presentation.identity)
@@ -66,10 +68,12 @@ struct BibleStudyPresentationTests {
         if fromBook {
             sheet = .book
             model.presentBookSheet()
+            presentation.didPresent(.book, identity: presentation.identity)
             presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
         } else {
             sheet = .bottom
             model.toggleVerse(28)
+            presentation.didPresent(.bottom, identity: presentation.identity)
             presentation.addNoteForSelection()
         }
         model.selectChapter(bookId: "JHN", chapterNumber: 3)
@@ -84,6 +88,7 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.addNoteForSelection()
         presentation.invalidate()
         presentation.didDismiss(.bottom, identity: presentation.identity)
@@ -95,9 +100,11 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.addNoteForSelection()
         var completed = 0
         presentation.finish { completed += 1 }
+        presentation.finish { completed += 100 }
         #expect(completed == 0)
         presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(completed == 1)
@@ -111,7 +118,9 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         model.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
+        presentation.didPresent(.note, identity: presentation.identity)
         var completed = false
         presentation.finish { completed = true }
         #expect(model.presentedNoteList == nil)
@@ -119,6 +128,74 @@ struct BibleStudyPresentationTests {
         presentation.didDismiss(.note, identity: presentation.identity)
         #expect(!completed)
         presentation.didDismiss(.bottom, identity: presentation.identity)
+        #expect(completed)
+    }
+
+    @Test("finish cancels secondary requests that never mounted", arguments: [
+        BibleStudyPresentationViewModel.Sheet.annotation, .disclaimer, .note, .bookmark, .book,
+    ])
+    func finishUnmountedSecondary(sheet: BibleStudyPresentationViewModel.Sheet) async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        let target = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
+        switch sheet {
+        case .annotation: model.presentAnnotationSheet(for: target)
+        case .disclaimer: model.triggerAnnotationGeneration(for: target)
+        case .note: model.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
+        case .bookmark: model.presentBookmarkSheet()
+        case .book: model.presentBookSheet()
+        case .bottom: Issue.record("This scenario covers secondary sheets")
+        }
+        var completed = false
+        presentation.finish { completed = true }
+        #expect(completed)
+        #expect(model.presentedAnnotationTarget == nil)
+        #expect(!model.isAnnotationDisclaimerPresented)
+        #expect(model.pendingAnnotationIntents.isEmpty)
+        #expect(model.presentedNoteList == nil)
+        #expect(model.presentedBookmarkSheet == nil)
+        #expect(model.bookSheet == nil)
+    }
+
+    @Test("selection handoffs cancel unmounted actions without waiting for dismissal", arguments: [
+        BibleStudyPresentationViewModel.Sheet.note, .disclaimer, .bookmark,
+    ])
+    func handoffBeforeActionsMount(sheet: BibleStudyPresentationViewModel.Sheet) async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.toggleVerse(28)
+        switch sheet {
+        case .note:
+            presentation.addNoteForSelection()
+            #expect(model.presentedNoteList?.autoCompose == true)
+        case .disclaimer:
+            presentation.annotateSelection()
+            #expect(model.isAnnotationDisclaimerPresented)
+        case .bookmark:
+            presentation.presentBookmark()
+            #expect(model.presentedBookmarkSheet != nil)
+        default: Issue.record("This scenario covers selection handoffs")
+        }
+        #expect(model.selectedVerses.isEmpty)
+        #expect(!model.isActionSheetPresented)
+        var completed = false
+        presentation.finish { completed = true }
+        #expect(completed)
+    }
+
+    @Test("finish tracks a secondary mount arriving while another sheet dismisses")
+    func mountWhileFinishing() async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
+        model.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
+        var completed = false
+        presentation.finish { completed = true }
+        presentation.didPresent(.note, identity: presentation.identity)
+        presentation.didDismiss(.bottom, identity: presentation.identity)
+        #expect(!completed)
+        presentation.didDismiss(.note, identity: presentation.identity)
         #expect(completed)
     }
 
@@ -155,6 +232,7 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.presentBookmark()
         #expect(model.presentedBookmarkSheet == nil)
         #expect(model.selectedVerses.isEmpty)
@@ -169,6 +247,7 @@ struct BibleStudyPresentationTests {
         presentation.invalidate()
         presentation.activate()
         model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.addNoteForSelection()
         presentation.didDismiss(.bottom, identity: oldIdentity)
         #expect(model.presentedNoteList == nil)
@@ -204,12 +283,26 @@ struct BibleStudyPresentationTests {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.presentBookSheet()
+        presentation.didPresent(.book, identity: presentation.identity)
         presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
         #expect(model.presentedNoteList == nil)
         presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(model.presentedNoteList == nil)
         presentation.didDismiss(.book, identity: presentation.identity)
         #expect(model.presentedNoteList?.spec == .book(bookId: "ROM"))
+    }
+
+    @Test("book handoff cancels an unmounted picker without waiting for dismissal")
+    func handoffBeforeBookMount() async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.presentBookSheet()
+        presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
+        #expect(model.bookSheet == nil)
+        #expect(model.presentedNoteList?.spec == .book(bookId: "ROM"))
+        var completed = false
+        presentation.finish { completed = true }
+        #expect(completed)
     }
 
     @Test("bookmark tapped during action dismissal waits for that dismissal")

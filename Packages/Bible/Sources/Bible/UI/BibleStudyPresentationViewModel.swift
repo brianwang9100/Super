@@ -68,6 +68,11 @@ final class BibleStudyPresentationViewModel {
 
     func handOffAfterBookDismiss(_ work: @escaping () -> Void) {
         guard isActive, !isFinishing else { return }
+        guard presented.contains(.book) || dismissing.contains(.book) else {
+            viewModel.dismissBookSheet()
+            work()
+            return
+        }
         pendingHandoff = (.book, viewModel.position, work)
         dismissing.insert(.book)
         viewModel.dismissBookSheet()
@@ -82,6 +87,11 @@ final class BibleStudyPresentationViewModel {
             work()
             return
         }
+        guard presented.contains(.bottom) || dismissing.contains(.bottom) else {
+            viewModel.clearSelection()
+            work()
+            return
+        }
         pendingHandoff = (.bottom, viewModel.position, work)
         dismissing.insert(.bottom)
         viewModel.clearSelection()
@@ -91,6 +101,7 @@ final class BibleStudyPresentationViewModel {
     func didPresent(_ sheet: Sheet, identity callbackIdentity: UUID) {
         guard isActive, callbackIdentity == identity else { return }
         presented.insert(sheet)
+        if isFinishing { dismissing.insert(sheet) }
     }
 
     /// Called by the native sheet's onDismiss, never by a timer or a binding setter.
@@ -115,13 +126,9 @@ final class BibleStudyPresentationViewModel {
         isFinishing = true
         pendingHandoff = nil
         completion = onFinish
+        // Bindings request presentation; SwiftUI can coalesce an unmounted request
+        // away without onDismiss. Only mounted sheets own a native dismissal wait.
         dismissing.formUnion(presented)
-        if viewModel.isActionSheetPresented || viewModel.isNarrationSheetPresented { dismissing.insert(.bottom) }
-        if viewModel.presentedAnnotationTarget != nil { dismissing.insert(.annotation) }
-        if viewModel.isAnnotationDisclaimerPresented { dismissing.insert(.disclaimer) }
-        if viewModel.presentedNoteList != nil { dismissing.insert(.note) }
-        if viewModel.presentedBookmarkSheet != nil { dismissing.insert(.bookmark) }
-        if viewModel.bookSheet != nil { dismissing.insert(.book) }
         viewModel.dismissNoteList()
         viewModel.dismissBookmarkSheet()
         viewModel.dismissAnnotationSheet()

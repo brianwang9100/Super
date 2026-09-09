@@ -100,6 +100,28 @@ struct BibleChapterPreviewTests {
         #expect(completions == (unmount ? [] : [.cancel]))
     }
 
+    @Test("finishing before requested actions mount completes without a native dismissal", arguments: [false, true])
+    func finishBeforeActionsMount(open: Bool) {
+        var completions: [RecordPreviewCompletion] = []
+        let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completions.append($0) })
+        preview.presentationDidComplete(identity: preview.identity)
+        #expect(preview.reader.isActionSheetPresented)
+        let expected = BibleReaderReference(position: preview.reader.position, translation: preview.reader.translation,
+                                            selectedVerses: preview.reader.selectedVerses)
+
+        if open { preview.openInBible() } else { preview.cancel() }
+
+        // SwiftUI may coalesce the request away: neither didPresent nor didDismiss occurs.
+        #expect(!preview.reader.isActionSheetPresented)
+        #expect(completions == (open ? [.openRecord(reference: expected.recordReference)] : [.cancel]))
+        preview.reopenActions()
+        preview.presentationDidComplete(identity: preview.identity)
+        preview.cancel()
+        preview.openInBible()
+        #expect(!preview.reader.isActionSheetPresented)
+        #expect(completions.count == 1)
+    }
+
     @Test("Open in Bible captures exact current verses and waits for the native study dismissal", arguments: [Set([28, 29]), Set([28, 30]), Set<Int>()])
     func currentSelection(selection: Set<Int>) throws {
         var completions: [RecordPreviewCompletion] = []
@@ -135,6 +157,7 @@ struct BibleChapterPreviewTests {
         var completion: RecordPreviewCompletion?
         let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completion = $0 })
         preview.presentationDidComplete(identity: preview.identity)
+        preview.study.didPresent(.bottom, identity: preview.study.identity)
         let reference = try #require(preview.reader.makeVerseReference())
         preview.addToChat(reference: reference, startNewConversation: startNew)
         #expect(completion == nil)
