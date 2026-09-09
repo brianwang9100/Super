@@ -11,7 +11,8 @@ struct BibleChapterPreviewSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetNavBar(
-                title: "\(viewModel.reader.bookName) \(viewModel.reader.position.chapterNumber)",
+                title: viewModel.reader.selectionCitation
+                    ?? "\(viewModel.reader.bookName) \(viewModel.reader.position.chapterNumber)",
                 subtitle: viewModel.reader.translation.rawValue,
                 onClose: { viewModel.cancel() }
             ) {
@@ -27,13 +28,6 @@ struct BibleChapterPreviewSheet: View {
                 .accessibilityHint("Open this chapter and selection in Bible")
             }
 
-            if let citation = viewModel.reader.selectionCitation {
-                SelectionPill(title: citation, accessibilityLabel: "Actions for \(citation)",
-                              onAction: { viewModel.reopenActions() },
-                              onClear: { viewModel.reader.clearSelection() })
-                    .padding(.bottom, 8)
-            }
-
             BibleChapterContent(
                 viewModel: viewModel.reader,
                 layout: .preview,
@@ -44,6 +38,14 @@ struct BibleChapterPreviewSheet: View {
                 onBookmarkTap: { viewModel.study.presentBookmark() }
             )
             .allowsHitTesting(viewModel.isReady)
+
+            if let citation = viewModel.reader.selectionCitation {
+                SelectionPill(title: citation, accessibilityLabel: "Actions for \(citation)",
+                              onAction: { viewModel.reopenActions() },
+                              onClear: { viewModel.reader.clearSelection() })
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+            }
         }
         .background(theme.background)
         .overlay(alignment: .bottom) {

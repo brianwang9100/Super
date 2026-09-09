@@ -223,3 +223,34 @@ heads and passing builds, lint, secret scan, package tests, and iOS capture test
 Their required `native-previews` upload fails because Argos reports the account's
 Free Plan screenshot capacity is exhausted. Required checks remain enforced; no
 baseline deletion, check bypass, or paid plan change is part of this work.
+
+
+## Design feedback — selection location and title
+
+The user requested moving the selected-verse pill from the top to the bottom of
+the modal and including verse numbers in the header. This is a bounded adjustment
+to the existing preview view. Use the reader's current `selectionCitation` as the
+SheetNavBar title, falling back to the chapter label for an empty selection. Move
+the existing SelectionPill after the flexible chapter content in the VStack, with
+vertical spacing above the modal's bottom safe area. This reserves space for the
+pill rather than covering chapter text. Keep its existing reopen/clear actions,
+with native study sheets continuing to present above the whole modal.
+
+Risks: title truncation at large text sizes and reachability of final chapter
+verses above the bottom control. Reuse the existing three preview captures with
+unchanged inventory; inspect light/dark and XXL plus 120% app scale. Run the Bible
+suite and a native simulator check for initial/range/disjoint/cleared titles and
+selection actions. Update the top PR and request fresh current-revision review;
+lower stack revisions remain unchanged.
+
+
+Design feedback validation: the amended plan and code received independent
+subagent approval. All **884 Bible tests / 89 suites** passed; the three existing
+preview simulator captures passed and were inspected in light, dark, and XXL with
+120% app scale. Capture inventory remains **626**. Both SuperBible and Super build
+successfully. Native SuperBible at Lapis Dark / 120% verified range title
+`1 Corinthians 13:4-7`, live disjoint title `1 Corinthians 13:4, 6-7`, bottom-pill
+action reopening, clear-to-chapter title, and the entire final verse scrolling
+above the reserved control area. No new model state, formatting logic, captures,
+or generated image files were added. This view-only follow-up reuses existing
+selection-formatting tests rather than adding tests that mirror the layout.

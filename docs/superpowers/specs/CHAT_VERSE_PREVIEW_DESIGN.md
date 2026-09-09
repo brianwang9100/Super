@@ -11,8 +11,8 @@ translation, selects the cited verse or range, and scrolls the first selected
 verse into view. Chapter-only citations open at the top without a selection.
 
 The header uses `SheetNavBar`: its existing leading X cancels the preview, the
-center shows the chapter with a static translation subtitle, and its 44-point
-trailing slot contains `arrow.up.right.square`, labeled and hinted as
+center shows the current verse selection (or chapter when empty) with a static
+translation subtitle, and its 44-point trailing slot contains `arrow.up.right.square`, labeled and hinted as
 "Open in Bible". The sheet contains no translation picker, book picker, chapter
 arrows (including the footer), narration controls, spark menu, or shell composer
 accessories. The chapter and translation are fixed for that presentation.
@@ -30,8 +30,9 @@ and exposes an ancestor's active
 Its readable-background behavior keeps the chapter interactive. Tapping selected
 verses deselects them; tapping other verses changes the selection using the
 reader's existing multiple-selection behavior. Empty selection dismisses actions.
-Closing actions retains selection. A small selection citation control below the
-header reopens actions and includes the existing clear-selection affordance; this
+Closing actions retains selection. A small selection citation control at the
+bottom of the modal reopens actions and includes the existing clear-selection
+affordance; this
 avoids stranding actions after their close button is used. This control provides
 selection management only, never chapter navigation.
 
