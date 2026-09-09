@@ -440,6 +440,19 @@ public struct BibleApplet: MiniApplet {
         return AnyView(screen.databaseContext(databaseContext))
     }
 
+    /// Builds one isolated chapter preview for a valid public Bible citation.
+    @MainActor
+    public func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView? {
+        guard let link = BibleDeepLink(reference: reference) else { return nil }
+        let preview = BibleChapterPreviewViewModel(reader: viewModel.makePreviewReader(for: link), onFinish: onFinish)
+        let sheet = BibleChapterPreviewSheet(viewModel: preview, annotationRepository: annotationRepository)
+        guard let databaseContext else { return AnyView(sheet) }
+        return AnyView(sheet.databaseContext(databaseContext))
+    }
+
     /// Opens the Bible database, or returns `nil` if it can't be created — the
     /// reader then runs without relaunch restore or highlight persistence
     /// rather than failing outright.

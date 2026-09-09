@@ -184,25 +184,25 @@ class DriverTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 discover_suites(root, 'Todo')
 
-    def test_chat_discovery_requires_stationary_response_behavior_suite(self):
-        with tempfile.TemporaryDirectory() as name:
-            root = Path(name)
-            folder = root / 'Packages/Chat/Tests/ChatTests/UI/Snapshots'
-            folder.mkdir(parents=True)
-            (folder / 'MessageListSnapshotTests.swift').write_text(
-                '@Suite("Visual", .serialized)\n@MainActor\nstruct MessageListSnapshotTests {}')
-            behavior = folder.parent / 'MessageListDeclarativeScrollTests.swift'
-            with self.assertRaisesRegex(ValueError, 'Missing required capture suite'):
-                discover_suites(root, 'Chat')
-            behavior.write_text(
-                '@Suite("Stationary responses", .serialized)\n@MainActor\n'
-                'struct MessageListDeclarativeScrollTests {}')
-            self.assertEqual(discover_suites(root, 'Chat'),
-                             ['MessageListSnapshotTests', 'MessageListDeclarativeScrollTests'])
-            behavior.write_text(
-                '@Suite("Stationary responses")\n@MainActor\nstruct MessageListDeclarativeScrollTests {}')
-            with self.assertRaisesRegex(ValueError, 'must explicitly use .serialized'):
-                discover_suites(root, 'Chat')
+    def test_discovery_requires_uikit_behavior_suites(self):
+        for package, suite in [('Chat', 'MessageListDeclarativeScrollTests'),
+                               ('Bible', 'BiblePreviewPresentationObserverTests')]:
+            with self.subTest(package=package), tempfile.TemporaryDirectory() as name:
+                root = Path(name)
+                folder = root / f'Packages/{package}/Tests/{package}Tests/UI/Snapshots'
+                folder.mkdir(parents=True)
+                (folder / 'ExampleSnapshotTests.swift').write_text(
+                    '@Suite("Visual", .serialized)\n@MainActor\nstruct ExampleSnapshotTests {}')
+                behavior = folder.parent / f'{suite}.swift'
+                with self.assertRaisesRegex(ValueError, 'Missing required capture suite'):
+                    discover_suites(root, package)
+                behavior.write_text(
+                    '@Suite("Behavior", .serialized)\n@MainActor\n'
+                    f'struct {suite} {{}}')
+                self.assertEqual(discover_suites(root, package), ['ExampleSnapshotTests', suite])
+                behavior.write_text(f'@Suite("Behavior")\n@MainActor\nstruct {suite} {{}}')
+                with self.assertRaisesRegex(ValueError, 'must explicitly use .serialized'):
+                    discover_suites(root, package)
 
     def test_failed_suite_stops_package_capture(self):
         calls = []

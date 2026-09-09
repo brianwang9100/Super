@@ -45,6 +45,13 @@ public protocol MiniApplet: Sendable {
     /// construct view models without parameterizing the protocol.
     func rootView() -> AnyView
 
+    /// Creates optional temporary content for a record. The shell owns its native presentation.
+    /// Call `onFinish` after nested sheets dismiss; returning nil declines the preview.
+    func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView?
+
     /// Markdown text the Chat Large Language Model (LLM) sees as one block
     /// in the leading system message. Loaded from the applet's own
     /// Swift Package Manager (SPM) bundle — conventionally a one-liner
@@ -71,6 +78,12 @@ public protocol MiniApplet: Sendable {
 }
 
 public extension MiniApplet {
+    /// Applets opt into record previews; unsupported references have no default presentation.
+    func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView? { nil }
+
     /// Applets contribute no chat actions by default; Bible and Todo override.
     var suggestedChatActions: [SuggestedChatAction] { [] }
 

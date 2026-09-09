@@ -27,7 +27,7 @@ records the delivery check, not a replacement for repository settings.
 
 ## Repository snapshot workflow
 
-[snapshots.yml](../.github/workflows/snapshots.yml) compares the complete 579-image inventory on code PRs, every main push, and manual runs. Four package shards compare and export 538 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard compares 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+[snapshots.yml](../.github/workflows/snapshots.yml) compares the complete 586-image inventory on code PRs, every main push, and manual runs. Four package shards compare and export 545 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard compares 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
 
 A PR may skip all five macOS capture jobs only when a validated, nonempty diff changes Markdown beneath `docs/` or the root `README.md`, `TODO.md`, `AGENTS.md`, or `CLAUDE.md`. Markdown resources under app/package directories, unknown paths, assets, baselines, inventories, scripts, and workflow changes run the full suite. The selector verifies the tested merge commit against the event's base/head SHAs and considers deletions and both sides of renames. Missing or stale provenance selects full coverage.
 

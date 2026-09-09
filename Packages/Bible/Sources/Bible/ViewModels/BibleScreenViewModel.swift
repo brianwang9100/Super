@@ -234,11 +234,43 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Creates an isolated reader with the active translation and shared study services.
+    /// Position persistence and narration lifecycle remain exclusive to the full reader.
+    func makePreviewReader(for link: BibleDeepLink) -> BibleScreenViewModel {
+        let reader = BibleScreenViewModel(
+            textLoader: textLoader,
+            catalog: catalog,
+            positionRepository: nil,
+            highlightRepository: highlightRepository,
+            noteRepository: noteRepository,
+            bookmarkRepository: bookmarkRepository,
+            clock: clock,
+            clipboard: clipboard,
+            idGenerator: idGenerator,
+            disclaimerStore: disclaimerStore,
+            initialPosition: BiblePosition(bookId: link.bookId, chapterNumber: link.chapter),
+            initialTranslation: translation,
+            hapticsEngine: hapticsEngine,
+            annotationDispatchViewModel: annotationDispatchViewModel
+        )
+        // This nonpersistent reader has no saved history to restore. Initialize
+        // synchronously so selection is ready before its native sheet appears.
+        reader.didCompleteInitialRestore = true
+        reader.isRestoringNavigation = false
+        reader.openReference(bookId: link.bookId, chapterNumber: link.chapter,
+                             verseStart: link.verseStart, verseEnd: link.verseEnd)
+        // Keep the exact selection and pending scroll, but wait for the native
+        // chapter presentation to complete before opening its child action sheet.
+        reader.dismissActionSheet()
+        return reader
+    }
+
     /// Whether a previous / next chapter exists — `false` only at Genesis 1
     /// and Revelation's final chapter, where the nav controls disable.
     public var canStepBackward: Bool {
         !isRestoringNavigation && catalog.step(from: position, direction: .previous) != nil
     }
+
     public var canStepForward: Bool {
         !isRestoringNavigation && catalog.step(from: position, direction: .next) != nil
     }

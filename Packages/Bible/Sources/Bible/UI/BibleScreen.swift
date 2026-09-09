@@ -200,6 +200,7 @@ public struct BibleScreen: View {
         ))
         .sheet(item: bookSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
             bookPicker(sheetViewModel)
+                .onAppear { studyPresentation.didPresent(.book, identity: studyIdentity) }
         }
         .sheet(isPresented: translationSheetBinding) {
             translationPicker

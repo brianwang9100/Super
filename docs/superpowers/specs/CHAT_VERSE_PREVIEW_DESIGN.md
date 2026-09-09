@@ -266,7 +266,7 @@ renderer cannot capture native sheet stacks; verify nested actions and last-vers
 visibility on the real simulator instead of expanding capture infrastructure.
 Target +3 captures: the verified inventory is 623 total (582 package/41 native),
 becoming 626 (585 package/41 native), with Bible 276 becoming 279. Reconfirm counts
-at implementation time. Argos remains the sole baseline; commit no PNGs.
+at implementation time. Repository PNGs are the baseline; explicitly record, inspect, commit, and compare the three intentional modal images.
 
 The dedicated pinned simulator must verify the native stack, interactive chapter
 behind actions, action reopening, long-chapter anchoring, unsaved-note behavior,

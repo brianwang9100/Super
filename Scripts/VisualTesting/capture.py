@@ -28,6 +28,9 @@ def discover_suites(root, package):
         # This UIKit behavior suite protects the focused-turn visual fixture;
         # macOS swift test cannot execute it.
         files.append(folder.parent / 'MessageListDeclarativeScrollTests.swift')
+    if package == 'Bible':
+        # Native modal readiness is UIKit-only and cannot run in macOS swift test.
+        files.append(folder.parent / 'BiblePreviewPresentationObserverTests.swift')
     if not files:
         raise ValueError(f'No visual suites found for {package}')
     suites = []
