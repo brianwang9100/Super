@@ -1,6 +1,6 @@
 # Repository snapshot testing
 
-The reviewed PNGs in Git are the visual baselines. The inventory is **623 images: 582 package snapshots (Bible 276, Chat 244, Core 20, Todo 42) and 41 native previews**. Default local and CI commands compare against these baselines. Missing or changed images fail; CI never records replacements. Keep the fixture coverage and renderer choices described in [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
+The reviewed PNGs in Git are the visual baselines. The inventory is **625 images: 584 package snapshots (Bible 276, Chat 246, Core 20, Todo 42) and 41 native previews**. Default local and CI commands compare against these baselines. Missing or changed images fail; CI never records replacements. Keep the fixture coverage and renderer choices described in [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
 
 ## Run comparisons
 
