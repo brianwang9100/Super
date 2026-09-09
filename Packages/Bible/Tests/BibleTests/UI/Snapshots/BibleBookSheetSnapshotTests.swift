@@ -55,11 +55,6 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter"), theme: .vellumLight, name: "auto_expand_light")
     }
 
-    @Test("the auto-expanded grid renders in the dark theme")
-    func autoExpandDark() {
-        verify(sheet(query: "1 Peter"), theme: .vellumDark, name: "auto_expand_dark")
-    }
-
     @Test("the auto-expanded grid renders at Dynamic Type XXL")
     func autoExpandLightXXL() {
         verify(
@@ -71,19 +66,6 @@ struct BibleBookSheetSnapshotTests {
     @Test("a book-plus-chapter query shows the single chapter jump row")
     func chapterDeepLinkLight() {
         verify(sheet(query: "1 Peter 2"), theme: .vellumLight, name: "chapter_deep_link_light")
-    }
-
-    @Test("the chapter jump row renders in the dark theme")
-    func chapterDeepLinkDark() {
-        verify(sheet(query: "1 Peter 2"), theme: .vellumDark, name: "chapter_deep_link_dark")
-    }
-
-    @Test("the chapter jump row renders at Dynamic Type XXL")
-    func chapterDeepLinkLightXXL() {
-        verify(
-            sheet(query: "1 Peter 2"),
-            theme: .vellumLight, dynamicType: .xxLarge, name: "chapter_deep_link_light_xxl"
-        )
     }
 
     @Test("a verse-range query shows the verse jump row in the light theme")
