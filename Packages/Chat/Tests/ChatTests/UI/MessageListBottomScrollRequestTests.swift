@@ -4,6 +4,127 @@ import Testing
 
 /// Protects the explicit jump's lifetime from later streaming and user navigation.
 struct MessageListBottomScrollRequestTests {
+    @Test("native motion starting after completion suppresses fallback geometry")
+    func delayedNativeMotionRearmsSuppression() {
+        var request = MessageListBottomScrollRequest<String>()
+        request.begin(content: "tap", animated: true)
+        let fallback = request.animationCompleted(for: request.movementID, awaiting: 1)
+        #expect(fallback)
+        request.motionBegan()
+        let intermediate = request.shouldRefine(
+            distanceToBottom: 0, isRendered: true, content: "tap", measurementID: 1
+        )
+        #expect(!intermediate)
+        let ended = request.motionEnded(awaiting: 2)
+        #expect(ended)
+        let oldSample = request.shouldRefine(
+            distanceToBottom: 0, isRendered: true, content: "tap", measurementID: 1
+        )
+        #expect(!oldSample)
+        let correction = request.shouldRefine(
+            distanceToBottom: 100, isRendered: true, content: "tap", measurementID: 2
+        )
+        #expect(correction)
+    }
+
+    @Test("a seek with no native motion still corrects newly rendered content")
+    func noMotionSeekCanRecover() {
+        var request = MessageListBottomScrollRequest<String>()
+        request.begin(content: "tap", animated: true)
+        let firstMove = request.movementID
+        let motionResult1 = request.animationCompleted(for: firstMove, awaiting: 1)
+        #expect(motionResult1)
+        let estimatedArrival = request.shouldRefine(
+            distanceToBottom: 0, isRendered: false, content: "tap", measurementID: 1
+        )
+        #expect(!estimatedArrival)
+        // The other producer can still deliver an old rendered sample.
+        expectRefinement(false, request: &request, distance: 0, isRendered: true)
+        let correction = request.shouldRefine(
+            distanceToBottom: 200, isRendered: true, content: "tap", measurementID: 1
+        )
+        #expect(correction)
+        let motionResult2 = request.animationCompleted(for: firstMove, awaiting: 2)
+        #expect(!motionResult2)
+        let nextMove = request.movementID
+        request.motionBegan()
+        // Animation transaction completion cannot end actual native motion.
+        let motionResult3 = request.animationCompleted(for: nextMove, awaiting: 2)
+        #expect(!motionResult3)
+        let motionResult4 = request.motionEnded(awaiting: 2)
+        #expect(motionResult4)
+        let arrival = request.shouldRefine(
+            distanceToBottom: 0, isRendered: true, content: "tap", measurementID: 2
+        )
+        #expect(!arrival)
+        expectRefinement(false, request: &request, distance: 300, isRendered: true)
+    }
+
+    @Test("animation frames wait for fresh geometry after native motion ends")
+    func animatedFramesWaitForCompletion() {
+        var request = MessageListBottomScrollRequest<String>()
+        request.begin(content: "tap", animated: true)
+        request.motionBegan()
+        for distance in stride(from: 600.0, through: -20, by: -10) {
+            expectRefinement(false, request: &request, distance: distance, isRendered: true)
+        }
+        let motionResult5 = request.motionEnded(awaiting: 1)
+        #expect(motionResult5)
+        // A late final-frame sample must not finish the request before the
+        // fresh layout sample reveals the remaining lazy-layout distance.
+        expectRefinement(false, request: &request, distance: 0, isRendered: true)
+        let correction = request.shouldRefine(
+            distanceToBottom: 100, isRendered: true, content: "tap", measurementID: 1
+        )
+        #expect(correction)
+        expectRefinement(false, request: &request, distance: 0, isRendered: true)
+        let motionResult6 = request.motionEnded(awaiting: 2)
+        #expect(motionResult6)
+        let arrival = request.shouldRefine(
+            distanceToBottom: 0, isRendered: true, content: "tap", measurementID: 2
+        )
+        #expect(!arrival)
+        expectRefinement(false, request: &request, distance: 500, isRendered: true)
+        let motionResult7 = request.motionEnded(awaiting: 3)
+        #expect(!motionResult7)
+    }
+
+    @Test("each completed animation uses at most one bounded correction")
+    func animatedCorrectionsAreBounded() {
+        var request = MessageListBottomScrollRequest<String>()
+        request.begin(content: "tap", animated: true)
+        for measurementID in 1...5 {
+            for _ in 0..<10 {
+                expectRefinement(false, request: &request, distance: 100)
+            }
+            let motionResult8 = request.motionEnded(awaiting: measurementID)
+            #expect(motionResult8)
+            let correction = request.shouldRefine(
+                distanceToBottom: 100, isRendered: true, content: "tap", measurementID: measurementID
+            )
+            #expect(correction == (measurementID <= 4))
+        }
+        let motionResult9 = request.motionEnded(awaiting: 6)
+        #expect(!motionResult9)
+    }
+
+    @Test("cancelled motion cannot resume from late callbacks")
+    func cancelledMotionStaysCancelled() {
+        var request = MessageListBottomScrollRequest<String>()
+        request.begin(content: "tap", animated: true)
+        request.cancel()
+        request.motionBegan()
+        let motionResult10 = request.motionEnded(awaiting: 1)
+        #expect(!motionResult10)
+        expectRefinement(false, request: &request, distance: 200, isRendered: true)
+        // Reduce Motion needs neither animation nor an animation-end event.
+        request.begin(content: "tap", animated: false)
+        expectRefinement(true, request: &request, distance: 200, isRendered: true)
+        expectRefinement(false, request: &request, distance: 0, isRendered: true)
+        let motionResult11 = request.motionEnded(awaiting: 2)
+        #expect(!motionResult11)
+    }
+
     @Test("tokens and persistence keep a jump alive until rendered arrival")
     @MainActor
     func activeResponseReachesRenderedBottom() {

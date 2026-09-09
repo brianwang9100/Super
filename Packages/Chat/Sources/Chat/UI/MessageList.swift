@@ -99,7 +99,7 @@ public struct MessageList: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.messageListReduceMotionOverride) private var reduceMotionOverride
     @State private var focus = MessageListFocus()
-    @State private var focusMeasurementID = 0
+    @State private var scrollMeasurementID = 0
     @State private var thinkingExpansion: [ThinkingKey: Bool] = [:]
     @State private var bottomScroll = BottomScrollState()
     @State private var bottomVisibility = ScrollToBottomButton.VisibilityState()
@@ -127,6 +127,7 @@ public struct MessageList: View {
     /// Geometry callbacks mutate the request without invalidating layout.
     private final class BottomScrollState {
         var request = MessageListBottomScrollRequest<BottomScrollContext>()
+        var isNativeAnimating = false
     }
 
     /// Same-turn tokens and persistence keep the tap alive until rendered arrival.
@@ -139,6 +140,7 @@ public struct MessageList: View {
 
     private struct BottomGeometry: Equatable {
         let bottomY: CGFloat
+        let measurementID: Int
         let content: BottomScrollContext
     }
 
@@ -176,30 +178,30 @@ public struct MessageList: View {
                             alignment: .top
                         )
                         .id(turn.id)
-                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { [focusMeasurementID] geometry in
+                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { [scrollMeasurementID] geometry in
                             guard let request = scrollRequest, request.messageID == turn.id else { return nil }
                             return MessageListFocus.Geometry(
                                 request: request,
                                 viewportY: geometry.frame(in: .named("transcript-viewport")).minY,
-                                measurementID: focusMeasurementID
+                                measurementID: scrollMeasurementID
                             )
                         } action: { geometry in
                             guard let geometry else { return }
                             perform(focus.measure(geometry), using: proxy)
                         }
-                        .onGeometryChange(for: BottomGeometry?.self) { geometry in
+                        .onGeometryChange(for: BottomGeometry?.self) { [scrollMeasurementID] geometry in
                             guard turn.id == turns.last?.id else { return nil }
                             return BottomGeometry(
                                 bottomY: geometry.frame(in: .named("transcript-viewport")).maxY + 8,
-                                content: bottomScrollContext
+                                measurementID: scrollMeasurementID, content: bottomScrollContext
                             )
                         } action: { geometry in
                             guard let geometry else { return }
                             if bottomScroll.request.shouldRefine(
                                 distanceToBottom: geometry.bottomY - containerHeight,
-                                isRendered: true, content: geometry.content
+                                isRendered: true, content: geometry.content, measurementID: geometry.measurementID
                             ) {
-                                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                                scrollToBottom(using: proxy)
                             }
                         }
                     }
@@ -213,19 +215,19 @@ public struct MessageList: View {
                 // loop. The focused turn keeps its space even after a short reply.
                 .frame(minHeight: containerHeight, alignment: .top)
                 .id(Self.bottomID)
-                .onGeometryChange(for: BottomGeometry.self) { geometry in
+                .onGeometryChange(for: BottomGeometry.self) { [scrollMeasurementID] geometry in
                     BottomGeometry(
                         bottomY: geometry.frame(in: .named("transcript-viewport")).maxY,
-                        content: bottomScrollContext
+                        measurementID: scrollMeasurementID, content: bottomScrollContext
                     )
                 } action: { geometry in
                     // The stack can seek using estimates, but the rendered last
                     // turn above confirms arrival after lazy materialization.
                     if bottomScroll.request.shouldRefine(
                         distanceToBottom: geometry.bottomY - containerHeight,
-                        isRendered: turns.isEmpty, content: geometry.content
+                        isRendered: turns.isEmpty, content: geometry.content, measurementID: geometry.measurementID
                     ) {
-                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        scrollToBottom(using: proxy)
                     }
                 }
                 .contentShape(Rectangle())
@@ -254,8 +256,8 @@ public struct MessageList: View {
                     // the confirmation never moves across its hit target.
                     ScrollToBottomButton(visibility: bottomVisibility) {
                         focus.cancel()
-                        bottomScroll.request.begin(content: bottomScrollContext)
-                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        bottomScroll.request.begin(content: bottomScrollContext, animated: !reduceMotion)
+                        scrollToBottom(using: proxy)
                     }
                 }
                 .padding(.bottom, ScrollToBottomButton.bottomPadding)
@@ -271,17 +273,21 @@ public struct MessageList: View {
                 perform(focus.begin(request, animated: previous != request && !reduceMotion), using: proxy)
             }
             .onScrollPhaseChange { previous, phase in
+                bottomScroll.isNativeAnimating = phase == .animating
                 if phase == .tracking || phase == .interacting || phase == .decelerating {
                     focus.cancel()
                     bottomScroll.request.cancel()
                 } else if phase == .animating {
                     focus.motionBegan()
+                    bottomScroll.request.motionBegan()
                 } else if previous == .animating, phase == .idle {
-                    let nextMeasurementID = focusMeasurementID + 1
-                    if focus.motionEnded(awaiting: nextMeasurementID) {
+                    let nextMeasurementID = scrollMeasurementID + 1
+                    let focusEnded = focus.motionEnded(awaiting: nextMeasurementID)
+                    let bottomEnded = bottomScroll.request.motionEnded(awaiting: nextMeasurementID)
+                    if focusEnded || bottomEnded {
                         // One fresh measurement per completed move, even when
                         // the last animation frame's geometry callback is late.
-                        focusMeasurementID = nextMeasurementID
+                        scrollMeasurementID = nextMeasurementID
                     }
                 }
             }
@@ -289,6 +295,21 @@ public struct MessageList: View {
     }
 
     private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+    private func scrollToBottom(using proxy: ScrollViewProxy) {
+        let movementID = bottomScroll.request.movementID
+        if bottomScroll.isNativeAnimating { bottomScroll.request.motionBegan() }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3), completionCriteria: .removed) {
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        } completion: {
+            // A lazy target may produce no native motion. Reconcile that seek
+            // without treating transaction completion as the end of real motion.
+            let nextMeasurementID = scrollMeasurementID + 1
+            if bottomScroll.request.animationCompleted(for: movementID, awaiting: nextMeasurementID) {
+                scrollMeasurementID = nextMeasurementID
+            }
+        }
+    }
 
     private func perform(_ move: MessageListFocus.Move?, using proxy: ScrollViewProxy) {
         guard let move else { return }
