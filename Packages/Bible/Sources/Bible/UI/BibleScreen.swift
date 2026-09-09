@@ -15,10 +15,6 @@ import SwiftUI
 /// entry that drives ``NarrationController`` through ``NarrationTransportSheet``.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
-    @Environment(\.superTypography) private var typography
-    /// Base point for the "Chapter unavailable" fallback (== `.headline`),
-    /// over a scaled metric so it tracks both Dynamic Type and the slider.
-    @ScaledMetric(relativeTo: .headline) private var unavailableSize: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     /// Cross-applet event bus, injected by the shell. `nil` in previews
@@ -34,14 +30,7 @@ public struct BibleScreen: View {
     @Bindable private var viewModel: BibleScreenViewModel
     @State private var measuredNavigationHeight: CGFloat = 60
 
-    /// Work to run once the currently-presented sheet finishes dismissing.
-    /// Presenting a second native sheet while the first is still dismissing is
-    /// unreliable, so cross-sheet hand-offs — the book picker's annotation /
-    /// note rows, and the action sheet's Annotate / Add-note tiles — record the
-    /// follow-on presentation here, dismiss the current sheet, and run it from
-    /// that sheet's `onDismiss` (`runPendingSheetHandoff`). Shared by the book
-    /// sheet and the action / narration sheet since only one is ever up.
-    @State private var pendingSheetHandoff: (position: BiblePosition, action: () -> Void)?
+    @State private var studyPresentation: BibleStudyPresentationViewModel
 
     /// How the toast and the picker state flips animate in and out — a bottom
     /// slide by default, a cross-fade when Reduce Motion is on. (The migrated
@@ -62,28 +51,6 @@ public struct BibleScreen: View {
         if viewModel.isNarrationSheetPresented { return .narration }
         if viewModel.isActionSheetPresented { return .selection }
         return nil
-    }
-
-    /// `.sheet(item:)` binding for the combined action / narration sheet. The
-    /// item follows `activeOverlayKind`; a `nil` set (the user dragged the
-    /// sheet down) dismisses whichever card is up without clearing selection.
-    /// A `.selection` → `.narration` swap changes the item's
-    /// identity, so the sheet re-presents with the other card, mirroring the
-    /// old "narration steps over the action sheet" precedence.
-    private var bottomSheetBinding: Binding<BibleBottomOverlayKind?> {
-        Binding(
-            get: { activeOverlayKind },
-            set: { newValue in
-                // `.sheet(item:)` only writes `nil` here (the user drag-dismissed);
-                // non-nil writes are SwiftUI-internal, so there's nothing to do.
-                guard newValue == nil else { return }
-                if viewModel.isNarrationSheetPresented {
-                    viewModel.dismissNarrationSheet()
-                } else {
-                    viewModel.dismissActionSheet()
-                }
-            }
-        )
     }
 
     /// `.sheet(item:)` binding for the book picker. `bookSheet` is `private(set)`
@@ -133,12 +100,14 @@ public struct BibleScreen: View {
     ) {
         self.viewModel = viewModel
         self.annotationRepository = annotationRepository
+        _studyPresentation = State(initialValue: BibleStudyPresentationViewModel(viewModel: viewModel))
     }
 
     public var body: some View {
+        let studyIdentity = studyPresentation.identity
         ZStack(alignment: .top) {
             theme.background.ignoresSafeArea()
-            content
+            chapterContent
             navBar
             if let message = viewModel.navigationPersistenceError {
                 BibleAttachToast(
@@ -164,6 +133,7 @@ public struct BibleScreen: View {
                 .transition(motion.transition)
             }
         }
+        .onAppear { studyPresentation.activate() }
         .task {
             await viewModel.load()
             // Publish the prev / next chevrons so they hover above the chat
@@ -189,7 +159,7 @@ public struct BibleScreen: View {
         // the top; clear immersive so chrome can't strand hidden (the
         // `isImmersive` change above restores the shell's chrome too).
         .onChange(of: viewModel.position) { _, _ in
-            pendingSheetHandoff = nil
+            studyPresentation.cancelPendingHandoff()
             viewModel.resetImmersive()
             // Stepping a chapter can flip the canon-end availability, so
             // refresh the hovering chevrons' enabled state.
@@ -199,6 +169,7 @@ public struct BibleScreen: View {
         // applet — or a later re-entry — never inherits a hidden state. Clear
         // the composer chevrons too so they don't outlive the reader.
         .onDisappear {
+            studyPresentation.invalidate()
             viewModel.dismissNarrationSheet()
             viewModel.resetImmersive()
             publishChromeVisibility(true)
@@ -219,145 +190,31 @@ public struct BibleScreen: View {
         // Nothing flips `isNarrationSheetPresented` on Stop, so the
         // native sheet stays presented; it hides only on a drag-down or
         // a second nav-bar speaker tap.
-        .sheet(item: $viewModel.presentedAnnotationTarget) { spec in
-            AnnotationSheetContainer(
-                spec: spec,
-                citation: viewModel.citationLabel(for: spec),
-                verseText: viewModel.annotationVerseText(for: spec),
-                repository: annotationRepository,
-                onClose: { viewModel.dismissAnnotationSheet() },
-                onRegenerate: { viewModel.triggerAnnotationGeneration(for: spec) },
-                onAddToChat: { record in
-                    publishReferenceToChat(
-                        viewModel.addAnnotationToChat(record),
-                        startNew: false
-                    )
-                },
-                onOpenLink: { link in
-                    viewModel.navigateToDeepLink(link)
-                },
-                onRetry: { viewModel.retryAnnotationGeneration(for: spec) },
-                onDeleteFailed: { _ in
-                    viewModel.presentDeleteAnnotationFailedToast()
-                },
-                onClearDraft: { requestID in
-                    viewModel.clearAnnotationDraft(for: spec, requestID: requestID)
-                },
-                dispatchStatus: viewModel.dispatchStatus(for: spec),
-                draft: viewModel.annotationDraft(for: spec)
-            )
-            // Detents / drag indicator / themed background now ride with the
-            // sheet view via `.sheetPresentation(.expandable)` (matching the
-            // book / translation / action / narration sheets).
-        }
-        .sheet(
-            isPresented: $viewModel.isAnnotationDisclaimerPresented,
-            onDismiss: {
-                // `sheet(onDismiss:)` fires on *both* dismissal paths —
-                // the user's "Got it" tap (acknowledge) and the
-                // drag-down (discard). The two are distinguished by the
-                // queue state: acknowledge drains it synchronously
-                // before flipping the binding, so an empty queue here
-                // means the user acked; a non-empty queue means they
-                // drag-dismissed without confirmation.
-                //
-                // The previous shape called `discardAnnotationDisclaimer()`
-                // unconditionally — it was a silent no-op when the queue
-                // was already empty, but a future side effect on
-                // `discardAnnotationDisclaimer` (telemetry, logging,
-                // toast) would have fired on the acknowledge path too.
-                // The explicit guard documents the contract.
-                if !viewModel.pendingAnnotationIntents.isEmpty {
-                    viewModel.discardAnnotationDisclaimer()
-                }
-            }
-        ) {
-            AnnotationDisclaimerSheet(
-                onGotIt: { viewModel.acknowledgeAnnotationDisclaimer() }
-            )
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(theme.background)
-        }
-        .sheet(item: $viewModel.presentedNoteList) { presentation in
-            NoteListSheetContainer(
-                spec: presentation.spec,
-                citation: viewModel.citationLabel(for: presentation.spec),
-                autoCompose: presentation.autoCompose,
-                onClose: { viewModel.dismissNoteList() },
-                onCreate: { body in
-                    viewModel.createNote(target: presentation.spec, body: body)
-                },
-                onUpdate: { id, body in
-                    viewModel.updateNote(id: id, body: body)
-                },
-                onDelete: { id in
-                    viewModel.deleteNote(id: id)
-                }
-            )
-            // Detents / drag indicator / themed background now ride with the
-            // sheet view via `.sheetPresentation(.expandable)`.
-        }
-        .sheet(item: $viewModel.presentedBookmarkSheet) { presentation in
-            BibleBookmarkSheet(
-                citation: presentation.citation,
-                currentBookId: presentation.bookId,
-                currentChapterNumber: presentation.chapterNumber,
-                onSelect: { color in viewModel.toggleBookmark(color: color) },
-                onClose: { viewModel.dismissBookmarkSheet() }
-            )
-        }
-        // The verse-selection action sheet and the narration transport share a
-        // single `.sheet(item:)` so a `.selection` → `.narration` swap is one
-        // sheet re-presenting (rather than two `.sheet` modifiers racing). Each
-        // sheet view owns its own presentation (detents, drag indicator,
-        // background) via `.sheetPresentation(_:)`, so the call sites just
-        // supply content.
-        .sheet(item: bottomSheetBinding, onDismiss: runPendingSheetHandoff) { kind in
-            bottomSheetContent(kind)
-        }
-        .sheet(item: bookSheetBinding, onDismiss: runPendingSheetHandoff) { sheetViewModel in
+        .modifier(BibleStudySheetsModifier(
+            viewModel: viewModel,
+            presentation: studyPresentation,
+            annotationRepository: annotationRepository,
+            narrationContent: { AnyView(narrationSheet) },
+            onOpenLink: { viewModel.navigateToDeepLink($0) },
+            onAddToChat: { publishReferenceToChat($0, startNew: $1) }
+        ))
+        .sheet(item: bookSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
             bookPicker(sheetViewModel)
         }
-        // Carries `onDismiss: runPendingSheetHandoff` like the other sheets for
-        // consistency: no translation row queues a hand-off today, but matching
-        // the deferral wiring keeps a future one from silently dropping it.
-        .sheet(isPresented: translationSheetBinding, onDismiss: runPendingSheetHandoff) {
+        .sheet(isPresented: translationSheetBinding) {
             translationPicker
         }
     }
 
-    /// The card shown in the shared action / narration sheet, chosen by the
-    /// presented `kind`.
-    @ViewBuilder
-    private func bottomSheetContent(_ kind: BibleBottomOverlayKind) -> some View {
-        switch kind {
-        case .narration:
-            NarrationTransportSheet(
-                controller: viewModel.narration,
-                citation: viewModel.narrationCitation
-                    ?? "\(viewModel.bookName) \(viewModel.position.chapterNumber) (\(viewModel.translation.rawValue))",
-                onStop: { viewModel.narration.stop() },
-                // Post-Stop the card stays open; tapping the big play
-                // button re-runs the same selection-aware Narrate flow
-                // the spark menu's `Narrate` entry triggers.
-                onRestart: { viewModel.startNarration() },
-                onClose: { viewModel.dismissNarrationSheet() }
-            )
-        case .selection:
-            BibleActionSheet(
-                citation: viewModel.selectionCitation ?? "",
-                shareText: viewModel.selectionShareText ?? "",
-                onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
-                onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
-                onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
-                onAddToChat: { addSelectionToChat(startNew: false) },
-                onNewChat: { addSelectionToChat(startNew: true) },
-                onAnnotate: { handleAnnotateSelection() },
-                onAddNote: { handleAddNoteForSelection() },
-                onClose: { withAnimation(motion.animation) { viewModel.dismissActionSheet() } }
-            )
-        }
+    private var narrationSheet: some View {
+        NarrationTransportSheet(
+            controller: viewModel.narration,
+            citation: viewModel.narrationCitation
+                ?? "\(viewModel.bookName) \(viewModel.position.chapterNumber) (\(viewModel.translation.rawValue))",
+            onStop: { viewModel.narration.stop() },
+            onRestart: { viewModel.startNarration() },
+            onClose: { viewModel.dismissNarrationSheet() }
+        )
     }
 
     /// Hand the current verse selection to the Chat composer over the
@@ -376,12 +233,6 @@ public struct BibleScreen: View {
         publishReferenceToChat(reference, startNew: startNew)
     }
 
-    /// Shared publish path used by both selection and whole-chapter
-    /// hand-offs. Falls back to the "coming soon" toast when no bus is
-    /// wired (previews and isolated tests). On the live path the shell
-    /// owns the visible confirmation: the chat overlay semi-expands
-    /// from minimized and the composer becomes first responder, so we
-    /// only clean up the verse selection here — no toast.
     /// Ask the shell to hide (`false`) or restore (`true`) its global chrome —
     /// the hamburger and the minimized chat pill — so the reader can claim the
     /// full screen in immersive mode. A no-op without a bus (previews /
@@ -465,7 +316,7 @@ public struct BibleScreen: View {
             } else {
                 // Reuse the tile path, dismissing the action sheet first if
                 // it is still open, then firing one intent per range.
-                handleAnnotateSelection()
+                studyPresentation.annotateSelection()
             }
         case .addToChat:
             if viewModel.selectedVerses.isEmpty {
@@ -553,32 +404,6 @@ public struct BibleScreen: View {
         return "\(book.name) \(position.chapterNumber)"
     }
 
-    /// Fire a generation intent for each contiguous range in the current
-    /// verse selection. A non-contiguous selection (e.g. 28, 30) produces
-    /// two independent intents — the disclaimer-gate runs once, then both
-    /// fire in selection order. With no selection the spark button is
-    /// `.dim` and a tap shouldn't reach this method, but the guard keeps
-    /// the call site idempotent if the precondition ever loosens.
-    private func handleAnnotateSelection() {
-        let ranges = viewModel.selectedAnnotationRanges
-        guard !ranges.isEmpty else { return }
-        // Annotate hands off to the first-run disclaimer sheet (and clears the
-        // selection like the other tiles), so dismiss the action sheet first and
-        // fire the generation from `onDismiss` — presenting the disclaimer while
-        // the action sheet is still up would stack two sheets.
-        handOffAfterSelectionDismiss {
-            for spec in ranges { viewModel.triggerAnnotationGeneration(for: spec) }
-        }
-    }
-
-    /// Action sheet "Add note" — compose a note on the selection's bounding
-    /// range. Dismisses the action sheet first, then presents the note editor
-    /// from `onDismiss` so the two sheets don't race.
-    private func handleAddNoteForSelection() {
-        guard let spec = viewModel.selectionNoteSpec else { return }
-        handOffAfterSelectionDismiss { viewModel.composeNote(for: spec) }
-    }
-
     /// The translation picker content, presented as a native `.sheet`. Sizes to
     /// its rows via the compact detent; no chat-pill inset since the sheet may
     /// cover the pill.
@@ -595,7 +420,7 @@ public struct BibleScreen: View {
 
     /// The book picker content, presented as a native `.sheet`. The annotation /
     /// note rows record a deferred hand-off and dismiss the picker; the hand-off
-    /// runs from the sheet's `onDismiss` (`runPendingSheetHandoff`) so the next
+    /// runs from the sheet's `onDismiss` through the shared coordinator so the next
     /// sheet presents onto the bare reader rather than racing the picker's
     /// dismissal.
     private func bookPicker(_ sheetViewModel: BibleBookSheetViewModel) -> some View {
@@ -614,13 +439,13 @@ public struct BibleScreen: View {
             },
             onClose: { viewModel.dismissBookSheet() },
             onPresentBookAnnotations: { bookId in
-                handOffAfterBookSheetDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }
+                studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }
             },
             onRequestBookAnnotations: { bookId in
-                handOffAfterBookSheetDismiss { viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId)) }
+                studyPresentation.handOffAfterBookDismiss { viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId)) }
             },
             onPresentBookNotes: { bookId in
-                handOffAfterBookSheetDismiss { viewModel.presentNoteList(for: .book(bookId: bookId)) }
+                studyPresentation.handOffAfterBookDismiss { viewModel.presentNoteList(for: .book(bookId: bookId)) }
             },
             // Books with an in-flight `.book`-target dispatch — their
             // bubbles render generating. Reading the view model's status
@@ -631,124 +456,28 @@ public struct BibleScreen: View {
         )
     }
 
-    /// Queue `work` and dismiss the book picker; `work` fires from the picker's
-    /// `onDismiss` so the follow-on sheet lands on the bare reader.
-    private func handOffAfterBookSheetDismiss(_ work: @escaping () -> Void) {
-        pendingSheetHandoff = (viewModel.position, work)
-        viewModel.dismissBookSheet()
-    }
-
-    /// Clear selection and wait for the action sheet's dismissal before
-    /// running `work`. If the sheet is already closed, run immediately and
-    /// let the action decide whether to clear the retained selection.
-    private func handOffAfterSelectionDismiss(_ work: @escaping () -> Void) {
-        guard viewModel.isActionSheetPresented else {
-            work()
-            return
-        }
-        pendingSheetHandoff = (viewModel.position, work)
-        viewModel.clearSelection()
-    }
-
-    /// Run (and clear) the hand-off queued before the current sheet dismissed.
-    /// A no-op when no hand-off was queued (a plain drag-dismiss).
-    private func runPendingSheetHandoff() {
-        let pending = pendingSheetHandoff
-        pendingSheetHandoff = nil
-        guard let pending, pending.position == viewModel.position else { return }
-        pending.action()
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if let chapter = viewModel.chapter, !chapter.paragraphs.isEmpty {
-            BibleChapterReader(
-                chapter: chapter,
-                bookId: viewModel.position.bookId,
-                bookName: viewModel.bookName,
-                selectedVerses: viewModel.selectedVerses,
+    private var chapterContent: some View {
+        BibleChapterContent(
+            viewModel: viewModel,
+            layout: .init(topInset: navigationTopReserve, bottomInset: BibleChapterReaderLayout.fullReader.bottomInset),
+            navigation: BibleChapterNavigation(
                 previousLabel: viewModel.previousChapterLabel,
                 nextLabel: viewModel.nextChapterLabel,
-                currentNarratingVerse: viewModel.narration.currentVerseNumber,
-                // Per spec: auto-scroll only when the user hasn't picked
-                // a selection of their own.
-                suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
-                pendingScrollVerse: viewModel.pendingScrollVerse,
-                // `bottomOverlayKind` tells the reader which sheet is up so its
-                // paired selection scroll runs only for the action sheet —
-                // lifting the just-selected verse clear of the sheet — while
-                // narration's own follow-scroll stays the sole driver as it
-                // plays. It also sizes the reader's bottom scroll reserve to the
-                // presented sheet's height, so the last verses scroll clear of
-                // the floating, scrim-less sheet instead of hiding behind it.
-                bottomOverlayKind: activeOverlayKind,
-                onTapVerse: { number in
-                    withAnimation(motion.animation) { viewModel.toggleVerse(number) }
-                },
                 onPrevious: { viewModel.stepChapter(.previous) },
-                onNext: { viewModel.stepChapter(.next) },
-                onBackgroundTap: {
-                    withAnimation(motion.animation) { viewModel.dismissActionSheet() }
-                },
-                onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() },
-                onAnnotationBubbleTap: { spec in
-                    viewModel.presentAnnotationSheet(for: spec)
-                },
-                onRequestChapterAnnotation: { spec in
-                    viewModel.triggerAnnotationGeneration(for: spec)
-                },
-                chapterDispatchStatus: viewModel.dispatchStatus(
-                    for: viewModel.currentChapterAnnotationSpec
-                ),
-                onNoteGlyphTap: { spec in
-                    withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
-                },
-                // With the action sheet up (its readable background keeps the
-                // title tappable), presenting the bookmark sheet directly
-                // would race the action sheet's dismissal — the documented
-                // unreliable case — so it routes through the hand-off and
-                // presents from the action sheet's `onDismiss`. The narration
-                // transport needs no hand-off: it stays presented and the
-                // system restores it when the bookmark sheet closes, the same
-                // interleaving the note glyph relies on.
-                onBookmarkTap: {
-                    if !viewModel.isActionSheetPresented {
-                        viewModel.presentBookmarkSheet()
-                    } else {
-                        handOffAfterSelectionDismiss { viewModel.presentBookmarkSheet() }
-                    }
-                },
-                onScroll: { offsetY, userDriven in
-                    viewModel.updateScroll(offsetY: offsetY, userDriven: userDriven)
-                },
-                onFooterVisible: { visible in
-                    viewModel.updateFooterVisibility(visible)
-                },
-                topReserve: navigationTopReserve
-            )
-            // A fresh identity per chapter resets the scroll offset to the
-            // top and re-subscribes the highlight `@Query` when the reader
-            // steps.
-            .id(viewModel.position)
-            .disabled(viewModel.isRestoringNavigation)
-            // Swap chapters instantly even when the jump happens inside the
-            // book picker's slide-down animation transaction.
-            .transition(.identity)
-        } else {
-            unavailable
-        }
-    }
-
-    private var unavailable: some View {
-        VStack(spacing: 10) {
-            BibleAppletIcon(size: 40)
-                .foregroundStyle(theme.inkFaint)
-            Text("Chapter unavailable")
-                .font(typography.font(size: unavailableSize, weight: .semibold, design: .serif))
-                .foregroundStyle(theme.inkSoft)
-        }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                onNext: { viewModel.stepChapter(.next) }
+            ),
+            overlayKind: activeOverlayKind,
+            currentNarratingVerse: viewModel.narration.currentVerseNumber,
+            onAnnotationBubbleTap: { viewModel.presentAnnotationSheet(for: $0) },
+            onRequestChapterAnnotation: { viewModel.triggerAnnotationGeneration(for: $0) },
+            onNoteGlyphTap: { spec in
+                withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
+            },
+            onBookmarkTap: { studyPresentation.presentBookmark() },
+            onScroll: { viewModel.updateScroll(offsetY: $0, userDriven: $1) },
+            onFooterVisible: { viewModel.updateFooterVisibility($0) }
+        )
+        .disabled(viewModel.isRestoringNavigation)
     }
 }
 
