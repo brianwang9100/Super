@@ -3,11 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `ChatSettings.default` and `ChatSettingsStore`'s
-/// missing-key fallback / legacy-`systemPrompt` migration. The
-/// authoritative chat-assistant prompt is no longer a user-facing
-/// setting; `ChatSettings.userPersonalization` is a free-form "about
-/// me" field that defaults to empty.
 @Suite("ChatSettings")
 struct ChatSettingsTests {
     @Test("default userPersonalization is empty")
@@ -17,20 +12,12 @@ struct ChatSettingsTests {
 
     @Test("compaction threshold constants are the single source of truth")
     func compactionThresholdConstantsAreConsistent() {
-        // Regression test for the 0.75/0.85 drift that shipped before: the
-        // user-facing `default` must reference the named constant, and the
-        // constant itself is what the orchestration-layer fallbacks pin
-        // to. If anyone re-introduces a literal anywhere, this test fails
-        // when they update one but not the other.
         #expect(ChatSettings.defaultAutoCompactThreshold == 0.85)
         #expect(ChatSettings.default.autoCompactThreshold == ChatSettings.defaultAutoCompactThreshold)
         #expect(ChatSettings.defaultManualCompactMinThreshold == 0.30)
     }
 }
 
-/// Direct tests for `ChatSettingsStore.load()` covering the
-/// missing-key-fallback contract plus the one-shot legacy-`systemPrompt`
-/// migration.
 @Suite("ChatSettingsStore")
 struct ChatSettingsStoreTests {
     @Test("load returns an empty userPersonalization when no row is stored")
@@ -56,16 +43,9 @@ struct ChatSettingsStoreTests {
     @Test("migration: legacy systemPrompt equal to the snapshot is cleared silently")
     func migrationClearsLegacyDefaultPrompt() async throws {
         let repo = InMemorySettingRepository()
-        // Seed the previous build's stored value — a verbatim copy of the
-        // bundled `LegacyDefaultSystemPromptV1.md` snapshot. We read it
-        // through the production code's seam (rather than calling
-        // `AppletSystemPrompt.load(from: .module, ...)` directly) because
-        // `.module` here would resolve to the test bundle — the snapshot
-        // file lives in the Chat target's bundle.
+        // Use the production bundle seam; Bundle.module here refers to the test bundle.
         let legacyDefault = ChatSettingsStore.legacyDefaultSystemPrompt
-        // Sanity check the snapshot is bundled; if not, the migration
-        // can't disambiguate "user never customized" from "user wrote the
-        // exact default verbatim".
+        // The bundled snapshot distinguishes untouched defaults from custom legacy text.
         #expect(!legacyDefault.isEmpty)
         try await repo.set(ChatSettingsStore.Keys.legacySystemPrompt, value: legacyDefault)
 
@@ -73,7 +53,6 @@ struct ChatSettingsStoreTests {
         let settings = await store.load()
 
         #expect(settings.userPersonalization.isEmpty)
-        // Legacy row deleted so the migration doesn't re-run.
         let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
         #expect(legacyAfter == nil)
     }
@@ -88,7 +67,6 @@ struct ChatSettingsStoreTests {
         let settings = await store.load()
 
         #expect(settings.userPersonalization == custom)
-        // Legacy row removed, new key written.
         let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
         let newAfter = try await repo.get(ChatSettingsStore.Keys.userPersonalization)
         #expect(legacyAfter == nil)
@@ -107,8 +85,6 @@ struct ChatSettingsStoreTests {
         let settings = await store.load()
 
         #expect(settings.userPersonalization == neu)
-        // Idempotency: the early-return path also deletes the legacy
-        // row so it can't linger across launches.
         let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
         #expect(legacyAfter == nil)
     }
@@ -154,7 +130,6 @@ struct ChatSettingsStoreTests {
         let settings = await store.load()
         #expect(settings.summarizeTitlesEnabled == true)
         #expect(settings.titleModelId == nil)
-        // Focused getters used by the headless title path agree.
         #expect(await store.isTitleSummarizationEnabled() == true)
         #expect(await store.titleModelId() == nil)
     }
@@ -182,7 +157,6 @@ struct ChatSettingsStoreTests {
 
         try await store.setTitleModelId(nil)
         #expect(await store.titleModelId() == nil)
-        // The row is gone, not just empty.
         #expect(try await repo.get(ChatSettingsStore.Keys.titleModelId) == nil)
     }
 
@@ -218,10 +192,6 @@ struct ChatSettingsStoreTests {
     }
 }
 
-/// Migration coverage for the theme-overhaul renames: the pre-overhaul
-/// `light`/`dark`/`sepia` persisted strings — and the retired Sepia family's
-/// `sepiaLight`/`sepiaDark` — must map forward onto the current 8-variant enum,
-/// and a fresh / unrecognized value defaults to Vellum Light.
 @Suite("ChatSettingsStore theme migration")
 struct ChatSettingsStoreThemeMigrationTests {
     @Test("legacy three-theme strings map onto the new variants")
@@ -263,9 +233,6 @@ struct ChatSettingsStoreThemeMigrationTests {
     }
 }
 
-/// In-memory `SettingRepository` for tests that exercise the store
-/// without touching SQLite. Duplicated from `SettingsViewModelTests` —
-/// extract to a shared helper if a third caller appears.
 private actor InMemorySettingRepository: SettingRepository {
     private var storage: [String: String] = [:]
 

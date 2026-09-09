@@ -6,16 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Coverage on `MessageList`: a representative populated transcript
-/// (user bubble, assistant text, tool call, banner) per theme. The view
-/// is fed pre-baked items so the test stays free of GRDB and doesn't
-/// depend on a reactive query.
 @Suite("MessageList snapshots", .serialized)
 @MainActor
 struct MessageListSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private let items: [MessageList.Item] = [
         .userBubble(id: "u1", text: "What's the time in Tokyo?", references: []),
@@ -67,13 +60,7 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_streaming_light", function: function)
     }
 
-    // MARK: - Streaming markdown — partial-input variants
-    //
-    // These cover the in-flight rendering pipeline: `StreamingTail` runs
-    // its text through `MarkdownText(treatAsPartial: true)`, which closes
-    // dangling fences/links/emphasis via `MarkdownAutocloser` so the
-    // overlay doesn't visually break while the closer is still in flight.
-    // Each variant exercises one shape of partial markdown.
+    // MARK: - Streaming partial markdown
 
     @Test("streaming tail mid-fence (unclosed code block)")
     func streamingTailMidFence() {
@@ -171,9 +158,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Renders a streaming-overlay snapshot with `tail.text == text`,
-    /// the same harness the four mid-* variants share. Frame matches the
-    /// existing `streamingTail` baseline at 402×600.
     private func verifyStreamingMarkdown(
         text: String,
         theme: SuperTheme.Identifier,
@@ -207,10 +191,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_error_light", function: function)
     }
 
-    /// Banner with the optional action button — exercises the M11
-    /// "Settings" deep-link variant that voice-input permission denial
-    /// surfaces. Verifies the action label replaces the default Retry
-    /// pill.
     @Test("error banner with action button (Settings variant)")
     func errorBannerWithAction() {
         let function = #function
@@ -227,9 +207,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_error_banner_with_action_light", function: function)
     }
 
-    /// Markdown coverage: paragraphs, **bold**, `inline code`, a bulleted
-    /// list, and an h3 heading. Stresses the M10 `markdownTheme()` text
-    /// styles + paragraph spacing.
     @Test("markdown content (paragraphs, lists, headings, inline code)")
     func markdownContent() {
         let function = #function
@@ -256,9 +233,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_markdown_light", function: function)
     }
 
-    /// Fenced ```swift code block rendered through ``CodeBlock`` —
-    /// covers the dark surface, lang label, copy pill, and Splash-driven
-    /// keyword/string/comment coloring.
     @Test("fenced code block with Splash highlighting")
     func codeBlock() {
         let function = #function
@@ -290,8 +264,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_codeblock_light", function: function)
     }
 
-    /// GFM table coverage. Tests the `Theme.table` chrome (rounded border,
-    /// horizontal scroll wrapper) and the cell styling.
     @Test("GFM table renders with chrome")
     func table() {
         let function = #function
@@ -315,10 +287,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_table_light", function: function)
     }
 
-    /// Compaction banner whose summary contains markdown (`**bold**` and
-    /// inline `code`). Exercises `MarkdownText.BodyStyle.banner` so a
-    /// future tweak to the banner's foreground/font story is caught
-    /// visually rather than only by the unit-level pin.
     @Test("compaction banner renders markdown in summary text")
     func compactionBannerWithMarkdown() {
         let function = #function
@@ -334,10 +302,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_compaction_markdown_light", function: function)
     }
 
-    /// Thinking trace expanded under verbose verbosity, containing
-    /// markdown (a bulleted list + **bold**). Exercises
-    /// `MarkdownText.BodyStyle.thinking` so the softer-ink styling
-    /// stays coherent with markdown structure inside the trace.
     @Test("thinking trace renders markdown when expanded")
     func thinkingBlockWithMarkdown() {
         let function = #function
@@ -348,8 +312,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Dark companion to ``thinkingBlockWithMarkdown()`` — completes the
-    /// Vellum light/dark matrix for the expanded thinking trace.
     @Test("thinking trace renders markdown when expanded (dark)")
     func thinkingBlockWithMarkdownDark() {
         let function = #function
@@ -382,11 +344,6 @@ struct MessageListSnapshotTests {
         .frame(width: 402, height: 600)
     }
 
-    /// Appearance: minimum font scale (0.80×). Covers the lower-bound
-    /// of the `ChatAppearance` knob — markdown body, user bubble text,
-    /// paragraph line-spacing, and per-row vertical padding all
-    /// interpolate to the compact anchor values, reading tighter than
-    /// the default `list_populated_light` baseline.
     @Test("appearance: scale min")
     func appearanceScaleMin() {
         verifyAppearance(
@@ -395,10 +352,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Appearance: maximum font scale (1.20×). Covers the upper-bound
-    /// of the knob — markdown body and user bubble text scale up;
-    /// paragraph line-spacing and per-row padding interpolate to the
-    /// spacious anchor values.
     @Test("appearance: scale max")
     func appearanceScaleMax() {
         verifyAppearance(
@@ -407,10 +360,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Dark-mode coverage at the upper-bound. Per AGENTS.md §Testing.2
-    /// every new SwiftUI variant needs a light + dark pair. The
-    /// light-theme matrix above already locks the rest of the
-    /// font-scale knob range.
     @Test("appearance: scale max (dark)")
     func appearanceScaleMaxDark() {
         verifyAppearance(
@@ -420,10 +369,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Combined Dynamic Type XXL + maxed appearance knob. Locks the
-    /// "everything turned up" corner so a regression that compounds
-    /// across `@ScaledMetric` + `fontScale` + spacious-anchor padding
-    /// is caught in one baseline rather than three.
     @Test("appearance: scale max at dynamic type XXL")
     func appearanceScaleMaxXXL() {
         let function = #function
@@ -446,11 +391,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_populated_light_xxl", function: function)
     }
 
-    /// Dynamic Type XXL coverage for the M10 markdown surfaces — body
-    /// prose, fenced code, and a table all under accessibility-large
-    /// type. Per AGENTS.md §Testing.2 every view needs a larger Dynamic
-    /// Type snapshot; the base `dynamicTypeXXL` fixture has no markdown
-    /// content so it doesn't exercise these paths.
     @Test("dynamic type XXL markdown + code block + table")
     func dynamicTypeXXLMarkdown() {
         let function = #function
@@ -481,12 +421,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_markdown_light_xxl", function: function)
     }
 
-    /// Dynamic Type XXL coverage for the streaming overlay's partial
-    /// markdown path. AGENTS.md §Testing.3 requires "at minimum one
-    /// larger Dynamic Type size" for new SwiftUI views; the mid-list
-    /// shape reflows non-trivially under accessibility-large type
-    /// (per-row line wrapping, marker indentation) so it's the most
-    /// likely surface to surface a regression.
     @Test("dynamic type XXL streaming tail mid-list (light)")
     func streamingTailMidListLightXXL() {
         let function = #function
@@ -513,13 +447,6 @@ struct MessageListSnapshotTests {
     }
 
     // MARK: - Live-thinking partial markdown
-    //
-    // ``ThinkingBlock`` passes `treatAsPartial: true` to ``MarkdownText``
-    // when its `durationSource` is `.live` (mid-stream). The variants
-    // below exercise that path with a non-empty thinking buffer that
-    // carries a dangling fence — the autocloser must close it so the
-    // thinking body doesn't flip into a code block while the closer is
-    // still in flight.
 
     @Test("streaming tail with mid-fence thinking trace (light)")
     func streamingTailThinkingMidFenceLight() {
@@ -549,16 +476,7 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Renders a streaming-overlay snapshot whose live thinking trace
-    /// is non-empty (`thinkingStartedAt` set → ``ThinkingBlock`` flags
-    /// the duration source as `.live` → ``MarkdownText`` enters the
-    /// partial-input mode). `verbosity: .verbose` opens the trace so
-    /// the body is visible to the snapshot.
-    ///
-    /// `thinkingStartedAt` is intentionally placed in the future so
-    /// the `TimelineView`'s `max(0, elapsed)` clamps the displayed
-    /// counter to "0s" across runs — otherwise the snapshot would
-    /// drift with wall-clock time.
+    /// A future thinking start clamps elapsed time to zero for stable TimelineView output.
     private func verifyStreamingThinking(
         thinking: String,
         theme: SuperTheme.Identifier,
@@ -581,32 +499,11 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view
-    // with animation. SwiftUI's `\.accessibilityReduceMotion` env value
-    // is read-only, so we can't flip it from a test wrapper. The
-    // remaining animated surface in the streaming overlay is
-    // `WaitingSpark` (which short-circuits its rotation when reduce
-    // motion is on), but its steady-state first frame is identical
-    // either way and the behavioral difference would only show after
-    // the first tick. Snapshot parity therefore adds no signal; the
-    // reduce-motion branch is verified by the conditional in source.
-    // Tracked for revisit if a reliable env-injection seam appears in
-    // a future SDK.
-
-    /// Regression: a freshly-mounted `MessageList` with an overflowing
-    /// transcript anchors at the latest message rather than the top.
-    /// Thirty short bubbles overflow the 402×700 frame, so the
-    /// top-vs-bottom diff is unambiguous. Cross-conversation reset
-    /// (each chat re-anchors instead of inheriting a prior offset)
-    /// depends on the host applying `.id(...)` to force a fresh view
-    /// identity per chat — that path is covered by manual verification.
     @Test("freshly mounted long transcript anchors at bottom (light)")
     func freshlyMountedLongTranscriptLight() {
         verifyLongTranscript(theme: .vellumLight, name: "list_long_transcript_anchored_bottom")
     }
 
-    /// New visual risk: a sent question stays at the top with reserved space
-    /// below a short answer. Existing snapshots only cover opening history.
     @Test("focused turn keeps its question at the top after a short answer")
     func focusedTurn() {
         let transcript = Self.longTranscriptItems + [
@@ -631,24 +528,8 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .vellumDark, name: "list_long_transcript_anchored_bottom_dark")
     }
 
-    // **No XXL variant for the anchor-at-bottom test.** At XXL Dynamic
-    // Type the assistant row's SF Symbol message-action icons (copy,
-    // regenerate) scale up, and their outer edges land on pixels that
-    // flip from transparent background to fully-opaque ink — a per-pixel
-    // LAB delta near ~50 % across machines, even though the visual
-    // change is purely sub-pixel. Both the difference image and 5
-    // consecutive CI runs on PR #30 confirmed only those icon edges
-    // differ; bubble content, scroll position, and layout are pixel-
-    // identical. The only tolerance combo that lets CI's measured floor
-    // pass — `precision: 0.95, perceptualPrecision: 0.5` — is wider than
-    // AGENTS.md §Testing.5 allows ("a real regression would still
-    // register at the chosen tolerance"). Per that same rule's escape
-    // hatch we drop the XXL variant rather than loosen the tolerance:
-    // the three theme variants above still exercise the freshly-mounted-
-    // anchor logic at exact-pixel precision; the only thing lost is
-    // catching an XXL-specific layout regression on the long transcript,
-    // which the matrix's other `dynamicTypeXXL` baselines cover with
-    // shorter content.
+    // The long-transcript XXL fixture exceeded tolerance on cross-runner icon edges
+    // in PR #30. Keep exact comparison here; shorter XXL fixtures cover text reflow.
 
     private func verify(
         theme: SuperTheme.Identifier,
@@ -661,8 +542,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    /// 30 user/assistant pairs — enough rows to overflow the 402×700
-    /// snapshot frame so the initial-bottom-anchor latch can be observed.
     private static let longTranscriptItems: [MessageList.Item] = (1...30).flatMap { i in
         [
             MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)", references: []),
@@ -687,9 +566,6 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    /// Renders the populated `items` fixture under a non-default
-    /// `ChatAppearance` and snapshots in the given theme. Used to lock
-    /// in the endpoints of the font-scale knob.
     private func verifyAppearance(
         fontScale: Double,
         name: String,

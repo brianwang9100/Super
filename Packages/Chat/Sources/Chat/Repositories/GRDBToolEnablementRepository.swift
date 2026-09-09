@@ -2,12 +2,6 @@ import Core
 import Foundation
 import GRDB
 
-/// GRDB-backed conformer for Core's `ToolEnablementRepository`. The Chat package
-/// owns it because Chat owns the database; Core stays GRDB-free.
-///
-/// The protocol's parameter label is `toolID:` (Core convention); the
-/// underlying record column is `toolId` (Chat package convention). The
-/// label/field mismatch is intentional and isolated to this file.
 public struct GRDBToolEnablementRepository: ToolEnablementRepository {
     private let queue: DatabaseQueue
 

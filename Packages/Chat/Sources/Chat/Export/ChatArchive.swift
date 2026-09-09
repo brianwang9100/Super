@@ -1,15 +1,8 @@
 import Core
 import Foundation
 
-/// Versioned, on-disk shape of a "chats only" data export.
-///
-/// Deliberately decoupled from the GRDB record types so the JSON
-/// (JavaScript Object Notation) file format can evolve independently of the
-/// database schema. `formatVersion` is the anchor a future importer or sync
-/// engine keys off — bump it whenever the shape changes in a
-/// non-backward-compatible way.
+/// Stable export schema; bump `currentFormatVersion` for breaking changes.
 public struct ChatArchive: Codable, Sendable, Equatable {
-    /// Current archive format. Increment on any breaking shape change.
     public static let currentFormatVersion = 1
 
     public let formatVersion: Int
@@ -22,7 +15,6 @@ public struct ChatArchive: Codable, Sendable, Equatable {
         self.conversations = conversations
     }
 
-    /// One exported conversation with its full message log.
     public struct Conversation: Codable, Sendable, Equatable {
         public let id: String
         public let title: String?
@@ -45,11 +37,9 @@ public struct ChatArchive: Codable, Sendable, Equatable {
         }
     }
 
-    /// One message in a conversation, with any tool calls it triggered.
     public struct Message: Codable, Sendable, Equatable {
         public let id: String
-        /// `MessageRole.rawValue` — stored as a string so the archive does
-        /// not pin to Chat's internal enum.
+        /// Uses MessageRole raw values without coupling the archive schema to that enum.
         public let role: String
         public let content: String
         public let thinkingContent: String?
@@ -73,9 +63,7 @@ public struct ChatArchive: Codable, Sendable, Equatable {
         }
     }
 
-    /// One tool invocation. `parameters`/`result` are real nested JSON
-    /// (decoded from the DB's string columns) so the archive reads cleanly
-    /// rather than carrying escaped JSON-in-a-string.
+    /// Parameters and results are nested JSON, decoded from database string columns.
     public struct ToolCall: Codable, Sendable, Equatable {
         public let id: String
         public let toolName: String
@@ -104,9 +92,7 @@ public struct ChatArchive: Codable, Sendable, Equatable {
         }
     }
 
-    /// Encode to the canonical export bytes: pretty-printed, sorted keys,
-    /// ISO-8601 dates. Sorted keys keep the output byte-stable so a snapshot
-    /// or golden test can assert on it.
+    /// Canonical export uses sorted keys, pretty printing, and ISO-8601 dates.
     public func encoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -119,10 +105,7 @@ public struct ChatArchive: Codable, Sendable, Equatable {
     }
 }
 
-/// Errors surfaced by the chat-export pipeline.
 public enum ChatExportError: Error, Sendable, Equatable {
-    /// `JSONEncoder` failed to serialize the archive.
     case encodingFailed
-    /// The encoded archive could not be written to the temporary file.
     case fileWriteFailed
 }

@@ -6,9 +6,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for the empty-state `SuggestedActions` glass-button cluster, in
-/// Vellum light and dark. Rendered over the theme background (not the host
-/// white) so the glass capsules read against the real backdrop.
 @Suite("SuggestedActions snapshots", .serialized)
 @MainActor
 struct SuggestedActionsSnapshotTests {
@@ -28,8 +25,6 @@ struct SuggestedActionsSnapshotTests {
 
     @Test("light theme at dynamic type XXL")
     func lightXXL() {
-        // Text reflow: at XXL the labels grow and the capsules follow, so per
-        // §Testing.3 this is the variant that catches button-layout breakage.
         verify(theme: .vellumLight, name: "suggested_actions_light_xxl", dynamicType: .xxLarge, height: 320)
     }
 

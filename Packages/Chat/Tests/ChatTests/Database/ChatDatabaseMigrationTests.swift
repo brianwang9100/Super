@@ -5,23 +5,12 @@ import SnapshotTesting
 import Testing
 @testable import Chat
 
-/// Tests for historical upgrades, data preservation, schema shape, and
-/// behavioral constraints across all registered Chat migrations.
 @Suite("ChatDatabase migrations")
 struct ChatDatabaseMigrationTests {
 
     @Test func openAppliesFileProtectionToOnDiskDatabase() throws {
-        // .complete file-protection is enforced only on iOS hardware.
-        // The FileManager readback is unreliable elsewhere:
-        //   - macOS local: nil
-        //   - macOS runner (GitHub): .completeUntilFirstUserAuthentication
-        //     (APFS default substituted when .complete isn't supported)
-        //   - iOS simulator: nil (sim doesn't honor data protection)
-        //   - iOS hardware: .complete
-        // So: gate the assertion on iOS to skip macOS, then guard on
-        // non-nil readback to skip the simulator. The assertion fires
-        // only on real device — in CI this is a smoke test that the
-        // open path produces a file.
+        // Data Protection is meaningful only on iOS hardware. macOS may substitute
+        // APFS defaults and simulators return nil; CI only checks that opening creates a file.
         let tmpDir = FileManager.default.temporaryDirectory
             .appending(component: UUID().uuidString)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -61,8 +50,6 @@ struct ChatDatabaseMigrationTests {
             }
         }
 
-        // The second insert with isSelected = false must succeed — the
-        // partial index only constrains isSelected = 1 rows.
         try await db.queue.write { db in
             try ModelConfigurationRecord(
                 id: "c", name: "C", baseURL: url, apiKeyRef: "kc",
@@ -120,26 +107,16 @@ struct ChatDatabaseMigrationTests {
         #expect(count == 9)
     }
 
-    /// Owns the complete fresh-schema table, column, index, foreign-key,
-    /// nullability, and default inventory after all migrations. Historical
-    /// upgrade and behavioral constraint tests remain independent.
-    /// Snapshot files land under
-    /// `Tests/ChatTests/Database/__Snapshots__/`.
     @Test func migratedSchemaSnapshot() async throws {
         let db = try ChatDatabase.makeInMemory()
         assertSnapshot(of: db.queue, as: .dumpContent())
     }
 
-    /// `v5_conversationKind` adds the `kind` discriminator column to
-    /// the `conversation` table with `NOT NULL DEFAULT 'user'`. Pre-v5
-    /// rows backfill via the default — verified with the same
-    /// stop-at-prior-version + seed pattern used for v4.
     @Test func v5BackfillsPreExistingConversationsAsUser() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
         let queue = try DatabaseQueue()
 
-        // Stop at v4 — the `conversation` table doesn't have `kind` yet.
         try migrator.migrate(queue, upTo: "v4_modelConfigurationKind")
 
         try await queue.write { db in
@@ -157,17 +134,11 @@ struct ChatDatabaseMigrationTests {
         #expect(kinds == ["user"])
     }
 
-    /// Pre-existing rows are migrated to `kind = 'openAICompatible'` by
-    /// the actual v4 backfill INSERT — `DatabaseMigrator.migrate(_:upTo:)`
-    /// lets the test seed the old schema and verify every copied field,
-    /// including the selected model and its credential reference.
     @Test func v4BackfillsExistingRowsAsOpenAICompatible() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
         let queue = try DatabaseQueue()
 
-        // Stop at v3 — `modelConfiguration` still has the original v1
-        // shape (NOT NULL baseURL/apiKeyRef, no `kind` column).
         try migrator.migrate(queue, upTo: "v3_memory")
 
         try await queue.write { db in
@@ -192,7 +163,6 @@ struct ChatDatabaseMigrationTests {
             try Row.fetchAll(db, sql: legacyColumns)
         }
 
-        // The recreate-and-copy migration must preserve every legacy value.
         try migrator.migrate(queue)
 
         let after = try queue.read { db in
@@ -208,9 +178,6 @@ struct ChatDatabaseMigrationTests {
         #expect(kinds == ["openAICompatible", "openAICompatible"])
     }
 
-    /// Rows that existed before v6 migrate to `searchBackend = NULL` (no
-    /// web search). Stop at v5, seed a row whose schema lacks the column,
-    /// apply v6, assert the migrated value.
     @Test func v6BackfillsExistingRowsAsNullSearchBackend() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
@@ -239,9 +206,6 @@ struct ChatDatabaseMigrationTests {
         #expect(backends == [nil])
     }
 
-    /// `searchBackend` round-trips through `ModelConfigurationRecord`'s
-    /// Codable mapping — both a set value and the nil default persist and
-    /// re-fetch unchanged.
     @Test func searchBackendRoundTripsThroughRecord() async throws {
         let db = try ChatDatabase.makeInMemory()
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -263,14 +227,10 @@ struct ChatDatabaseMigrationTests {
                 .order(Column("id"))
                 .fetchAll(db)
         }
-        // Ordered by id ascending: "native" sorts before "none".
         #expect(fetched.map(\.searchBackend) == ["native", nil])
     }
 
-    /// Rows that existed before v8 migrate to `thinkingSignature = NULL`
-    /// (no replayable thinking block — the Anthropic request gate falls
-    /// back to thinking-off for those histories). Stop at v7, seed a row
-    /// whose schema lacks the column, apply v8, assert the migrated value.
+    // Legacy unsigned thinking is unreplayable and must fall back to thinking-off.
     @Test func v8BackfillsExistingRowsAsNullThinkingSignature() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
@@ -321,16 +281,10 @@ struct ChatDatabaseMigrationTests {
         let fetched = try await db.queue.read { db in
             try MessageRecord.order(Column("id")).fetchAll(db)
         }
-        // Ordered by id ascending: "signed" sorts before "unsigned".
         #expect(fetched.map(\.thinkingSignature) == ["sig-1", nil])
         #expect(fetched.map(\.thinkingModelId) == ["claude-opus-4-7", nil])
     }
 
-    /// `v10_anthropicNativeDefault` flips *only* the default Anthropic
-    /// OpenAI-compat shim row to native (`kind` + `baseURL`), leaving every
-    /// other row untouched: a native-search Anthropic row (already native), a
-    /// non-Anthropic provider, and a user's custom-URL Anthropic proxy. Stop at
-    /// v9, seed all four, apply v10, assert the selective flip.
     @Test func v10FlipsOnlyDefaultAnthropicShimRow() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)
@@ -338,7 +292,6 @@ struct ChatDatabaseMigrationTests {
         try migrator.migrate(queue, upTo: "v9_messageThinkingModelId")
 
         try await queue.write { db in
-            // 1. Default Anthropic shim row — the migration's sole target.
             try db.execute(sql: """
                 INSERT INTO modelConfiguration
                     (id, kind, name, baseURL, apiKeyRef, modelId,
@@ -348,7 +301,6 @@ struct ChatDatabaseMigrationTests {
                      'https://api.anthropic.com/v1/openai/', 'k1',
                      'claude-opus-4-7', 1, 1000000, 0, '2026-01-01 00:00:00')
             """)
-            // 2. Native-search Anthropic row — already native, must be left as-is.
             try db.execute(sql: """
                 INSERT INTO modelConfiguration
                     (id, kind, name, baseURL, apiKeyRef, modelId,
@@ -358,7 +310,6 @@ struct ChatDatabaseMigrationTests {
                      'https://api.anthropic.com/v1', 'k2',
                      'claude-opus-4-7', 1, 1000000, 0, '2026-01-01 00:00:00')
             """)
-            // 3. A non-Anthropic provider — different host, untouched.
             try db.execute(sql: """
                 INSERT INTO modelConfiguration
                     (id, kind, name, baseURL, apiKeyRef, modelId,
@@ -368,8 +319,7 @@ struct ChatDatabaseMigrationTests {
                      'https://api.openai.com/v1', 'k3', 'gpt-5.5',
                      1, 1000000, 0, '2026-01-01 00:00:00')
             """)
-            // 4. A custom Anthropic proxy — not the exact default shim URL,
-            //    so deliberately preserved (a power user's own endpoint).
+            // Custom proxy endpoints must survive the default-shim migration.
             try db.execute(sql: """
                 INSERT INTO modelConfiguration
                     (id, kind, name, baseURL, apiKeyRef, modelId,
@@ -390,10 +340,8 @@ struct ChatDatabaseMigrationTests {
         }
         let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.0, ($0.1, $0.2)) })
 
-        // Only the default shim row flipped — kind AND baseURL.
         #expect(byID["shim"]?.0 == "anthropicNative")
         #expect(byID["shim"]?.1 == "https://api.anthropic.com/v1")
-        // Everything else byte-identical to what was seeded.
         #expect(byID["native"]?.0 == "anthropicNative")
         #expect(byID["native"]?.1 == "https://api.anthropic.com/v1")
         #expect(byID["openai"]?.0 == "openAICompatible")
@@ -402,9 +350,7 @@ struct ChatDatabaseMigrationTests {
         #expect(byID["proxy"]?.1 == "https://proxy.example.com/anthropic/v1/openai/")
     }
 
-    /// Rows that existed before v9 migrate to `thinkingModelId = NULL` — a
-    /// stored signature with no recorded model is treated as unreplayable
-    /// (thinking-off fallback). Stop at v8, seed a row, apply v9.
+    // A signature without its originating model remains unreplayable.
     @Test func v9BackfillsExistingRowsAsNullThinkingModelId() async throws {
         var migrator = DatabaseMigrator()
         registerChatMigrations(&migrator)

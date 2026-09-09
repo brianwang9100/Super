@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBMemoryRepository` — round-trip, createdAt ordering,
-/// capacity / length / emptiness guards, and clear-all.
 @Suite("GRDBMemoryRepository")
 struct GRDBMemoryRepositoryTests {
 
@@ -36,8 +34,7 @@ struct GRDBMemoryRepositoryTests {
 
     @Test func allReturnsOldestFirst() async throws {
         let (_, store) = try makeStore()
-        // Insert out of order so the ordering can't fall back on insertion
-        // order or rowid — the index must do the work.
+        // Insert out of timestamp order so insertion order cannot accidentally satisfy the test.
         try await store.save(makeEntry(id: "m2", text: "Likes terse responses.", offset: 10))
         try await store.save(makeEntry(id: "m1", text: "Vegetarian.", offset: 0))
         try await store.save(makeEntry(id: "m3", text: "Lives in Tokyo.", offset: 20))
@@ -56,8 +53,7 @@ struct GRDBMemoryRepositoryTests {
         let fetched = try await store.fetch(id: "m1")
         #expect(fetched?.text == "Prefers SI units.")
         #expect(fetched?.updatedAt == newDate)
-        // createdAt must not change on update — that would silently re-sort
-        // the system-prompt block and shuffle "what I remember about you".
+        // Changing createdAt on update would reshuffle the memory prompt.
         #expect(fetched?.createdAt == baseDate)
     }
 
@@ -104,7 +100,6 @@ struct GRDBMemoryRepositoryTests {
 
         let prior = try await store.fetchAndDelete(id: "ghost")
         #expect(prior == nil)
-        // Existing row is untouched.
         #expect(try await store.all().map(\.id) == ["m1"])
     }
 
@@ -139,10 +134,6 @@ struct GRDBMemoryRepositoryTests {
     }
 
     @Test func saveAcceptsMaxLengthPlusTrailingWhitespace() async throws {
-        // Regression for PR #72: the length guard used `text.count`
-        // (raw) instead of `trimmed.count`, so a 500-char memory with
-        // a single trailing newline was rejected as `textTooLong` even
-        // though its meaningful content was exactly at the limit.
         let (_, store) = try makeStore()
         let maxBody = String(repeating: "a", count: MemoryLimits.maxTextLength)
         try await store.save(makeEntry(id: "m1", text: maxBody + "\n", offset: 0))

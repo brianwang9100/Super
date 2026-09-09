@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Twelve-spoke radial spark used as the empty-state hero icon.
-///
-/// Mirrors `IconSpark` from `.design-tmp/chat/project/src/icons.jsx`: 12
-/// spokes around the center, alternating short/long, drawn at a fixed
-/// size. The default stroke is `.primary` so the icon adopts the current
-/// foreground; the streaming-tail spinner overrides with `theme.accent`.
 public struct SparkIcon: View {
     public let size: CGFloat
     public let color: Color

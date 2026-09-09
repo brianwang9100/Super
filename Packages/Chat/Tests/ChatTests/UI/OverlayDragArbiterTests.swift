@@ -2,24 +2,10 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `OverlayDragArbiter` — the pure per-tick integrator behind the
-/// content-drag → overlay-drag handoff — and the `overlayDragProjection` flick
-/// helper. Resolves in-process with no UIKit, so the handoff rules are pinned
-/// without a device or simulator.
-///
-/// The model is **arm-at-start, stay-in-resize**: the coordinator latches
-/// `armedCollapse` / `armedExpand` at `.began` from where the scroll sat (and
-/// the overlay's remaining capability), and these stay constant for the whole
-/// gesture. While not engaged (`engagedEdge == nil`) a drag only resizes if it
-/// was armed in that direction — scrolling *into* an edge mid-gesture never
-/// engages, because the flags reflect the start, not the live edge. Once
-/// engaged, `engagedEdge` is set and the gesture stays in resize until release,
-/// pinning that edge even through an anchor-crossing reversal.
 @Suite("OverlayDragArbiter handoff")
 struct OverlayDragArbiterTests {
     private let arbiter = OverlayDragArbiter()
 
-    /// A scrollable state parked mid-content (neither edge).
     private func midContent() -> OverlayDragArbiter.ScrollState {
         .init(offsetY: 200, topOffsetY: 0, bottomOffsetY: 1000, isScrollable: true)
     }
@@ -32,7 +18,7 @@ struct OverlayDragArbiterTests {
         .init(offsetY: 1000, topOffsetY: 0, bottomOffsetY: 1000, isScrollable: true)
     }
 
-    // MARK: - Not armed (began mid-content): the scroll view owns the gesture
+    // MARK: - Unarmed scrolling
 
     @Test("Not armed, a down-drag lets the scroll view own the gesture")
     func notArmedDownScrolls() {
@@ -56,9 +42,7 @@ struct OverlayDragArbiterTests {
 
     @Test("Arm flags are latched at start: scrolling INTO the top edge mid-gesture never collapses")
     func latchedFlagsIgnoreLiveEdge() {
-        // The core of the rework: even though the live scroll now reads `atTop`,
-        // a gesture that began mid-content (armedCollapse == false) keeps
-        // scrolling on a down-drag — it does not engage collapse.
+        // Arming is sampled at gesture start; reaching an edge later must not hijack scrolling.
         let step = arbiter.step(
             scroll: atTop(), deltaY: 12, previousDisplacement: 0,
             engagedEdge: nil, armedCollapse: false, armedExpand: false
@@ -103,8 +87,6 @@ struct OverlayDragArbiterTests {
 
     @Test("Armed to collapse only, an up-drag still scrolls (collapse is a down-drag)")
     func armedCollapseUpScrolls() {
-        // At the top, a finger moving up has nowhere to scroll and must not
-        // expand — expansion only arms at the bottom.
         let step = arbiter.step(
             scroll: atTop(), deltaY: -12, previousDisplacement: 0,
             engagedEdge: nil, armedCollapse: true, armedExpand: false
@@ -158,10 +140,7 @@ struct OverlayDragArbiterTests {
 
     @Test("Engaged from the top, reversing PAST the anchor stays in resize (no hand-back, no edge flip)")
     func engagedTopReversesThroughAnchor() {
-        // Replaces the old reversible "releases at anchor" behavior: under
-        // stay-in-resize the drag keeps driving (displacement goes negative)
-        // and keeps pinning the *top* edge it engaged from — it does NOT hand
-        // back to the scroll view, nor flip to pinning the bottom edge.
+        // Reversal stays pinned to the original edge until release.
         let step = arbiter.step(
             scroll: atTop(), deltaY: -20, previousDisplacement: 8,
             engagedEdge: .top, armedCollapse: true, armedExpand: false
@@ -197,8 +176,6 @@ struct OverlayDragArbiterTests {
 
     @Test("Already fully expanded (expand not armed), an up-drag scrolls instead of expanding")
     func notArmedExpandUpScrolls() {
-        // The coordinator computes `armedExpand = atBottom && canExpand`; fully
-        // expanded means canExpand == false, so the flag is false here.
         let step = arbiter.step(
             scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
             engagedEdge: nil, armedCollapse: false, armedExpand: false
@@ -221,8 +198,6 @@ struct OverlayDragArbiterTests {
 
     @Test("Non-scrollable content armed both ways drives in whichever direction the finger moves")
     func nonScrollableArmedDrivesImmediately() {
-        // For non-scrollable content the coordinator arms both directions (up to
-        // capability); the arbiter then engages on the first directional tick.
         let nonScrollable = OverlayDragArbiter.ScrollState(
             offsetY: 0, topOffsetY: 0, bottomOffsetY: 0, isScrollable: false
         )
@@ -240,7 +215,7 @@ struct OverlayDragArbiterTests {
         #expect(up.pinScroll)
     }
 
-    // MARK: - ScrollState edge helpers (read by the coordinator at .began)
+    // MARK: - Edge helpers
 
     @Test("atTop / atBottom honor the edge epsilon")
     func edgeEpsilonTolerance() {
@@ -265,10 +240,6 @@ struct OverlayDragArbiterTests {
 
     @Test("A hard downward flick projects past the snap's skip-velocity threshold")
     func hardFlickExceedsSkipVelocity() {
-        // `ChatOverlay.endDrag` computes velocity = predicted - translation =
-        // overlayDragProjection(velocityY); a hard flick must clear
-        // `ChatPresentationState.skipVelocity` (1200) so it snaps to the
-        // endpoint anchor rather than the nearest one.
         let projected = overlayDragProjection(velocityY: 3000)
         #expect(projected > ChatPresentationState.skipVelocity)
     }
@@ -280,16 +251,8 @@ struct OverlayDragArbiterTests {
     }
 }
 
-/// Tests for `ScrollState.atTop` / `.atBottom` strand tolerance — the arm
-/// sampling the coordinator latches at `.began`.
-///
-/// The regression these pin: an offset stranded *past* the content's end (a
-/// content collapse under a stale pin, or a programmatic seek that never
-/// settled) naively read as `atBottom == true`, so a scroll-intent up-drag
-/// armed expand and hijacked the gesture into an overlay resize — observed
-/// live during the post-stream offset slosh. An edge read is only an edge
-/// when the offset actually sits at it (within `strandTolerance` beyond);
-/// further out, the drag stays a scroll and the rubber-band recovers.
+// Offsets stranded beyond a collapsed content boundary must recover by scrolling,
+// not arm an overlay resize merely because they exceed the end.
 @Suite("OverlayDragArbiter scroll-state strand tolerance")
 struct OverlayDragScrollStateStrandTests {
     private func state(offsetY: CGFloat) -> OverlayDragArbiter.ScrollState {
@@ -308,7 +271,6 @@ struct OverlayDragScrollStateStrandTests {
 
     @Test("A strand far past the bottom does NOT read atBottom")
     func strandPastBottomNotAtBottom() {
-        // The live slosh parked the offset ~90–200pt past the settled end.
         #expect(!state(offsetY: 1090).atBottom)
         #expect(!state(offsetY: 1200).atBottom)
     }

@@ -6,28 +6,10 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `CompactionBanner` in both collapsed and expanded states.
-/// The collapsed state pins the 3-line truncation + "Show more" caption;
-/// the expanded state pins the full multi-paragraph rendering driven by
-/// the `initiallyExpanded` test seam (the state is otherwise toggled only
-/// via tap, which snapshot tests can't drive).
-// `.serialized` — snapshot baselines are read/written per-test against
-// the same on-disk `__Snapshots__/CompactionBannerSnapshotTests/`
-// directory. Parallel execution races on the PNG files (TOCTOU), not on
-// any async behavior in the code under test — serialization is the right
-// tool. Matches every other snapshot suite in this directory; the
-// codebase-wide convention is intentional, not a smell to fix per-file
-// per AGENTS.md §Testing.2.
 @Suite("CompactionBanner snapshots", .serialized)
 @MainActor
 struct CompactionBannerSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
-    /// A summary long enough to overflow the 3-line collapsed cap so the
-    /// truncation + expand affordance is exercised. Mirrors the 3–8
-    /// sentence shape `Compactor`'s summarization prompt asks for.
     private let longSummary: String = """
         User asked for a Lisbon long-weekend itinerary; assistant suggested \
         booking the Belém pastry shop in advance, riding tram 28, and \
@@ -58,16 +40,7 @@ struct CompactionBannerSnapshotTests {
         verify(initiallyExpanded: true, theme: .vellumDark, name: "compaction_expanded_dark")
     }
 
-    // AGENTS.md §Testing.3 calls for a Reduce Motion snapshot on any view
-    // with animation. `CompactionBanner` has `.animation(.easeInOut(...),
-    // value: isExpanded)` purely on the transition between collapsed and
-    // expanded — the steady-state frames before and after the toggle are
-    // identical regardless of Reduce Motion. SwiftUI's
-    // `\.accessibilityReduceMotion` env value is read-only, so we can't
-    // flip it from a test wrapper either. Snapshot parity therefore adds
-    // no signal beyond what the four collapsed/expanded × light/dark
-    // baselines already pin. Same documented gap as
-    // `MessageListSnapshotTests`'s reduce-motion comment (lines 362–371).
+    // Collapse/expand animation has the same settled frames with Reduce Motion.
 
     private func verify(
         initiallyExpanded: Bool,

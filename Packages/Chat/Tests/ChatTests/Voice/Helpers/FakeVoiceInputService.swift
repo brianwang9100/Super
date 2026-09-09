@@ -2,17 +2,7 @@ import Foundation
 import os
 @testable import Chat
 
-/// In-memory ``VoiceInputService`` test double. Tests configure
-/// `permissionStatus` and `isAvailableValue` synchronously, then drive
-/// the active recognition stream by calling `emit(_:)` /
-/// `failNext(with:)` / `finish()` from the test body. Each
-/// `startRecognition(locale:)` opens a fresh continuation; callers can
-/// inspect `startCallCount` to assert how many sessions started.
-///
-/// Strict by design: failing to script the next session before
-/// `startRecognition(locale:)` is fine — the stream just stays open
-/// until the test calls `emit` or `finish`. Tests assert against
-/// `startCallCount` to catch double-start regressions.
+/// Recognition stays open for manual emit/failNext/finish calls; each start creates a new stream.
 final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var _permissionStatus: VoiceInputPermissionStatus = .granted
@@ -42,10 +32,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         isAvailableValue
     }
 
-    /// Install a one-shot gate that suspends `requestPermissions` until
-    /// the test calls `release()` on the returned gate. Lets tests stage
-    /// concurrent toggles racing past the controller's `isStarting`
-    /// guard while the first toggle is still awaiting permissions.
+    /// Hold permission completion to stage concurrent controller toggles.
     func gatePermissions() -> PermissionGate {
         let gate = PermissionGate()
         lock.lock()
@@ -59,9 +46,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         return permissionStatus
     }
 
-    /// Synchronous read of `permissionGate` so `requestPermissions`
-    /// (an async function) doesn't call `OSAllocatedUnfairLock.lock/unlock` from an
-    /// async context — Swift 6 strict concurrency disallows that.
+    // Keep lock operations in a synchronous helper for Swift 6 concurrency checking.
     private func currentGate() -> PermissionGate? {
         lock.lock()
         defer { lock.unlock() }
@@ -95,7 +80,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         if !delayed { continuation?.finish() }
     }
 
-    /// Holds only stream completion so tests can exercise the controller's drain wait.
+    /// Hold stream completion to exercise the controller drain wait.
     func delayStopCompletion() {
         lock.lock()
         delaysStopCompletion = true
@@ -108,8 +93,6 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         return continuation != nil
     }
 
-    /// Yield an event into the active stream. No-op if no session is
-    /// running.
     func emit(_ event: VoiceInputEvent) {
         lock.lock()
         let continuation = self.continuation
@@ -117,7 +100,6 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         continuation?.yield(event)
     }
 
-    /// Throw an error into the active stream and finish it.
     func failNext(with error: VoiceInputError) {
         lock.lock()
         let continuation = self.continuation
@@ -126,8 +108,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
         continuation?.finish(throwing: error)
     }
 
-    /// Cleanly finish the active stream without a final event. The
-    /// controller treats this as a normal stop.
+    /// Finish without a final event; the controller treats this as a normal stop.
     func finish() {
         lock.lock()
         let continuation = self.continuation ?? pendingStop
@@ -138,10 +119,7 @@ final class FakeVoiceInputService: VoiceInputService, @unchecked Sendable {
     }
 }
 
-/// Multi-awaiter one-shot gate used by ``FakeVoiceInputService.gatePermissions``
-/// to suspend `requestPermissions` until the test fires `release()`. Same
-/// shape as the M10 `SleepGate` helper — every awaiter (current + future)
-/// resumes the moment the gate opens.
+/// One-shot gate that releases current and future waiters.
 final class PermissionGate: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
@@ -150,15 +128,8 @@ final class PermissionGate: @unchecked Sendable {
     private var entryWaiters: [CheckedContinuation<Void, Never>] = []
 
     func wait() async {
-        // Signal entry before parking so a test can deterministically await
-        // "the gated caller has reached the gate" (`waitUntilEntered`) instead
-        // of polling `Task.yield()`. The caller has committed whatever state it
-        // sets synchronously before this `await`, so an entry waiter that
-        // resumes sees that state. Entry is signalled just before the caller
-        // parks on `continuations`; a `release()` that races in before it parks
-        // is still not lost, because `released` latches (checked below).
-        // Locking is done in a synchronous helper — Swift 6 strict concurrency
-        // disallows `OSAllocatedUnfairLock.lock/unlock` directly in an async context.
+        // Signal entry before parking. The released latch prevents a racing release
+        // from being lost between that signal and waiter registration.
         for continuation in markEntered() { continuation.resume() }
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -173,9 +144,6 @@ final class PermissionGate: @unchecked Sendable {
         }
     }
 
-    /// Synchronous entry bookkeeping for ``wait()`` — flips `entered` and
-    /// drains the entry waiters under the lock, so the async `wait()` never
-    /// touches `NSLock` directly. Returns the continuations to resume.
     private func markEntered() -> [CheckedContinuation<Void, Never>] {
         lock.lock()
         defer { lock.unlock() }
@@ -185,9 +153,6 @@ final class PermissionGate: @unchecked Sendable {
         return pending
     }
 
-    /// Suspend until some task has entered ``wait()`` (i.e. reached the gate).
-    /// Returns immediately if entry already happened. Lets a test sequence
-    /// "the gated toggle is parked" before driving the racing second toggle.
     func waitUntilEntered() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             lock.lock()

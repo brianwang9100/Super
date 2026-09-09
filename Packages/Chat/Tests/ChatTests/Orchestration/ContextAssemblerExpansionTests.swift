@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `ContextAssembler.expandedUserText` — how verse-reference
-/// attachments on a user `MessageRecord` are folded into the text handed
-/// to the LLM (citation + verbatim snapshot prepended to the typed text).
 @Suite("ContextAssembler verse expansion")
 struct ContextAssemblerExpansionTests {
     private let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -25,7 +22,6 @@ struct ContextAssemblerExpansionTests {
         )
     }
 
-    /// Pull the leading `.text` block off an `LLMMessage`.
     private func text(of message: LLMMessage) -> String? {
         for block in message.content {
             if case .text(let value) = block { return value }

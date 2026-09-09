@@ -4,10 +4,6 @@ import FoundationModels
 import os
 import SwiftUI
 
-/// Production diagnostics for the Settings pane's model-CRUD path. Lives
-/// at file scope (not on the view model) so static methods and tests
-/// observe the same Logger instance. Category `chat-settings` so future
-/// settings-side telemetry can join under one filter.
 private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
 /// A model edit failed, and its unused staged secret could not be removed from Keychain.
@@ -15,23 +11,9 @@ private enum ModelCredentialSaveError: Error, Sendable {
     case stagedKeyCleanupFailed
 }
 
-/// View model backing `SettingsSheet`. Owns the resolved `ChatSettings`
-/// snapshot, the configured-models list, the registered-tools list, and the
-/// account chrome data shown in the root pane. Mutations write through to
-/// the underlying repositories on the same call so the sheet is always in
-/// sync with persistence.
-///
-/// SwiftUI re-renders via `@Observable`; the model itself is `@MainActor`
-/// so all state changes are serialized without locks. The view model never
-/// touches UI; `SettingsSheet` is a pure projection.
 @MainActor
 @Observable
 public final class SettingsViewModel {
-    /// One row in the Models pane. Carries enough of the underlying
-    /// record for the detail pane to seed its form without re-fetching —
-    /// the trailing init args have defaults so test fixtures that only
-    /// care about the visible chrome (id/name/monogram/endpoint) still
-    /// compile.
     public struct ModelRow: Sendable, Equatable, Identifiable {
         public let id: String
         public let kind: LLMProviderKind
@@ -40,26 +22,11 @@ public final class SettingsViewModel {
         public let endpoint: String
         public let maxContextTokens: Int
         public var isEnabled: Bool
-        /// Nil for on-device kinds (`.appleFoundation`). Present for any
-        /// `.openAICompatible` row that reached this view model.
         public let baseURL: URL?
         public let modelId: String
         public let supportsThinking: Bool
-        /// `true` when a Keychain entry exists for this row's `apiKeyRef`.
-        /// Resolved once in `loadModels()` so `SettingsModelDetailPane`
-        /// can pre-fill the API-key `SecureField` with placeholder bullets
-        /// synchronously at init time (the alternative — an async check
-        /// in `.task` — would flicker an empty field on first frame and
-        /// leave snapshot tests racing the load). Always `false` for
-        /// `.appleFoundation` rows since they carry no key.
+        /// Resolve key presence before rendering to avoid an empty SecureField flicker.
         public let hasAPIKey: Bool
-        /// Selected web-search engine for this row (mirrors
-        /// `ModelConfigurationRecord.searchBackend`): `"native"`, a
-        /// standalone search-provider id, or `nil`. Surfaced here so the
-        /// Add-Model native-search UI (next PR) reads it off the loaded row
-        /// instead of re-fetching the record — without this projection the
-        /// field would silently read `nil` and the toggle would show "off"
-        /// for a row that actually has search configured.
         public let providerId: String?
         public let searchBackend: String?
 
@@ -94,17 +61,11 @@ public final class SettingsViewModel {
         }
     }
 
-    /// One row in the Tools pane.
     public struct ToolRow: Sendable, Equatable, Identifiable {
         public let id: String
         public let name: String
         public let summary: String
         public var isEnabled: Bool
-        /// Settings pane reached by tapping the gear affordance on this
-        /// row, or `nil` when the tool has no configuration UI. The row
-        /// renders the gear only when both this is non-nil *and*
-        /// `isEnabled` is true — there's no point configuring an off
-        /// tool.
         public let configPane: SettingsSheet.Pane?
 
         public init(
@@ -122,17 +83,12 @@ public final class SettingsViewModel {
         }
     }
 
-    /// Persisted, typed snapshot of every Chat preference.
     public private(set) var settings: ChatSettings = .default
 
-    /// Models registered in `ModelConfigurationRepository`.
     public private(set) var models: [ModelRow] = []
 
-    /// Tools registered in the live `ToolRegistry`.
     public private(set) var tools: [ToolRow] = []
 
-    /// Number of non-deleted conversations. Surfaced as the trailing value
-    /// on the Data row in the root pane.
     public private(set) var chatCount: Int = 0
 
     /// Inline model mutation error for the current form. Operations with an
@@ -140,39 +96,16 @@ public final class SettingsViewModel {
     /// Non-form callers retain the latest-attempt error behavior.
     public private(set) var modelEditError: String?
 
-    /// In-memory, session-scoped cache of live "list models" results, keyed
-    /// by Add-Model provider id (e.g. `"openai"`). Populated by `loadModels`;
-    /// `SettingsModelDetailPane` reads it to drive the Model dropdown, falling
-    /// back to the static `LLMProviderCatalog` when a provider has no entry.
-    /// Deliberately not persisted — a fresh launch re-fetches on demand (the
-    /// user asked for an in-memory cache, not a stored one).
+    /// Session-only provider catalog cache; a missing entry uses the bundled catalog.
     public private(set) var fetchedModels: [String: [LLMCatalogModel]] = [:]
 
-    /// Provider id whose model list is currently being fetched, or `nil` when
-    /// no fetch is in flight. The detail pane swaps the refresh affordance for
-    /// a spinner while this matches the visible provider.
     public private(set) var loadingModelsProviderID: String?
 
-    /// Per-provider note shown under the Model dropdown when the live list
-    /// couldn't load (no/bad key, offline, missing endpoint) and the catalog
-    /// fallback is showing instead. Keyed by provider id; cleared on a
-    /// successful fetch.
     public private(set) var modelListNote: [String: String] = [:]
 
-    /// Per-provider fetch generation. Bumped when a fetch passes the
-    /// guards and starts; a completion whose generation is no longer
-    /// current discards its writes. Two same-provider fetches can be in
-    /// flight at once — the edit pane's stored-key fetch on appear and
-    /// the typed-key debounce — and without this, a slow stale fetch
-    /// (e.g. a revoked stored key timing out into a 401) would clobber
-    /// the fresh list with the fallback note. Last-STARTED wins.
+    /// Last-started fetch wins, preventing a slow stored-key request from overwriting a typed-key result.
     private var modelListFetchGeneration: [String: Int] = [:]
 
-    /// Stack of pushed sub-panes. Empty means the root pane is showing.
-    /// Bound to `SettingsSheet`'s `NavigationStack(path:)`, which is what
-    /// produces the native push/pop slide animation. Public so external
-    /// callers (e.g. a chat-side affordance) can deep-link into a pane:
-    /// `viewModel.openPane(.modelDetail(id: nil))`.
     public var navigationPath: [SettingsSheet.Pane] = [] {
         didSet {
             guard navigationPath != oldValue else { return }
@@ -181,17 +114,9 @@ public final class SettingsViewModel {
         }
     }
 
-    /// The pane shown at the base of the navigation stack. `.root` for the
-    /// normal Settings entry; a deep-linked pane (e.g. `.models` from the
-    /// composer's "Manage models…") presented as its own modal root. The
-    /// leading header button is a close-✕ at this base pane and a back chevron
-    /// once `navigationPath` pushes deeper. The host sets this on every open,
-    /// so it can't go stale across presentations.
+    /// Modal base pane; deep links can make a sub-pane the close-button root.
     public var rootPane: SettingsSheet.Pane = .root
 
-    /// Bundle metadata surfaced in the About pane and the root pane row.
-    /// Injected so snapshot tests get a stable string instead of the host
-    /// bundle's actual version.
     public let appInfo: SuperAppInfo
 
     public let audioSetup: ProviderAudioSetup?
@@ -209,76 +134,25 @@ public final class SettingsViewModel {
     private let conversationRepository: any ConversationRepository
     private let toolRegistry: ToolRegistry
 
-    /// Drives the Data pane's "Export all chats" job (background export →
-    /// download/share). Constructed in `init` from the repositories; the Data
-    /// pane reads `exportController.phase` and calls `start()`/`cancel()`.
     public let exportController: ChatExportController
-    /// Persistence boundary for the memory pane's mutations. Optional so
-    /// snapshot tests and previews can construct the VM without standing
-    /// up a memory store; the production composition root wires the
-    /// real `GRDBMemoryRepository`.
     private let memoryRepository: (any MemoryRepository)?
     private let llmProviderRegistry: LLMProviderRegistry?
     private let httpClient: (any HTTPClient)?
-    /// Issues the live `GET …/models` call behind `loadModels`. Resolved in
-    /// `init` to a `LiveModelListingService` over the injected `httpClient`
-    /// when not supplied directly; `nil` only when there's no HTTP client
-    /// (snapshot/preview fixtures), in which case `loadModels` no-ops and the
-    /// dropdown stays on the catalog. Tests inject a strict fake.
     private let modelListingService: (any ModelListingService)?
-    /// Receiver that runtime-pushes user-personalization edits into
-    /// orchestration (production: `ChatSessionStore`). Protocol-typed
-    /// per AGENTS.md §Testing §1 so tests can verify the fan-out hop
-    /// without the full orchestration graph. Required, not optional — a
-    /// `nil` default would make a wiring regression in the composition
-    /// root invisible (the persisted value would diverge from running
-    /// sessions with no compile error or runtime signal). Tests
-    /// substitute a no-op receiver.
+    /// Require policy receivers so persisted edits cannot silently miss active sessions.
     private let userPersonalizationReceiver: any UserPersonalizationReceiver
 
-    /// Receiver that runtime-pushes auto-compaction toggle/threshold
-    /// edits into orchestration (production: `ChatSessionStore`). Same
-    /// required-non-optional rationale as `userPersonalizationReceiver`
-    /// — a silently-dropped slider would leave the persisted value
-    /// diverged from running sessions until the next app launch.
     private let autoCompactPolicyReceiver: any AutoCompactPolicyReceiver
 
-    /// Receiver that runtime-pushes the web-search cost-gate toggle into
-    /// orchestration (production: `ChatSessionStore`). Same required-non-
-    /// optional rationale as `autoCompactPolicyReceiver` — a silently-
-    /// dropped toggle would leave the persisted value diverged from
-    /// running sessions until the next app launch.
     private let webSearchPolicyReceiver: any WebSearchPolicyReceiver
 
-    /// Shared app-wide haptics engine. The Settings toggle mutes/unmutes it
-    /// live via `setEnabled(_:)`. Defaults to a no-op so snapshot/preview
-    /// fixtures construct the VM without the real engine.
     private let hapticsEngine: any HapticsEngine
 
-    /// Optional notification fired after the models list changes via
-    /// `createModel`/`updateModel`/`deleteModel`. The host wires this so
-    /// the chat surface picks up newly added providers without an app
-    /// restart (e.g. refreshing `ChatScreenViewModel.availableModels`).
     public var onModelsChanged: (@MainActor () -> Void)?
 
-    /// Live AFM availability surfaced to the panes so an
-    /// `.appleFoundation` row can render its subtitle and toggle state
-    /// from the OS rather than from the persisted record alone.
-    ///
-    /// Snapshotted once at init from `SystemLanguageModel.default.availability`
-    /// (or the injected override in tests). The Apple SDK marks the
-    /// underlying property as `Observable`, so a future revision could
-    /// re-read on every render; for the MVP a launch-time snapshot is
-    /// fine — toggling Apple Intelligence in System Settings already
-    /// requires an app relaunch to take effect.
+    /// Availability snapshot taken at initialization.
     public let appleFoundationAvailability: AppleFoundationAvailability
 
-    /// The on-device AFM context window surfaced to the panes so the
-    /// `.appleFoundation` detail row can render (read-only) and persist the
-    /// real window. Snapshotted once at init from
-    /// `AppleFoundationLLMProvider.deviceContextTokens` (or the injected
-    /// override in tests/fixtures, which keeps snapshots deterministic without
-    /// touching the real device API).
     public let appleFoundationContextTokens: Int
 
     public init(
@@ -291,10 +165,7 @@ public final class SettingsViewModel {
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         webSearchPolicyReceiver: any WebSearchPolicyReceiver,
         hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
-        // Optional (mirrors `memoryRepository`) so snapshot/preview fixtures
-        // construct the VM without standing up the full repository graph;
-        // production wires both. When either is nil the export controller gets
-        // an inert exporter — fixtures drive its phase via the snapshot seam.
+        // Missing repositories give previews an inert exporter; production wires both.
         messageRepository: (any MessageRepository)? = nil,
         toolCallRepository: (any ToolCallRepository)? = nil,
         clock: any Clock = SystemClock(),
@@ -335,25 +206,14 @@ public final class SettingsViewModel {
         self.webSearchPolicyReceiver = webSearchPolicyReceiver
         self.hapticsEngine = hapticsEngine
         self.httpClient = httpClient
-        // Default the listing service to a live one over the injected HTTP
-        // client so neither app bootstrap has to wire it explicitly; fixtures
-        // that pass neither get a nil service and `loadModels` no-ops.
         self.modelListingService = modelListingService ?? httpClient.map { LiveModelListingService(http: $0) }
         self.appleFoundationAvailability = appleFoundationAvailability
         self.appleFoundationContextTokens = appleFoundationContextTokens
     }
 
-    /// `true` once `load()` has populated state from any source — the
-    /// snapshot seam below also flips it so the sheet's `.task` doesn't
-    /// race a real `load()` against pre-baked test state.
     private var hasLoaded: Bool = false
 
-    /// Pre-populate state synchronously for snapshot tests + previews so the
-    /// sheet renders without a repository round-trip. Production callers
-    /// should always go through `load()`. Setting `hasLoaded = true` here
-    /// is what makes the snapshot harness deterministic — without it the
-    /// sheet's `.task` would fire `load()` against the harness's noop
-    /// repos and clobber the seeded data mid-render.
+    /// Seed snapshot state and suppress load so the sheet's task cannot overwrite it.
     func _setSnapshotState(
         settings: ChatSettings,
         models: [ModelRow] = [],
@@ -367,9 +227,6 @@ public final class SettingsViewModel {
         self.hasLoaded = true
     }
 
-    /// Snapshot seam for the live model-list states the Add-Model dropdown
-    /// renders (loaded list / in-flight spinner / fallback note) without a
-    /// real fetch. Underscore-prefixed: test-only surface, not stable API.
     func _setModelListSnapshotState(
         fetchedModels: [String: [LLMCatalogModel]] = [:],
         loadingModelsProviderID: String? = nil,
@@ -380,13 +237,7 @@ public final class SettingsViewModel {
         self.modelListNote = modelListNote
     }
 
-    /// Re-read every datasource. Called from the sheet's `.task` so the
-    /// first present always shows live state. Errors are swallowed so the
-    /// sheet still renders with whatever loaded successfully.
-    ///
-    /// Idempotent — repeat calls after the first successful load skip the
-    /// repo round-trip. The four reads run in parallel so opening the
-    /// sheet pays the slowest (not the sum) of them.
+    /// Load once, retaining defaults for failed reads.
     public func load() async {
         if hasLoaded { return }
         async let loadedSettings = store.load()
@@ -428,30 +279,8 @@ public final class SettingsViewModel {
         models = rows
     }
 
-    /// Fetch the live "list models" result for `providerID` into
-    /// `fetchedModels`, the in-memory source the Add-Model "Model" dropdown
-    /// reads. Distinct from the private `loadModels()` above, which loads the
-    /// user's *configured* model rows.
-    ///
-    /// Behavior (matches the chosen UX — auto-fetch on provider select, manual
-    /// refresh icon, catalog fallback on failure):
-    /// - **Cache hit + `!force`** → returns immediately; the session cache is
-    ///   authoritative until the user taps refresh.
-    /// - **Empty/whitespace key** → no network call. Built-in listing needs a
-    ///   key; the dropdown stays on the catalog fallback until one is entered
-    ///   (the pane's debounced key-typed fetch and the refresh icon are the
-    ///   post-key fetch paths).
-    /// - **Cancellation** → no state change; the pane's debounce cancels the
-    ///   in-flight fetch on every keystroke and the restarted fetch owns the
-    ///   next state.
-    /// - **No catalog entry / no base URL** (Apple, Custom) → no-op; those
-    ///   providers don't list.
-    /// - **Success** → store the reconciled list and clear any note.
-    /// - **Empty result / failure** → clear any stale cache entry and record
-    ///   the fallback note. Clearing matters on a *forced* refresh after an
-    ///   earlier success: without it the dropdown would keep showing the old
-    ///   live list while the note claims "showing built-in list" — so the
-    ///   cache is dropped to make the catalog fallback (and the note) honest.
+    /// Reuse cached lists unless forced. Missing credentials or unsupported providers skip fetching.
+    /// Empty or failed results clear the cache so the displayed list matches the fallback note.
     public func loadAvailableModels(providerID: String, apiKey: String?, force: Bool) async {
         guard let service = modelListingService else { return }
         if !force, fetchedModels[providerID] != nil { return }
@@ -463,17 +292,10 @@ public final class SettingsViewModel {
         loadingModelsProviderID = providerID
         let generation = (modelListFetchGeneration[providerID] ?? 0) + 1
         modelListFetchGeneration[providerID] = generation
-        // Guard the reset so a concurrent fetch for a *different* provider
-        // can't clear this one's spinner (and vice versa). Two forced fetches
-        // for the *same* provider still share the flag — the first to finish
-        // clears it — but that's a benign quick-double-tap edge; the cache
-        // writes are generation-guarded below.
+        // A different provider must not clear this spinner. Same-provider fetches still share it.
         defer { if loadingModelsProviderID == providerID { loadingModelsProviderID = nil } }
         do {
             let ids = try await service.listModelIDs(kind: entry.kind, baseURL: baseURL, apiKey: key)
-            // A newer fetch for this provider started while this one was on
-            // the wire (the edit pane's stored-key appear-fetch racing the
-            // typed-key debounce). Its result owns the state; discard ours.
             guard modelListFetchGeneration[providerID] == generation else { return }
             let reconciled = LLMProviderCatalog.reconcile(providerID: providerID, fetchedModelIDs: ids)
             if reconciled.isEmpty {
@@ -484,43 +306,23 @@ public final class SettingsViewModel {
                 modelListNote[providerID] = nil
             }
         } catch {
-            // A *cancelled* fetch is not a failure: the pane's debounced
-            // `.task(id: apiKey)` cancels the in-flight request on every
-            // keystroke, and wiping the cache + posting the fallback note
-            // here would flash a false error mid-typing (the service wraps
-            // `CancellationError` into `.transport`, so check the task, not
-            // the error type). The restarted fetch owns the next state.
+            // The listing service wraps cancellation as transport failure; check the task
+            // to avoid flashing a fallback error while the user types.
             guard !Task.isCancelled else { return }
-            // Same staleness rule as the success path: a superseded
-            // fetch's failure must not wipe the newer fetch's list.
             guard modelListFetchGeneration[providerID] == generation else { return }
             fetchedModels[providerID] = nil
             modelListNote[providerID] = Self.modelListFallbackNote
         }
     }
 
-    /// Edit-mode companion to ``loadAvailableModels(providerID:apiKey:force:)``:
-    /// resolves the editing row's stored Keychain key (via its `apiKeyRef`)
-    /// and delegates. The detail pane calls this when the key field still
-    /// holds the synthetic placeholder bullets — i.e. the user hasn't typed
-    /// a new key, so the stored one is the only real credential available.
-    ///
-    /// When the row, ref, or stored key is missing: a passive (appear-time,
-    /// `force: false`) fetch is a silent no-op — mirroring create mode's
-    /// empty-key gate, where an absent key means "can't list yet", not
-    /// "listing failed". A *forced* fetch (the user explicitly tapped the
-    /// refresh icon) posts the fallback note instead, so the affordance
-    /// isn't a dead button when the Keychain entry is gone. A fetch
-    /// failure with a resolved key posts the note via the delegate.
+    /// Use the stored key while the form displays placeholder bullets. Missing credentials
+    /// silently skip passive loads; an explicit refresh shows the fallback note.
     public func loadAvailableModelsUsingStoredKey(
         providerID: String,
         editingModelID: String,
         force: Bool
     ) async {
         guard modelListingService != nil else { return }
-        // Cache-hit short-circuit BEFORE the repo/Keychain round-trip —
-        // the delegate would skip the fetch anyway, but only after we
-        // paid for two async reads.
         if !force, fetchedModels[providerID] != nil { return }
         guard let record = try? await modelRepository.fetch(id: editingModelID),
               let ref = record.apiKeyRef,
@@ -533,8 +335,6 @@ public final class SettingsViewModel {
         await loadAvailableModels(providerID: providerID, apiKey: key, force: force)
     }
 
-    /// Inline note shown under the Model dropdown when the live list can't load
-    /// and the curated catalog is showing instead.
     static let modelListFallbackNote = "Couldn't load live models — showing built-in list."
 
     private func loadTools() async {
@@ -542,9 +342,7 @@ public final class SettingsViewModel {
         tools = registrations.map { reg in
             ToolRow(
                 id: reg.tool.id,
-                // User-facing label, never the LLM-facing `description`. Fall
-                // back to the technical `name` when a tool ships no friendly
-                // copy.
+                // Use display copy, never the LLM-facing tool description.
                 name: reg.tool.displayName ?? reg.tool.name,
                 summary: reg.tool.summary ?? "",
                 isEnabled: reg.isEnabled,
@@ -553,12 +351,7 @@ public final class SettingsViewModel {
         }
     }
 
-    /// Tool-id → settings pane mapping for the "gear" affordance on
-    /// `SettingsToolsPane`. New configurable tools register their pane
-    /// here; everything else returns nil (no gear shown). Kept as a
-    /// table inside the view model rather than data on `ToolRegistration`
-    /// because pane identity is a UI concern, not a Core protocol
-    /// concern.
+    /// Pane identity belongs in Chat UI, not Core's ToolRegistration.
     private static func configPane(forToolID id: String) -> SettingsSheet.Pane? {
         switch id {
         case MemoryTool.toolID: return .memory
@@ -571,8 +364,6 @@ public final class SettingsViewModel {
         chatCount = rows.count
     }
 
-    // MARK: - Mutations
-
     public func setTheme(_ id: ChatSettings.ThemeID) async {
         settings.themeId = id
         try? await store.setTheme(id)
@@ -581,11 +372,6 @@ public final class SettingsViewModel {
     public func setUserPersonalization(_ value: String) async {
         settings.userPersonalization = value
         try? await store.setUserPersonalization(value)
-        // Fan out to every active `ChatSession` (via the receiver, which
-        // is `ChatSessionStore` in production) so long-running
-        // conversations pick up the new value on their next turn — the
-        // Personalization pane's "save on focus loss" hand-off would
-        // otherwise need the user to restart the app to take effect.
         await userPersonalizationReceiver.setUserPersonalization(value)
     }
 
@@ -603,10 +389,6 @@ public final class SettingsViewModel {
     public func setAutoCompactEnabled(_ value: Bool) async {
         settings.autoCompactEnabled = value
         try? await store.setAutoCompactEnabled(value)
-        // Fan out to every active `ChatSession` so a long-running
-        // conversation picks up the new toggle on its next turn —
-        // otherwise the persisted value would diverge from running
-        // sessions until the user restarted the app.
         await autoCompactPolicyReceiver.setAutoCompactPolicy(
             enabled: settings.autoCompactEnabled,
             threshold: settings.autoCompactThreshold
@@ -617,7 +399,6 @@ public final class SettingsViewModel {
         let clamped = ChatSettings.clampThreshold(value)
         settings.autoCompactThreshold = clamped
         try? await store.setAutoCompactThreshold(clamped)
-        // Same runtime-propagation rationale as `setAutoCompactEnabled`.
         await autoCompactPolicyReceiver.setAutoCompactPolicy(
             enabled: settings.autoCompactEnabled,
             threshold: settings.autoCompactThreshold
@@ -627,36 +408,22 @@ public final class SettingsViewModel {
     public func setAskBeforeSearching(_ value: Bool) async {
         settings.askBeforeSearching = value
         try? await store.setAskBeforeSearching(value)
-        // Fan out to every active `ChatSession` so a long-running
-        // conversation picks up the new gate on its next turn — otherwise
-        // the persisted value would diverge from running sessions until
-        // the user restarted the app.
         await webSearchPolicyReceiver.setAskBeforeSearching(value)
     }
 
-    /// Master on/off for headless chat-title summarization. The summarizer
-    /// model itself is `setTitleModelId`. No receiver fan-out needed — the
-    /// title path (`TitleGenerator`) reads the setting fresh on each call.
+    /// TitleGenerator reads fresh settings per request, so no session fan-out is needed.
     public func setSummarizeTitlesEnabled(_ value: Bool) async {
         settings.summarizeTitlesEnabled = value
         try? await store.setSummarizeTitlesEnabled(value)
     }
 
-    /// Master on/off for in-app haptic feedback. Persists the flag and mutes
-    /// the shared engine immediately via `setEnabled(_:)` so the change takes
-    /// effect on the next tap without a relaunch.
     public func setHapticsEnabled(_ value: Bool) async {
         settings.hapticsEnabled = value
         hapticsEngine.setEnabled(value)
         try? await store.setHapticsEnabled(value)
     }
 
-    /// Selects the model used to summarize chat titles. Pass `nil` for
-    /// "automatic" (resolves to the Apple Foundation Model when available).
-    /// Stores the summarizer's **record id** (`ModelRow.id` ==
-    /// `ModelConfigurationRecord.id`), the unique per-model identity the title
-    /// path resolves through `LLMProviderRegistry.provider(id:)`. Pass the row
-    /// `id`, never `modelId` — two rows can share a `modelId`.
+    /// Pass a model record ID, not a shared upstream model ID; nil selects automatic AFM.
     public func setTitleModelId(_ id: String?) async {
         settings.titleModelId = id
         try? await store.setTitleModelId(id)
@@ -669,21 +436,11 @@ public final class SettingsViewModel {
         try? await store.setModelEnabled(id: id, enabled: enabled)
     }
 
-    /// Remembers the model the user just activated so the next new chat
-    /// opens on it. Called by the host from `ChatScreenViewModel`'s
-    /// `onModelSelected` hook (user picks in the composer) and from the
-    /// initial auto-pick path in `AppShell.rebuildChatViewModel`.
     public func setLastSelectedModelId(_ id: String) async {
         settings.lastSelectedModelId = id
         try? await store.setLastSelectedModelId(id)
     }
 
-    // MARK: - Navigation
-
-    /// Push a pane onto the stack. The bound `NavigationStack` animates
-    /// the transition. Safe to call from anywhere on the main actor; this
-    /// is the entry point for both in-sheet row taps and external
-    /// deep-links (e.g. opening Settings preconfigured to model detail).
     public func openPane(_ pane: SettingsSheet.Pane) {
         guard pane != .root else {
             popToRoot()
@@ -692,15 +449,8 @@ public final class SettingsViewModel {
         navigationPath.append(pane)
     }
 
-    /// Pop one pane off the stack. No-op when already at root.
-    ///
-    /// If a pane has installed `beforePopCleanup`, the closure runs first
-    /// (it's the active pane's hook to scrub draft state — e.g. the model
-    /// detail pane clearing its `SecureField` so iOS doesn't queue a
-    /// "Save Password?" prompt on the dismissed view). The cleanup
-    /// happens *before* the path mutation and we yield one main-actor
-    /// tick so SwiftUI flushes the @State change into UIKit before the
-    /// view is torn down.
+    /// Flush pane cleanup to UIKit before changing the path, preventing a discarded
+    /// SecureField from triggering Save Password on dismissal.
     public func popPane() {
         activeModelFormSession = nil
         navigationGeneration += 1
@@ -719,9 +469,6 @@ public final class SettingsViewModel {
         }
     }
 
-    /// Clear the entire stack (back to root). Called by the sheet on
-    /// dismiss so re-presenting always starts at root. Runs the active
-    /// pane's cleanup first for the same reason as `popPane()`.
     public func popToRoot() {
         activeModelFormSession = nil
         navigationGeneration += 1
@@ -735,36 +482,15 @@ public final class SettingsViewModel {
     /// Waits for the deferred draft flush in deterministic navigation tests.
     func waitForPendingPanePop() async { await pendingPanePop?.value }
 
-    /// Optional hook the active pane installs in `onAppear` and tears
-    /// down in `onDisappear`. `popPane()` and `popToRoot()` invoke it
-    /// once before the path mutation so panes can scrub sensitive draft
-    /// state (e.g. typed-but-not-saved API keys) ahead of the view's
-    /// dismissal — preventing iOS from queueing a save-password prompt
-    /// on the discarded content.
+    /// The active pane scrubs sensitive drafts before deferred navigation; see popPane().
     public var beforePopCleanup: (@MainActor () -> Void)?
 
-    // MARK: - Model CRUD
-
-    /// `true` when an `.appleFoundation` row already exists. The Add-Model
-    /// preset picker uses this to disable the Apple Intelligence preset
-    /// (one AFM row is enough — adding a second would only confuse the
-    /// model list and `registerProvider` already gates on
-    /// availability).
     public var hasAppleFoundationModel: Bool {
         models.contains { $0.kind == .appleFoundation }
     }
 
-    /// Persist a new `.appleFoundation` row, register the live AFM
-    /// provider (when the launch-time availability snapshot says AFM is
-    /// usable), and refresh the in-memory list. Mirrors `createModel`
-    /// for the openAI-compatible kind, but skips the Keychain write (AFM
-    /// rows have no API key) and force-sets the shape Apple's on-device
-    /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
-    /// "system-default"`). The `idGenerator` and `now` parameters are
-    /// injectable so tests can pin the id and timestamp.
-    ///
-    /// Returns the committed row or nil on failure. Errors are published only
-    /// while `formSession` is current; omitting it retains non-form behavior.
+    /// Return the committed row or nil on failure. A form session scopes error publication;
+    /// AFM registration also depends on the initialization-time availability snapshot.
     @discardableResult
     public func createAppleFoundationModel(
         name: String,
@@ -837,10 +563,6 @@ public final class SettingsViewModel {
                 apiKeyRef: ref,
                 modelId: modelId,
                 createdAt: now,
-                // The picked web-search backend resolves the persisted kind:
-                // native → the catalog's native adapter (e.g. `.openAIResponses`);
-                // off / debug → `.openAICompatible`. The pane computes both from
-                // the selected catalog entry.
                 kind: kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
@@ -860,28 +582,14 @@ public final class SettingsViewModel {
             if error is ModelCredentialSaveError {
                 publishModelEditError("Could not save model. An unused key could not be removed from secure storage. Restart the app to retry cleanup.", formSession: formSession)
             } else { publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession) }
-            // Keep models list in sync with what actually persisted; a
-            // failed save just means the row never appears.
             await loadModels()
             return nil
         }
     }
 
-    /// Update an existing row. A blank `apiKey` argument leaves the
-    /// stored key untouched — the form treats the field as "tap to
-    /// change" and only writes through when the user types something.
-    /// Re-registers the provider so the live chat surface picks up the
-    /// new endpoint/model id without an app restart.
-    ///
-    /// Returns the committed row, or nil on failure or an overlapping mutation.
-    /// A supplied form session owns error clearing and publication; accepted
-    /// persistence and credential cleanup continue after the form closes.
-    /// - Parameter searchSelection: The resolved `(kind, searchBackend)` the
-    ///   web-search picker produced. `nil` (the default) preserves the row's
-    ///   existing kind *and* search backend — keeping every non-search edit
-    ///   path unchanged. When non-nil, both are rewritten: flipping Off↔Native
-    ///   swaps the persisted `kind` (and base URL, supplied via `baseURL`) so
-    ///   `makeLLMProvider` rebuilds the row as the native adapter or back.
+    /// Blank apiKey preserves the stored secret; nil searchSelection preserves kind and backend.
+    /// Return the committed row or nil on failure/overlap. Form sessions scope errors,
+    /// while accepted persistence and credential cleanup continue after dismissal.
     @discardableResult
     public func updateModel(
         id: String,
@@ -905,36 +613,17 @@ public final class SettingsViewModel {
                 publishModelEditError("Could not save model: row no longer exists.", formSession: formSession)
                 return nil
             }
-            // Target kind/backend: the picker's resolved pair when supplied,
-            // else preserve what's on disk (every non-search edit).
             let targetKind = searchSelection?.kind ?? existing.kind
             let targetSearchBackend = searchSelection.map(\.searchBackend) ?? existing.searchBackend
-            // Preserve existing `baseURL` for non-openAICompatible kinds.
-            // For openAICompatible the caller passes the new URL (or
-            // nil if it wasn't a field-driven change — in which case
-            // we keep what we had). The switch (over an if/else)
-            // forces the compiler to flag this site when a new
-            // `LLMProviderKind` case is added so the URL-update rule
-            // gets revisited rather than silently defaulting to
-            // "preserve existing."
             let nextBaseURL: URL?
             switch targetKind {
             case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
-                // openAICompatible and the native-search kinds all surface an
-                // *editable* Base URL field in the edit pane — native kinds
-                // route through the Custom pane (`resolveEditProvider`) until
-                // PR3a gives them their own read-only catalog entry. While the
-                // field is editable, honor the caller's URL rather than
-                // silently discarding a user edit; `nil` means "no
-                // field-driven change," so fall back to the persisted value.
+                // Nil means no URL edit; preserve the stored endpoint.
                 nextBaseURL = baseURL ?? existing.baseURL
             case .appleFoundation:
-                // AFM has no URL field; preserve whatever was persisted (nil).
                 nextBaseURL = existing.baseURL
             #if DEBUG
             case .debug:
-                // Debug provider has no URL — preserve whatever was
-                // persisted (always nil for canned-response rows).
                 nextBaseURL = existing.baseURL
             #endif
             }
@@ -949,8 +638,6 @@ public final class SettingsViewModel {
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
                 isSelected: existing.isSelected,
-                // Resolved by the web-search picker (or preserved when the
-                // edit didn't touch search) — see `searchSelection`.
                 searchBackend: targetSearchBackend,
                 providerId: providerId ?? existing.providerId
             )
@@ -974,15 +661,7 @@ public final class SettingsViewModel {
             } else {
                 resolvedKey = nil
             }
-            // Build the replacement first; only swap when we actually have one
-            // to register, so an edit never unregisters a working provider and
-            // leaves nothing in its place (which would silently kill chat for
-            // that row until restart). Building first makes the unregister
-            // condition *exactly* what registration would do — no
-            // `hasProviderAdapter` proxy that could drift from `makeLLMProvider`
-            // (a kind can be buildable-by-kind yet yield no provider when the
-            // row is missing its HTTP client or base URL, or AFM is
-            // unavailable). The add paths still go through `registerProvider`.
+            // Build before unregistering so an unavailable replacement cannot remove the working provider.
             if let registry = llmProviderRegistry,
                let replacement = makeLLMProvider(
                    for: committed,
@@ -1055,18 +734,12 @@ public final class SettingsViewModel {
         modelEditError = message
     }
 
-    /// Reset the model-edit error. Called by `SettingsModelDetailPane`
-    /// on appear so a stale message from a previous attempt doesn't
-    /// flash on the next open.
     public func clearModelEditError() {
         modelEditError = nil
     }
 
-    /// Delete a row + its Keychain entry. The repository handles the
-    /// Keychain-first ordering so a failed delete leaves the row in place
-    /// rather than orphaning a secret. Also unregisters the provider so
-    /// the deleted endpoint disappears from the picker right away. A supplied
-    /// form session owns error publication; accepted deletion always finishes.
+    /// A form session scopes error publication; accepted deletion always finishes.
+    /// Repository deletion removes the secret before its row.
     @discardableResult
     public func deleteModel(id: String, formSession: Int? = nil) async -> Bool {
         guard modelMutationIDs.insert(id).inserted else { return false }
@@ -1146,14 +819,6 @@ public final class SettingsViewModel {
         return await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: session)
     }
 
-    /// Build a fresh provider for `record` and register it with the live
-    /// registry. The per-kind dispatch is shared with the launch path
-    /// (`AppBootstrapSupport.hydrateProviders`) through `makeLLMProvider`, so
-    /// the two can't drift on which kinds are buildable: `.openAICompatible`
-    /// and `.openAIResponses` need the injected HTTP client; `.appleFoundation`
-    /// is skipped when AFM is unavailable; native-search kinds without a
-    /// shipped adapter build nothing. No-op when no registry was injected
-    /// (tests and previews don't wire one).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
         guard let provider = makeLLMProvider(
@@ -1166,10 +831,6 @@ public final class SettingsViewModel {
         await registry.register(provider)
     }
 
-    /// Look up a row by id without re-fetching. The detail pane uses this
-    /// to seed its form — it's safe to read straight off the in-memory
-    /// snapshot because the pane is only reachable via the root pane,
-    /// which always loads first.
     public func model(id: String) -> ModelRow? {
         models.first { $0.id == id }
     }
@@ -1181,18 +842,7 @@ public final class SettingsViewModel {
         try? await toolRegistry.setEnabled(toolID: id, enabled: enabled)
     }
 
-    // MARK: - Memory mutations
-
-    /// Rewrite a memory's text. The reactive `@Query` in
-    /// `SettingsMemoryPane` picks up the change automatically; the
-    /// orchestrator's next `assemble(...)` sees the new value.
-    /// Empty / whitespace-only text is silently ignored — the pane
-    /// commits on focus loss, so a momentarily-cleared editor would
-    /// otherwise wipe the row.
-    ///
-    /// `now` is an injection seam (matching `clearChatHistory(now:)`)
-    /// so tests can assert the exact `updatedAt` written without
-    /// reaching for the wall clock — per AGENTS.md §Testing rule 1.
+    /// Ignore blank text so a temporarily cleared editor cannot erase a saved memory.
     public func updateMemory(id: String, text: String, now: Date = Date()) async {
         guard let memoryRepository else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1200,21 +850,17 @@ public final class SettingsViewModel {
         try? await memoryRepository.update(id: id, text: trimmed, updatedAt: now)
     }
 
-    /// Drop one memory.
     public func deleteMemory(id: String) async {
         guard let memoryRepository else { return }
         try? await memoryRepository.delete(id: id)
     }
 
-    /// Wipe every memory. Called by the pane's "Clear All" affordance
-    /// after the user confirms.
     public func clearAllMemories() async {
         guard let memoryRepository else { return }
         try? await memoryRepository.clearAll()
     }
 
-    /// Soft-delete every active conversation. Cascades through the schema
-    /// so messages + tool calls go with them. Refreshes `chatCount` after.
+    /// Soft-delete active conversations, preserving their messages and tool calls.
     public func clearChatHistory(now: Date = Date()) async {
         let active = (try? await conversationRepository.listActive()) ?? []
         for row in active {
@@ -1223,18 +869,12 @@ public final class SettingsViewModel {
         await loadChatCount()
     }
 
-    // MARK: - Helpers
-
-    /// First letter of each space-separated word (max 2). Mirrors the
-    /// monogram tile in `settings.jsx`'s `ModelsPane`.
     static func monogram(for name: String) -> String {
         let parts = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "_" })
         let initials = parts.compactMap { $0.first.map(String.init) }
         return initials.prefix(2).joined()
     }
 
-    /// Strip `https://` and trailing `/` so the endpoint fits the cramped
-    /// metadata line under the model name.
     static func shortEndpoint(_ url: URL) -> String {
         var raw = url.absoluteString
         if raw.hasPrefix("https://") { raw.removeFirst("https://".count) } else if raw.hasPrefix("http://") { raw.removeFirst("http://".count) }

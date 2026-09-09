@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Tools pane. Not in `settings.jsx` — designed to match the same visual
-/// language. One grouped card with one row per registered tool: friendly
-/// name + short user-facing summary + trailing toggle.
 struct SettingsToolsPane: View {
     @Bindable var viewModel: SettingsViewModel
 
@@ -44,10 +41,6 @@ struct SettingsToolsPane: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Gear appears only for tools that declare a config pane AND
-            // are enabled — no point configuring an off tool. Pushes
-            // onto the existing sheet `NavigationStack` rather than
-            // presenting a nested modal.
             if let pane = tool.configPane, tool.isEnabled {
                 Button {
                     viewModel.openPane(pane)

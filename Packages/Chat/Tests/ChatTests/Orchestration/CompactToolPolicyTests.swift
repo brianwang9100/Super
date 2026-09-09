@@ -2,9 +2,6 @@ import Core
 import Testing
 @testable import Chat
 
-/// Verifies the compact-tier tool filter: small-window models drop the
-/// heaviest/lowest-value tools while keeping the grounding + memory set, and
-/// large-window models keep everything.
 @Suite("CompactToolPolicy")
 struct CompactToolPolicyTests {
     private func tool(_ name: String) -> LLMTool {
@@ -18,7 +15,6 @@ struct CompactToolPolicyTests {
         )
     }
 
-    /// The full SuperBible-on-AFM tool set, in registry sort order.
     private var allTools: [LLMTool] {
         ["bible.annotate", "bible.highlight", "bible.lookup", "bible.note", "memory", "time.now"].map(tool)
     }
@@ -81,11 +77,9 @@ struct CompactToolPolicyTests {
         let result = CompactToolPolicy.filter([withCompact, withoutCompact], tier: .compact)
         let swapped = result[0]
         #expect(swapped.id == "bible.lookup")
-        // A param with no compactDescription passes through unchanged.
         #expect(swapped.parameters == parameters)
         #expect(swapped.displayName == "Look up scripture")
         #expect(swapped.summary == "Reads or searches.")
-        // No compact variant authored → the tool ships unchanged.
         #expect(result[1] == withoutCompact)
         #expect(result[1].description == "desc for memory")
     }
@@ -113,15 +107,11 @@ struct CompactToolPolicyTests {
 
         let compact = CompactToolPolicy.filter([tool], tier: .compact).first
         let compactMatch = compact?.parameters.first { $0.name == "match" }
-        // Description shrinks…
         #expect(compactMatch?.description == "any/all/phrase")
-        // …but every schema-shaping field is preserved, so validation is unaffected.
         #expect(compactMatch?.enumValues == ["any", "all", "phrase"])
         #expect(compactMatch?.isRequired == false)
-        // A param with no compactDescription is left untouched.
         #expect(compact?.parameters.first { $0.name == "query" }?.description == "q")
 
-        // Full tier keeps the verbose parameter description.
         let full = CompactToolPolicy.filter([tool], tier: .full).first
         #expect(full?.parameters.first { $0.name == "match" }?.description == "long enum prose explaining any/all/phrase at length")
     }

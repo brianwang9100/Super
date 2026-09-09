@@ -1,24 +1,9 @@
 import GRDBQuery
 import SwiftUI
 
-/// Per-tool config pane reached from the gear affordance on the Memory
-/// row in `SettingsToolsPane`.
-///
-/// Lets the user review what the LLM (Large Language Model) has saved
-/// about them, edit individual entries inline, tap the trash icon to delete a row, or
-/// clear everything. Memories are bound reactively via GRDBQuery `@Query`
-/// so a write from the `memory` tool (mid-conversation, in a sibling
-/// chat surface) repaints the pane without an explicit refresh — per
-/// AGENTS.md's reactive-binding rule for tables mutated outside the
-/// view.
 struct SettingsMemoryPane: View {
     @Bindable var viewModel: SettingsViewModel
 
-    /// Live snapshot of every persisted memory, oldest first. Falls
-    /// back to `MemoriesRequest.defaultValue` (empty) when the host
-    /// didn't wire a `DatabaseContext` — i.e. snapshot tests and
-    /// previews still render the empty / populated states under
-    /// `_setSnapshotMemories(...)`.
     @Query(MemoriesRequest()) private var memories: [MemoryRecord]
 
     @State private var pendingClearAll: Bool = false
@@ -81,15 +66,7 @@ struct SettingsMemoryPane: View {
     private func memoryRow(memory: MemoryRecord, isLast: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
             if editingId == memory.id {
-                // Commit only on focus loss, matching SettingsPromptPane's
-                // pattern. An earlier `.onSubmit` paired with the
-                // `.onChange` below double-fired on Return (the submit
-                // handler sets `focusedId = nil`, which re-triggers
-                // onChange), spawning two updateMemory tasks per
-                // Return-keypress. `axis: .vertical` already treats
-                // Return as a newline, so dropping onSubmit costs no
-                // UX — the user dismisses the keyboard by tapping
-                // outside.
+                // Commit on focus loss only: adding onSubmit would double-write when Return clears focus.
                 TextField("Memory text", text: $draft, axis: .vertical)
                     .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
@@ -147,13 +124,7 @@ struct SettingsMemoryPane: View {
     }
 
     private func beginEditing(memory: MemoryRecord) {
-        // Commit the previously-editing row's in-flight draft *before*
-        // overwriting `draft` with the new target's text. Without this,
-        // tapping directly from row A's editor into row B loses A's
-        // unsaved edit (draft gets reassigned to B.text, then A's
-        // onChange-driven commit sees B.text instead of A.text). The
-        // commit's own guard skips the no-longer-active case so the
-        // post-overwrite onChange becomes a true no-op.
+        // Commit A before replacing its draft with B's text when focus moves directly between rows.
         if let priorId = editingId, priorId != memory.id,
            let prior = memories.first(where: { $0.id == priorId }) {
             commitEdit(for: prior)
@@ -178,25 +149,13 @@ struct SettingsMemoryPane: View {
         }
     }
 
-    /// Pure decision function backing `commitEdit(for:)`. Lifted out as
-    /// a `static` so the A→B-row-tap corruption case (and the simpler
-    /// happy paths) can be unit-tested without driving SwiftUI focus
-    /// transitions — see `SettingsMemoryPaneCommitTests`.
-    ///
-    /// Both clearing the edit state and firing `updateMemory` are gated
-    /// on `editingId == target.id`. Without that gate, an A→B tap would
-    /// race a stale `commitEdit(for: A)` after `draft` had already been
-    /// overwritten with B's text — silently writing B's draft into A's
-    /// row (data corruption, per PR #72 round-5 review).
+    /// Ignore stale focus callbacks so a draft for the next row cannot overwrite the previous row.
     nonisolated static func decideCommit(
         editingId: String?,
         target: MemoryRecord,
         draft: String
     ) -> CommitDecision {
         guard editingId == target.id else {
-            // The user has already moved focus to another row, so
-            // `draft` now belongs to that row. Committing it here would
-            // overwrite `target` with the other row's text.
             return CommitDecision(clearsEditState: false, update: nil)
         }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)

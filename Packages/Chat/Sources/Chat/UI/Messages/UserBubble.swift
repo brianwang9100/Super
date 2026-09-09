@@ -1,22 +1,12 @@
 import SwiftUI
 
-/// Right-aligned soft-green chat bubble for a single user-authored message.
-/// Tail corner (bottom-right) uses a tighter radius so the bubble reads as
-/// "from the user" without an avatar/role label. Verse-reference pills, if
-/// any, render read-only above the text bubble; a pills-only message (empty
-/// `text`) renders just the pills.
 struct UserBubble: View {
     let text: String
-    /// Read-only verse-reference pills attached to this message. Empty for
-    /// an ordinary text message.
     var references: [VerseReferencePillModel] = []
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
-    /// Base body size, declared via `@ScaledMetric` so the bubble text
-    /// composes OS Dynamic Type on top of the app font-scale that
-    /// `SuperTypography` folds in. The typography system path ignores
-    /// `relativeTo`, so this metric is how the view opts into Dynamic Type.
+    /// System faces need ScaledMetric to combine Dynamic Type with app font scaling.
     @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     var body: some View {

@@ -7,19 +7,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `SidebarDrawer` across themes and key states:
-/// open + empty list, open + populated, open + active row highlighted,
-/// open with one running spinner, plus a Dynamic Type XXL variant.
-///
-/// Each scenario embeds the drawer in a fixed-size container that mimics
-/// the iPhone 17 chat surface so the leading 300pt drawer + scrim
-/// composition matches what ships in production.
 @Suite("SidebarDrawer snapshots", .serialized)
 @MainActor
 struct SidebarDrawerSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private let appInfo = SuperAppInfo(bundleName: "Super", version: "0.3.1", build: "1")
 
@@ -27,17 +17,9 @@ struct SidebarDrawerSnapshotTests {
 
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
-    /// Applet list passed to every snapshot. The placeholder applets
-    /// for Recipes / Bible / Finance live in the App target which the
-    /// Chat test target can't import, so the rail in these snapshots
-    /// renders only the two applets the Chat package owns — the new
-    /// Chats applet (`ChatsApplet`) and any future Chat-package-local
-    /// rail entry. The 5-applet rail snapshot lands when a Shell-package
-    /// test target exists.
+    // Chat cannot import app-target applets, so this rail fixture uses ChatsApplet only.
     private static let sampleApplets: [any MiniApplet] = {
-        // Force-try is acceptable in a test fixture: the in-memory
-        // database is a deterministic constructor that only fails on
-        // out-of-memory, in which case the whole test process is gone.
+        // Fail fixture setup immediately if the in-memory database cannot open.
         // swiftlint:disable:next force_try
         let db = try! ChatDatabase.makeInMemory()
         return [ChatsApplet(chatDatabase: db)]
@@ -76,18 +58,6 @@ struct SidebarDrawerSnapshotTests {
         chats[1] = .init(id: "c2", title: chats[1].title, updatedAt: chats[1].updatedAt, running: true)
         verify(theme: .vellumLight, chats: chats, activeId: "c1", name: "sidebar_running_light")
     }
-
-    // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view
-    // with animation. The drawer slides in via `.transition(.move(...))`
-    // and the per-row `SpinnerRing` rotates via `withAnimation(...)`.
-    // SwiftUI's `\.accessibilityReduceMotion` env value is read-only, so
-    // we can't flip it from a test wrapper. The steady-state first frame
-    // for both transitions is identical between motion-on and
-    // motion-reduced (drawer fully in; spinner at rotation 0), so a
-    // captured snapshot wouldn't detect a regression in the reduced-motion
-    // branch even if we recorded one. Same gap is documented in
-    // `MessageListSnapshotTests`. Tracked to revisit when a reliable
-    // env-injection seam appears in a future SDK.
 
     @Test("with overflow shows 'See all chats…' row")
     func seeAllOverflowRow() {
@@ -144,33 +114,16 @@ struct SidebarDrawerSnapshotTests {
         recordOrCompare(view: view, name: "sidebar_open_populated_light_xxl", function: function)
     }
 
-    /// Drawer scales with the max font-scale slider (`fontScale == 1.20`).
-    ///
-    /// The font-scale slider is a **global size control**, so the whole sidebar
-    /// drawer — wordmark, version mark, "New Chat", applet rows, "CHATS" label,
-    /// and chat rows — grows with it (every surface routes through `typography.*`
-    /// at the default `tracksFontScale: true`). This records a dedicated
-    /// `sidebar_font_scale_max_<theme>` baseline showing the scaled-up drawer;
-    /// it must differ from the `fontScale == 1.0` populated baseline. OS Dynamic
-    /// Type is the separate second axis the drawer also honors via its
-    /// `@ScaledMetric` bases; this render is at the default content-size category.
     @Test("font scale max — drawer scales with slider")
     func fontScaleMaxRowsScale() {
         verifyFontScaleMax(theme: .vellumLight, name: "sidebar_font_scale_max_light")
     }
 
-    /// Dark-theme counterpart to ``fontScaleMaxRowsScale`` — completes the
-    /// `light/dark/sepia` matrix with its own scaled baseline.
     @Test("font scale max — drawer scales with slider (dark)")
     func fontScaleMaxRowsScaleDark() {
         verifyFontScaleMax(theme: .vellumDark, name: "sidebar_font_scale_max_dark")
     }
 
-    /// Renders the drawer with the font-scale slider pinned to its maximum
-    /// (`fontScale == 1.20`) and records/compares against a dedicated
-    /// `name` baseline (the snapshot file `<function>.<name>.png`). The drawer
-    /// scales globally, so this baseline shows the enlarged drawer — distinct
-    /// from the unscaled `fontScale == 1.0` populated baseline.
     private func verifyFontScaleMax(
         theme: SuperTheme.Identifier,
         name: String,
@@ -197,8 +150,6 @@ struct SidebarDrawerSnapshotTests {
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: Self.frame.width, height: Self.frame.height)
-        // Dedicated scaled baseline — the drawer grows with the slider, so this
-        // must differ from the fontScale == 1.0 populated baseline.
         recordOrCompare(view: view, name: name, function: function)
     }
 

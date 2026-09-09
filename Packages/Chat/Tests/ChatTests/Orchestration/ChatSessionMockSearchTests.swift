@@ -4,13 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `ChatSession`'s client-mock search backend (`searchBackend ==
-/// "debug"`): an approved `request_web_search` proposal is fulfilled in-process
-/// by the injected `WebSearchFulfilling` (canned findings + sources) instead of
-/// the native server sentinel, and those sources land on the model's grounded
-/// answer. Uses the strict `FakeLLMProvider` + `FakeWebSearchFulfiller` (never a
-/// live endpoint or real search), resolving the gate inline on the
-/// `.toolCallAwaitingConfirmation` event so there's no `Task.sleep` polling.
 @Suite("ChatSession mock search")
 struct ChatSessionMockSearchTests {
 
@@ -32,9 +25,6 @@ struct ChatSessionMockSearchTests {
         let session: ChatSession
     }
 
-    /// Build a session whose active model uses the `"debug"` mock backend and
-    /// (by default) a `FakeWebSearchFulfiller` returning ``canned``. Pass
-    /// `fulfiller: nil` to exercise the no-fulfiller degrade path.
     private func makeSetup(
         scripts: [[LLMStreamEvent]],
         askBeforeSearching: Bool = true,
@@ -107,7 +97,6 @@ struct ChatSessionMockSearchTests {
         return events
     }
 
-    /// Turn-1 script: the model calls `request_web_search` (the proposal tool).
     private func proposalScript() -> [LLMStreamEvent] {
         [
             .messageStart(id: "m1", model: "mock-model-1"),
@@ -119,8 +108,6 @@ struct ChatSessionMockSearchTests {
         ]
     }
 
-    /// Turn-2 script: the grounded answer the model streams after seeing the
-    /// (mock) search tool result.
     private func groundedAnswerScript() -> [LLMStreamEvent] {
         [
             .messageStart(id: "m2", model: "mock-model-1"),
@@ -129,9 +116,7 @@ struct ChatSessionMockSearchTests {
         ]
     }
 
-    /// The contract the bootstrap seed depends on: `AppBootstrapSupport`
-    /// seeds the "Debug (mock search)" row with the literal `"debug"` because
-    /// `NativeWebSearch` is internal to the Chat module. Pin them equal.
+    /// Bootstrap uses this literal because NativeWebSearch is internal to Chat.
     @Test("mock backend value is the literal the bootstrap seed uses")
     func mockBackendValueIsDebug() {
         #expect(NativeWebSearch.mockBackendValue == "debug")
@@ -145,36 +130,27 @@ struct ChatSessionMockSearchTests {
         let events = await collectResolving(stream, session: setup.session, approve: true)
         await setup.session.waitUntilFinished()
 
-        // The gate fired exactly once.
         let parked = events.filter { if case .toolCallAwaitingConfirmation = $0 { return true }; return false }
         #expect(parked.count == 1)
 
-        // The fulfiller ran with the model's proposed query.
         #expect(await setup.fulfiller?.capturedQueries() == ["mars rover news"])
 
-        // The proposal resolved to success with the fulfiller's findings as the
-        // tool result, and NEITHER turn used the native sentinel (mock never
-        // asks the provider to search).
         let proposalCall = try #require(await setup.toolCallRepo.fetch(id: "tc-search"))
         #expect(proposalCall.status == .success)
         let requests = await setup.provider.capturedRequests()
         #expect(requests.count == 2)
         #expect(!requests.contains { $0.tools.map(\.name).contains(NativeWebSearch.sentinelToolName) })
-        // Turn 2 no longer offers the proposal — one search per user message.
         #expect(!requests[1].tools.map(\.name).contains(NativeWebSearch.proposalToolName))
 
         let messages = try await setup.messageRepo.fetchAll(conversationId: "conv-1")
         let toolRow = messages.first { $0.role == .tool && $0.toolCallId == "tc-search" }
         #expect(toolRow?.content == Self.canned.findings)
 
-        // The canned sources + suggestions landed on the grounded answer.
         let assistant = messages.last { $0.role == .assistant }
         #expect(assistant?.content == "Here is what the search found.")
         #expect(assistant?.attachments?.sources.count == Self.canned.sources.count)
         #expect(assistant?.attachments?.searchSuggestionsHTML == Self.canned.searchSuggestionsHTML)
-        // Web-search cell metadata: the proposal query is stashed by the
-        // fulfiller (the answer turn emits no `.searchStarted`), and the system
-        // is derived from the model's `"debug"` backend.
+        // The fulfiller supplies query metadata; this answer emits no searchStarted event.
         #expect(assistant?.attachments?.searchQuery == "mars rover news")
         #expect(assistant?.attachments?.searchSystem == "Debug (mock)")
     }
@@ -224,16 +200,13 @@ struct ChatSessionMockSearchTests {
     @Test("a stashed mock result does not leak onto a later turn when the grounded turn errors")
     func stashDoesNotLeakAcrossTurnsOnError() async throws {
         let setup = try await makeSetup(scripts: [
-            // Turn 1: propose. Approved → fulfillMockSearch stashes the sources.
             proposalScript(),
-            // Turn 2 (grounded answer) errors *before* the stash is drained.
+            // Fail before the stashed sources are drained.
             [
                 .messageStart(id: "m2", model: "mock-model-1"),
                 .error(.requestFailed("boom")),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
-            // A fresh user message that does NOT search — its answer must carry
-            // no leaked sources.
             [
                 .messageStart(id: "m3", model: "mock-model-1"),
                 .textDelta(index: 0, text: "Plain answer, no search."),
@@ -273,8 +246,6 @@ struct ChatSessionMockSearchTests {
         _ = await collectResolving(stream, session: setup.session, approve: true)
         await setup.session.waitUntilFinished()
 
-        // Degraded path: the proposal is recorded cancelled (declined copy),
-        // no sources fabricated.
         let proposalCall = try #require(await setup.toolCallRepo.fetch(id: "tc-search"))
         #expect(proposalCall.status == .cancelled)
         let messages = try await setup.messageRepo.fetchAll(conversationId: "conv-1")

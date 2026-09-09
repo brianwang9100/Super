@@ -1,19 +1,7 @@
 import Foundation
 
-/// Pure relative-time bucketing for the Chats applet's row subtitles.
-///
-/// Mirrors the design's coarse-grained buckets ("just now", "12 min ago",
-/// "Yesterday", "Last week", "3 mo ago") so a long history reads at a
-/// glance. Pure for unit-testability and snapshot determinism — callers
-/// inject the reference `now` and `calendar` rather than reading wall
-/// clock state inside the formatter.
 public enum RelativeTimeFormatter {
-    /// Bucket `date` relative to `now` into a human-readable string.
-    ///
-    /// Negative deltas (a future `date`) collapse into the `just now`
-    /// bucket so a clock skew or test-fixture drift never renders as
-    /// "-5 min ago". Bucketing is pure-interval math — the same string
-    /// falls out regardless of locale or calendar.
+    /// Future dates collapse into "just now" rather than showing a negative interval.
     public static func format(
         _ date: Date,
         now: Date

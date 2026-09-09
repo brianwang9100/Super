@@ -5,16 +5,9 @@ import Testing
 
 @testable import Chat
 
-/// Tests for the DEBUG-only `DebugTodoLLMProvider`: the canned `todo.create`
-/// tool call it emits (titles parsed from the user turn, with a rich canned
-/// fallback), the loop-termination guard that stops it creating forever, and
-/// an end-to-end run through `ChatSession`'s tool loop against a fake
-/// `todo.create` executor (the real Todo tool is covered by the Todo package's
-/// own suite — Chat can't import Todo).
 @Suite("Debug Todo provider")
 struct DebugTodoProviderTests {
 
-    /// Decodable mirror of one element in the tool's `tasks` JSON payload.
     private struct DecodedTask: Decodable {
         let title: String
         let priority: String?
@@ -47,7 +40,6 @@ struct DebugTodoProviderTests {
         let call = try #require(Self.firstToolUse(in: events))
         #expect(call.name == "todo.create")
         let tasks = try Self.decodeTasks(call.input)
-        // Multiple tasks, exercising the optional fields the unit tests cover.
         #expect(tasks.count >= 2)
         #expect(tasks.contains { $0.priority != nil })
         #expect(tasks.contains { $0.dueAt != nil })
@@ -100,7 +92,6 @@ struct DebugTodoProviderTests {
         }
         let tasks = try JSONDecoder().decode([DecodedTask].self, from: Data(json.utf8))
         #expect(tasks.map(\.title) == ["milk", "eggs"])
-        // Loop terminated: user → assistant(toolUse) → tool → assistant(text).
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }
@@ -116,8 +107,6 @@ struct DebugTodoProviderTests {
 
     private enum DecodeFailure: Error { case notATasksString }
 
-    /// A turn-loop history where the tool has already run — the provider must
-    /// emit plain text (no further tool call) so the loop ends.
     private static func afterToolRanMessages() -> [LLMMessage] {
         [
             LLMMessage(role: .user, text: "add milk and eggs"),

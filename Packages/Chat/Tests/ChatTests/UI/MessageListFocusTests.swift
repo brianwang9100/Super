@@ -1,7 +1,6 @@
 import Testing
 @testable import Chat
 
-/// Focus commands follow explicit intent and native motion, not streamed content.
 @Suite("MessageList focus sequencing")
 @MainActor
 struct MessageListFocusTests {

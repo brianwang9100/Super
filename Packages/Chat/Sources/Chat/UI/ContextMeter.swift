@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Thin progress bar + numeric "used / max" label rendered to the right of
-/// the composer footer pills. Width 26pt × height 3pt bar; label in
-/// JetBrains Mono at 10.5pt.
-///
-/// Mirrors the meter inside `Composer` from
-/// `.design-tmp/chat/project/src/chat-view.jsx`.
 public struct ContextMeter: View {
     public let usedTokens: Int
     public let maxTokens: Int

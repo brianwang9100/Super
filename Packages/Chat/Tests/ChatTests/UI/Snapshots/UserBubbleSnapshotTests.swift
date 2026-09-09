@@ -6,16 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshot matrix for `UserBubble` carrying verse-reference pills — the
-/// sent-message form of the feature. Covers text + a pill, text + multiple
-/// pills, the pills-only message (empty text), across themes and at
-/// Dynamic Type XXL.
 @Suite("UserBubble verse-pill snapshots", .serialized)
 @MainActor
 struct UserBubbleSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private func pill(_ id: String, _ label: String) -> VerseReferencePillModel {
         VerseReferencePillModel(id: id, label: label)

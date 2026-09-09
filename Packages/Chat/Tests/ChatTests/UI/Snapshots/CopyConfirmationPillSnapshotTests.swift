@@ -6,31 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshot baselines for ``CopyConfirmationPill`` — the transient
-/// "Copied!" pill that floats above the composer after the user taps
-/// Copy on an assistant message. Covers light/dark/sepia plus a
-/// Dynamic Type XXL variant.
-///
-/// Reduce Motion is not recorded as a separate variant: the pill view
-/// body has no `withAnimation`, no `.animation(...)`, and no
-/// `.transition(...)` modifier. The animation that wraps it lives on
-/// the parent `ChatScreen`'s `.overlay { … .transition(...) }` /
-/// `.animation(...)` — not in this view. Same documented gap as
-/// `MemoryUpdatedPillSnapshotTests`: steady-state frames are
-/// pixel-identical regardless of `accessibilityReduceMotion`.
-/// `.serialized` — snapshot baselines are read/written per-test against
-/// the same on-disk `__Snapshots__/CopyConfirmationPillSnapshotTests/`
-/// directory. Parallel execution races on the PNG files (TOCTOU on file
-/// writes), not on any async behavior in the code under test —
-/// serialization is the right tool here. Matches every other snapshot
-/// suite in this directory; see `MemoryUpdatedPillSnapshotTests` for the
-/// canonical justification.
 @Suite("CopyConfirmationPill snapshots", .serialized)
 @MainActor
 struct CopyConfirmationPillSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private func host<V: View>(_ view: V, theme: SuperTheme.Identifier) -> some View {
         view

@@ -1,119 +1,37 @@
 import Foundation
 
-/// User-tunable Chat preferences resolved into a single typed value.
-///
-/// The Chat applet persists each field individually through
-/// `SettingRepository` (one row per key, opaque string values). This struct
-/// is the in-memory projection — `ChatSettingsStore` is the bridge.
 public struct ChatSettings: Sendable, Equatable {
-    /// Visual theme. Drives `SuperTheme.make(_:)` selection.
-    /// Wired live: `ChatHostView` rebuilds its theme on change.
     public var themeId: ThemeID
-    /// Active typography identity. Drives `SuperTypography.make(_:)`
-    /// selection — the brand serif face set vs. the system fallback.
-    /// Wired live: `AppShell` rebuilds typography on change. No
-    /// user-facing picker yet; the key exists so swapping the brand
-    /// face app-wide is a one-value change.
     public var typographyID: TypographyID
-    /// Free-form user "about me" text — preferences, name, tone notes
-    /// the assistant should keep in mind. Injected as the
-    /// `## User personalization` section at the *end* of the leading
-    /// `.system` block by `ContextAssembler` so it follows, never
-    /// overrides, the authoritative chat and applet sections. Edits via
-    /// Settings → Personalization are pushed to active `ChatSession`s
-    /// through `ChatSessionStore.setUserPersonalization` so long-running
-    /// conversations pick up the new value on the next turn.
-    /// Empty / whitespace-only values skip injection. Replaces the
-    /// previous `systemPrompt` field (which exposed the assistant's
-    /// orchestration text to the user — see the migration in
-    /// `ChatSettingsStore.load()`).
+    /// Appended after authoritative system instructions; blank text is omitted.
+    /// Changes reach active sessions on their next turn.
     public var userPersonalization: String
-    /// Default verbosity for new chats. Existing chats keep their own.
-    /// Wired live: `ChatHostView.startNewChat` reads it.
+    /// Applies to new chats; existing chats retain their own verbosity.
     public var defaultVerbosity: ChatVerbosity
-    /// Body-font scale multiplier. Clamped to `[0.80, 1.20]`. Applied
-    /// to message rendering via the `\.chatAppearance` environment value
-    /// injected by `ChatHostView` — see `ChatAppearance`. This is the
-    /// sole appearance knob: spacing (line-spacing, paragraph margin,
-    /// bubble paddings) is derived from `fontScale` inside
-    /// `ChatAppearance` so larger text always gets more breathing room.
+    /// App font-scale multiplier, clamped to [0.80, 1.20].
     public var fontScale: Double
-    /// Whether the compactor automatically runs when context fills up.
-    /// Persistence wired in M9; the `ChatSession` toggle hookup is M10
-    /// alongside the in-chat manual-compact affordance.
     public var autoCompactEnabled: Bool
-    /// Fraction of `maxContextTokens` (0.0–1.0) at which auto-compaction
-    /// fires. Persisted now; consumed alongside `autoCompactEnabled` in M10.
+    /// Fraction of maxContextTokens at which automatic compaction starts.
     public var autoCompactThreshold: Double
-    /// **Record id** (`ModelConfigurationRecord.id`) of the model the user most
-    /// recently activated in the composer pill — the unique per-model identity,
-    /// not the shared `modelId`. Used as the initial selection for every new
-    /// chat so the picker survives relaunch. `nil` until the first chat has been
-    /// opened and the initial pick has been persisted; subsequent launches
-    /// always read a populated value. (Legacy values stored as an `LLMModel.id`
-    /// before the record-id convergence still resolve via the back-compat
-    /// branch in `ChatScreenViewModel.resolveInitialModelId`, then re-persist as
-    /// a record id on the next pick.)
+    /// ModelConfigurationRecord.id, not the shared upstream modelId.
+    /// Legacy LLMModel IDs resolve through ChatScreenViewModel.resolveInitialModelId.
     public var lastSelectedModelId: String?
-    /// Native web-search cost gate. When `true` (the default), a model's
-    /// web-search request is surfaced as an inline confirm prompt
-    /// ("Search the web?") before any search runs — searches cost money,
-    /// so the user approves each one. When `false`, searches run without
-    /// prompting. Wired live: edits in Settings → Search are pushed to
-    /// active `ChatSession`s via the `WebSearchPolicyReceiver` seam so a
-    /// long-running conversation picks up the new value on its next turn.
     public var askBeforeSearching: Bool
-    /// Whether chat titles are auto-summarized by a headless LLM call after
-    /// the first exchange. When `false`, the title stays the truncated first
-    /// user message (see `ChatScreenViewModel.truncatedFallback`). Default
-    /// `true`. The *which model* knob is `titleModelId`; this is the master
-    /// on/off so the user can avoid the round-trip (and its cost) entirely.
     public var summarizeTitlesEnabled: Bool
-    /// **Record id** (`ModelConfigurationRecord.id`) of the model used to
-    /// summarize chat titles — the unique per-model identity, not the shared
-    /// `modelId` — or `nil` for "automatic" (which resolves to the Apple
-    /// Foundation Model when available, else no titling). A stored id that no
-    /// longer maps to an available model (the model was deleted) also resolves
-    /// to none rather than reverting to AFM. Resolution (incl. the legacy
-    /// `LLMModel.id` back-compat branch) lives in
-    /// `TitleGenerator.resolveTitleModel`. Independent of the chat's active
-    /// model — titling can use a different model than the conversation.
+    /// ModelConfigurationRecord.id; nil selects AFM when available.
+    /// A stale explicit selection disables titling instead of falling back to AFM.
     public var titleModelId: String?
-    /// Whether in-app haptic feedback fires (message send/stream, nav taps,
-    /// verse select/deselect). Default `true`. Composes with the OS-level
-    /// "System Haptics" switch — both must be on for haptics to play. Wired
-    /// live: `AppShell` pushes changes to the shared `SystemHapticsEngine`'s
-    /// `setEnabled(_:)` so the toggle takes effect without relaunch.
     public var hapticsEnabled: Bool
 
-    /// Factory default for `autoCompactThreshold` — the fraction of
-    /// `model.maxContextTokens` at which background auto-compaction fires.
-    /// Single source of truth: `ChatSession.init`, `ChatSessionStore.init`,
-    /// and `ChatSettings.default` all reference this constant so the
-    /// defaults can't drift apart.
     public static let defaultAutoCompactThreshold: Double = 0.85
 
-    /// Auto-compaction cap for small-window (`ModelContextTier.compact`)
-    /// models, applied as `min(userThreshold, this)` in
-    /// `ChatSession.maybeAutoCompact`. Their fixed overhead (briefings +
-    /// tool schemas + the provider's own scaffolding) eats most of the
-    /// window and the heuristic meter undercounts the on-device tokenizer,
-    /// so waiting for the default 0.85 means the model has already
-    /// overflowed. Not user-tunable; one home for the value.
+    /// Small-window token estimates undercount provider overhead; compact earlier
+    /// to leave room for the summary request.
     public static let compactTierAutoCompactThreshold: Double = 0.6
 
-    /// Minimum context-usage ratio below which manual `/compact` refuses
-    /// to run and surfaces a user-facing error instead. Below this, the
-    /// summary would be too short to be worth the round-trip and the
-    /// resulting checkpoint would represent almost the whole conversation.
-    /// Not user-tunable today; lives as a named constant so the value
-    /// has one home.
+    /// Below this usage, a summary costs a round trip without meaningfully reducing context.
     public static let defaultManualCompactMinThreshold: Double = 0.30
 
-    /// Factory defaults. `userPersonalization` defaults to the empty
-    /// string — the leading `.system` block omits the
-    /// `## User personalization` section entirely when the field is
-    /// empty.
     public static let `default` = ChatSettings(
         themeId: .vellumLight,
         typographyID: .serif,
@@ -157,12 +75,8 @@ public struct ChatSettings: Sendable, Equatable {
         self.hapticsEnabled = hapticsEnabled
     }
 
-    /// Mirror of `SuperTheme.Identifier` (8 variants: four families ×
-    /// light/dark). Re-declared (rather than typealiased) so persistence
-    /// string values stay stable even if the SuperTheme enum gains a case the
-    /// store doesn't recognize yet. Legacy persisted strings (`light`/`dark`/
-    /// `sepia`, and the retired `sepiaLight`/`sepiaDark`) are migrated to these
-    /// in `ChatSettingsStore.migrateThemeID`.
+    /// Separate from SuperTheme.Identifier to keep persistence independent of Core enum changes.
+    /// ChatSettingsStore migrates retired theme values.
     public enum ThemeID: String, Sendable, Equatable, CaseIterable, Codable {
         case vellumLight
         case vellumDark
@@ -174,11 +88,7 @@ public struct ChatSettings: Sendable, Equatable {
         case slateDark
     }
 
-    /// Mirror of `SuperTypography.Identifier`. Re-declared (rather than
-    /// typealiased) for the same reason as `ThemeID`: persistence string
-    /// values stay stable even if the Core enum gains a case the store
-    /// doesn't recognize yet. Bridged to `SuperTypography` via
-    /// `SuperTypography.make(_:fontScale:)` in `SettingsSheet`.
+    /// Separate from the Core enum to stabilize persisted values, as with ThemeID.
     public enum TypographyID: String, Sendable, Equatable, CaseIterable, Codable {
         case serif
         case system

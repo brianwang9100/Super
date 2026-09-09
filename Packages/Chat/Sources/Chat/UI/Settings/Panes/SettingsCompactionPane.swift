@@ -1,14 +1,9 @@
 import SwiftUI
 
-/// Compaction pane. Not in `settings.jsx` — designed to match the same
-/// visual language. A single grouped card holds the auto-compaction toggle
-/// row and a slider for the trigger threshold (50%–95% of the active
-/// model's context window).
 struct SettingsCompactionPane: View {
     @Bindable var viewModel: SettingsViewModel
 
-    /// Local mirror of the slider's value so we can defer the GRDB write
-    /// until `onEditingChanged(false)`.
+    /// Defer persistence until drag end.
     @State private var localThreshold: Double = ChatSettings.default.autoCompactThreshold
 
     @Environment(\.superTheme) private var theme

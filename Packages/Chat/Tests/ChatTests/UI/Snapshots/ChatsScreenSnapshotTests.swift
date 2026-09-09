@@ -8,16 +8,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `ChatsScreen` across themes (light/dark/sepia),
-/// the Dynamic Type XXL and xSmall variants, the populated list with
-/// relative-time subtitles, and the two search-active states (matches +
-/// no matches). The xSmall variant guards the title/subtitle hierarchy at
-/// the small end of the range, where their sizes converge and weight +
-/// color must carry the distinction.
-///
-/// Conversation fixtures span the relative-time buckets the design calls
-/// out — "just now" through "3 mo ago" — so the rows exercise every
-/// branch of `RelativeTimeFormatter.format`.
 @Suite("ChatsScreen snapshots", .serialized)
 @MainActor
 struct ChatsScreenSnapshotTests {
@@ -26,9 +16,6 @@ struct ChatsScreenSnapshotTests {
 
     init() { SnapshotFontRegistration.ensureRegistered() }
 
-    /// Conversations spanning every relative-time bucket. Titles are
-    /// recognizable English phrases (not lorem ipsum) so search-active
-    /// variants can target a stable substring.
     private static let sampleConversations: [ConversationRecord] = [
         .init(id: "c-just",      title: "Italy trip planning",                          createdAt: now, updatedAt: now.addingTimeInterval(-30)),
         .init(id: "c-min",       title: "Quick stir-fried snow pea leaves",             createdAt: now, updatedAt: now.addingTimeInterval(-12 * 60)),
@@ -63,9 +50,7 @@ struct ChatsScreenSnapshotTests {
 
     @Test("populated, xSmall Dynamic Type")
     func populatedXSmallDynamicType() async throws {
-        // At xSmall Dynamic Type the title and subtitle sizes converge, so
-        // this baseline guards that weight (.medium) and color (ink vs
-        // inkFaint) keep the two lines distinguishable.
+        // At xSmall, title/subtitle sizes converge; weight and color must preserve hierarchy.
         try await verify(
             theme: .vellumLight,
             dynamicType: .xSmall,
@@ -75,9 +60,6 @@ struct ChatsScreenSnapshotTests {
 
     @Test("search active with matches")
     func searchActiveWithMatches() async throws {
-        // "snow" matches "Quick stir-fried snow pea leaves" only — one
-        // result, so the result-count line should render in the singular
-        // ("1 match").
         try await verify(
             theme: .vellumLight,
             initialSearchText: "snow",
@@ -87,9 +69,6 @@ struct ChatsScreenSnapshotTests {
 
     @Test("search active with no matches")
     func searchActiveNoMatches() async throws {
-        // "zzz" matches none of the fixture titles, so the screen falls
-        // back to the italic-serif "No matches." empty state with the
-        // quoted-query caption.
         try await verify(
             theme: .vellumLight,
             initialSearchText: "zzz",
@@ -99,11 +78,6 @@ struct ChatsScreenSnapshotTests {
 
     @Test("no chats yet")
     func noChatsYet() async throws {
-        // Database is empty — the screen should render the
-        // first-launch empty state ("No chats" + "Tap + button to start
-        // new chat"). The `seedConversations: false` flag tells the
-        // helper to skip the fixture insert so `@Query` resolves to
-        // zero rows.
         try await verify(
             theme: .vellumLight,
             seedConversations: false,

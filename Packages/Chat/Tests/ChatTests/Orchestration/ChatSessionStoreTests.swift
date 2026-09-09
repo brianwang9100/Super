@@ -4,9 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `ChatSessionStore`'s session lifecycle: get-or-create
-/// semantics, parallel session execution, and that cancelling one
-/// conversation's session leaves siblings untouched.
 @Suite("ChatSessionStore")
 struct ChatSessionStoreTests {
 
@@ -51,7 +48,6 @@ struct ChatSessionStoreTests {
             autoCompactEnabled: false
         )
 
-        // Two conversations live in the DB so the FK references resolve.
         try await conversationRepo.save(OrchestrationFixtures.makeConversation(id: "conv-A", clock: clock))
         try await conversationRepo.save(OrchestrationFixtures.makeConversation(id: "conv-B", clock: clock))
 
@@ -114,7 +110,6 @@ struct ChatSessionStoreTests {
         await sessionA.waitUntilFinished()
         await sessionB.waitUntilFinished()
 
-        // Both turns produced an .assistantMessageSaved as their last event.
         guard case .assistantMessageSaved = a.last,
               case .assistantMessageSaved = b.last else {
             Issue.record("expected both sessions to finish with assistantMessageSaved; got A=\(String(describing: a.last)), B=\(String(describing: b.last))")
@@ -123,8 +118,6 @@ struct ChatSessionStoreTests {
     }
 
     @Test func cancellingOneSessionDoesNotAffectSiblings() async throws {
-        // Session A's tool sleeps long enough to be cancellable.
-        // Session B has no tool calls, just text.
         let toolID = "test.sleep"
         let toolDef = LLMTool(
             id: toolID,
@@ -137,14 +130,11 @@ struct ChatSessionStoreTests {
         let sleepingExecutor = SleepingToolExecutor(toolID: toolID)
 
         let setup = try await makeStore(scripts: [
-            // Session A: ask for the sleeping tool, then a closing message
-            // (we will never reach the closing turn because A is cancelled).
             [
                 .messageStart(id: "ma", model: "fake-model-1"),
                 .toolUse(index: 0, id: "tc-a", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
             ],
-            // Session B: simple text reply.
             [
                 .messageStart(id: "mb", model: "fake-model-1"),
                 .textDelta(index: 0, text: "B done"),
@@ -157,15 +147,8 @@ struct ChatSessionStoreTests {
         let sessionA = await setup.store.session(for: "conv-A")
         let sessionB = await setup.store.session(for: "conv-B")
 
-        // Start A first and wait for its tool to actually run before starting
-        // B. The `FakeLLMProvider` script queue is shared — both sessions race
-        // to consume it — and the two scripts have *different shapes* (A
-        // requests a tool, B replies with text). Without this sequencing, B
-        // can win the race, consume A's tool-call script, enter a tool loop,
-        // and emit an unscripted third `stream(...)` call that fires after the
-        // test ends — observed as a `STRAY-STREAM` leak in CI/local runs.
-        // `awaitFirstCall()` is reached only after A has consumed script #1
-        // and dispatched into the tool, so by then it's safe to start B.
+        // Both sessions consume one shared script queue. Wait until A enters its tool
+        // before starting B, or B can steal the tool-call script and issue an unscripted turn.
         let streamA = await sessionA.send(text: "kick A", model: setup.model)
         async let eventsA: [ChatEvent] = self.collect(streamA)
         await sleepingExecutor.awaitFirstCall()
@@ -179,14 +162,12 @@ struct ChatSessionStoreTests {
         await sessionA.waitUntilFinished()
         await sessionB.waitUntilFinished()
 
-        // A ends with .error(.cancelled).
         guard case .error(let llmError) = a.last else {
             Issue.record("expected A to terminate with .error, got \(String(describing: a.last))")
             return
         }
         #expect(llmError == .cancelled)
 
-        // B finished its turn unaffected.
         guard case .assistantMessageSaved = b.last else {
             Issue.record("expected B to finish with .assistantMessageSaved, got \(String(describing: b.last))")
             return
@@ -248,11 +229,6 @@ struct ChatSessionStoreTests {
     }
 
     @Test func setUserPersonalizationFansOutToExistingSession() async throws {
-        // `store.setUserPersonalization(_:)` must reach already-created
-        // sessions so a long-running conversation picks up a Settings
-        // edit on its next turn — testing the actual fan-out loop rather
-        // than just the session-level setter is what protects against a
-        // future refactor that drops the loop.
         let setup = try await makeStore(scripts: [
             [
                 .messageStart(id: "ma", model: "fake-model-1"),
@@ -270,9 +246,6 @@ struct ChatSessionStoreTests {
 
         let request = await setup.provider.capturedRequests().last
         #expect(request?.messages.first?.role == .system)
-        // The leading block carries the personalization under its
-        // `## User personalization` section header — assert on substring
-        // since the rendered block wraps the value in headings/spacing.
         if case .text(let body) = request?.messages.first?.content.first {
             #expect(body.contains("## User personalization"))
             #expect(body.contains("Always answer in haiku."))
@@ -282,23 +255,12 @@ struct ChatSessionStoreTests {
     }
 
     @Test func setAutoCompactPolicyTriggersAutoCompactionOnExistingSession() async throws {
-        // The store-level fan-out must reach already-created sessions, so a
-        // long-running conversation picks up a slider/toggle change on its
-        // next turn. End-to-end signal: bootstrap the store with auto-
-        // compaction disabled, seed enough history to summarize, flip the
-        // policy via `setAutoCompactPolicy(...)`, then send one more message
-        // and assert the provider was hit for the summarization turn — the
-        // only side effect that proves the new policy actually reached the
-        // existing session.
         let setup = try await makeStore(scripts: [
-            // Summarization turn fires first (auto-compaction runs at the
-            // top of the turn loop).
             [
                 .messageStart(id: "sum", model: "fake-model-1"),
                 .textDelta(index: 0, text: "Summary of the older turns."),
                 .messageComplete(usage: TokenUsage(inputTokens: 8, outputTokens: 4)),
             ],
-            // Then the actual assistant reply.
             [
                 .messageStart(id: "reply", model: "fake-model-1"),
                 .textDelta(index: 0, text: "ok"),
@@ -306,9 +268,6 @@ struct ChatSessionStoreTests {
             ],
         ])
 
-        // Seed 12 messages so the compactor has something to summarize once
-        // the policy flips on (keepMostRecent defaults to 4 → 8 messages
-        // are eligible for summarization).
         let messageRepo = GRDBMessageRepository(database: setup.database)
         for index in 1...6 {
             try await messageRepo.save(MessageRecord(
@@ -324,8 +283,6 @@ struct ChatSessionStoreTests {
         }
 
         let session = await setup.store.session(for: "conv-A")
-        // Flip auto-compaction on with a near-zero threshold so the seeded
-        // history is guaranteed to be "over threshold."
         await setup.store.setAutoCompactPolicy(enabled: true, threshold: 0.0001)
 
         let stream = await session.send(text: "next prompt", model: setup.model)
@@ -337,16 +294,11 @@ struct ChatSessionStoreTests {
         }
         #expect(compactionStarted, "policy fan-out failed to reach the existing session")
 
-        // Two provider calls: summarization + the actual turn.
         let captured = await setup.provider.capturedRequests()
         #expect(captured.count == 2)
     }
 
     @Test func setAutoCompactPolicyIsInheritedBySessionsCreatedAfterTheCall() async throws {
-        // Sessions created *after* a store-level policy change must seed
-        // with the new values, not the construction-time defaults. Without
-        // this, every newly-opened chat would silently revert to the
-        // boot-time policy until app restart.
         let setup = try await makeStore(scripts: [
             [
                 .messageStart(id: "sum", model: "fake-model-1"),
@@ -374,7 +326,6 @@ struct ChatSessionStoreTests {
             ))
         }
 
-        // Flip policy BEFORE any session for conv-B exists.
         await setup.store.setAutoCompactPolicy(enabled: true, threshold: 0.0001)
 
         let session = await setup.store.session(for: "conv-B")
@@ -389,12 +340,6 @@ struct ChatSessionStoreTests {
     }
 
     @Test func setUserPersonalizationIsInheritedBySessionsCreatedAfterTheCall() async throws {
-        // Sessions created *after* a store-level
-        // `setUserPersonalization(...)` must start with the new value,
-        // not the construction-time default. Otherwise the user's
-        // just-saved text would only affect conversations whose sessions
-        // existed at save time — every subsequent "new chat" would
-        // silently revert to the value the store was bootstrapped with.
         let setup = try await makeStore(scripts: [
             [
                 .messageStart(id: "ma", model: "fake-model-1"),
@@ -445,17 +390,13 @@ struct ChatSessionStoreTests {
         try await GRDBToolCallRepository(database: database).save(record)
     }
 
-    /// A force-quit/crash mid-turn strands tool calls at non-terminal
-    /// statuses with no result rows — `recoverInterruptedToolCalls()` must
-    /// resolve exactly those on launch: status → `.failed` + `completedAt`,
-    /// and a role-`.tool` result row when (and only when) none exists.
-    /// Regression for audit P0-2's missing "recovery sweep".
+    /// Crashes can strand calls without results. Recovery must resolve nonterminal
+    /// status and synthesize a result only when one is missing.
     @Test func recoverySweepResolvesStrandedToolCalls() async throws {
         let setup = try await makeStore()
         let messageRepo = GRDBMessageRepository(database: setup.database)
         let toolCallRepo = GRDBToolCallRepository(database: setup.database)
 
-        // Parent assistant rows so the tool-call FKs resolve.
         let assistantA = MessageRecord(
             id: "m-A", conversationId: "conv-A", role: .assistant,
             content: "running tools", toolCallId: nil, createdAt: setup.clock.now()
@@ -467,8 +408,6 @@ struct ChatSessionStoreTests {
         try await messageRepo.save(assistantA)
         try await messageRepo.save(assistantB)
 
-        // Three stranded shapes (no result row): pending / executing /
-        // awaitingConfirmation — the second one in a different conversation.
         for (id, status) in [("tc-pending", ToolCallStatus.pending), ("tc-confirm", .awaitingConfirmation)] {
             try await seedToolCall(
                 in: setup.database, id: id, messageId: "m-A",
@@ -479,13 +418,11 @@ struct ChatSessionStoreTests {
             in: setup.database, id: "tc-executing", messageId: "m-B",
             conversationId: "conv-B", status: .executing, clock: setup.clock
         )
-        // Terminal row — must be untouched.
         try await seedToolCall(
             in: setup.database, id: "tc-done", messageId: "m-A",
             conversationId: "conv-A", status: .success, clock: setup.clock
         )
-        // Non-terminal but its result row already landed (crash between the
-        // message write and the status update) — status fixed, no duplicate row.
+        // Model a crash between writing the result and updating the status.
         try await seedToolCall(
             in: setup.database, id: "tc-rowed", messageId: "m-A",
             conversationId: "conv-A", status: .executing, clock: setup.clock
@@ -498,19 +435,15 @@ struct ChatSessionStoreTests {
         let recovered = await setup.store.recoverInterruptedToolCalls()
         #expect(recovered.sorted() == ["tc-confirm", "tc-executing", "tc-pending", "tc-rowed"])
 
-        // Stranded calls landed .failed with completedAt.
         for id in ["tc-pending", "tc-confirm", "tc-executing", "tc-rowed"] {
             let record = try #require(await toolCallRepo.fetch(id: id))
             #expect(record.status == .failed, "expected \(id) to be .failed")
             #expect(record.completedAt != nil)
         }
-        // Terminal row untouched.
         let done = try #require(await toolCallRepo.fetch(id: "tc-done"))
         #expect(done.status == .success)
         #expect(done.completedAt == nil)
 
-        // Exactly one role-.tool row per call — synthesized for the three
-        // stranded ones, the pre-existing one not duplicated.
         let messagesA = try await messageRepo.fetchAll(conversationId: "conv-A")
         let messagesB = try await messageRepo.fetchAll(conversationId: "conv-B")
         var rowCounts: [String: Int] = [:]
@@ -524,12 +457,8 @@ struct ChatSessionStoreTests {
         #expect(rowCounts["tc-done"] == nil)
     }
 
-    /// A wedged conversation keeps accumulating user rows after the
-    /// stranded call (every failed send still persisted its user message).
-    /// The sweep's synthesized result row must sort directly after the
-    /// issuing assistant row — not at end-of-history — or the pair is
-    /// non-adjacent on the wire and the history stays provider-invalid.
-    /// Regression for the launch-time-`createdAt` bug found in review.
+    /// Failed retries can append user rows after a stranded call. Its recovered
+    /// result must sort beside the issuing assistant to make replay valid.
     @Test func recoverySweepKeepsToolPairAdjacentDespiteLaterMessages() async throws {
         let setup = try await makeStore()
         let messageRepo = GRDBMessageRepository(database: setup.database)
@@ -549,8 +478,6 @@ struct ChatSessionStoreTests {
             conversationId: "conv-A", status: .executing,
             clock: FixedClock(base.addingTimeInterval(1))
         )
-        // Two later sends that failed against the wedged history still
-        // persisted their user rows.
         try await messageRepo.save(MessageRecord(
             id: "m-user-2", conversationId: "conv-A", role: .user,
             content: "hello?", toolCallId: nil, createdAt: base.addingTimeInterval(60)
@@ -562,14 +489,11 @@ struct ChatSessionStoreTests {
 
         await setup.store.recoverInterruptedToolCalls()
 
-        // On-disk order: the synthesized row rides directly behind the
-        // assistant row that issued the call.
         let stored = try await messageRepo.fetchAll(conversationId: "conv-A")
         let assistantIndex = try #require(stored.firstIndex { $0.id == "m-assistant" })
         let resultIndex = try #require(stored.firstIndex { $0.toolCallId == "tc-stranded" })
         #expect(resultIndex == assistantIndex + 1)
 
-        // And the projection ships a pair-adjacent wire history.
         let calls = try await toolCallRepo.fetchByConversation("conv-A")
         let assembly = try ContextAssembler().assemble(
             messages: stored, toolCalls: calls, checkpoint: nil,
@@ -591,10 +515,7 @@ struct ChatSessionStoreTests {
     }
 }
 
-/// A `ToolExecutor` that sleeps until either a long timeout elapses or the
-/// surrounding task is cancelled. Signals via `awaitFirstCall()` once
-/// invocation has actually started so tests can synchronize cancellation
-/// with the in-flight `Task.sleep`.
+/// Signals entry through awaitFirstCall(), then sleeps until timeout or cancellation.
 private final class SleepingToolExecutor: ToolExecutor {
     let toolID: String
     private let state: SleepingToolState

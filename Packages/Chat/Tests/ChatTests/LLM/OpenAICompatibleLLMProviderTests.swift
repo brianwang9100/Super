@@ -3,15 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// End-to-end tests for `OpenAICompatibleLLMProvider`. Exercises the
-/// request shape (URL, headers, body) and the full streaming pipeline by
-/// replaying recorded SSE (Server-Sent Events) fixtures through a fake
-/// HTTP (HyperText Transfer Protocol) client. No real network — ever.
-///
-/// **Stream contract**: every test asserts the stream finishes cleanly and
-/// terminates with `.messageComplete`. Failures are surfaced as `.error`
-/// events immediately before the terminal `.messageComplete`, never as
-/// thrown errors.
 @Suite("OpenAICompatibleLLMProvider")
 struct OpenAICompatibleLLMProviderTests {
     private let baseURL = URL(string: "https://api.example.test/v1")!
@@ -44,10 +35,7 @@ struct OpenAICompatibleLLMProviderTests {
         return events
     }
 
-    /// The configuration's `searchBackend` must reach the vended `LLMModel` —
-    /// the turn loop reads `model.searchBackend` to drive the client-mock
-    /// ("debug") search path on an otherwise-ordinary OpenAI-compat model.
-    /// Regression: the convenience init previously dropped it (left nil).
+    /// The turn loop reads the vended model searchBackend to select mock search.
     @Test func convenienceInitStampsSearchBackendOntoVendedModel() async throws {
         let configuration = ModelConfiguration(
             id: "cfg-1",
@@ -111,9 +99,7 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
-    /// `prompt_tokens_details.cached_tokens` surfaces as `cacheReadInputTokens`.
-    /// OpenAI (and xAI, identical shape) report cached tokens as a subset of
-    /// `promptTokens`, and have no write count — `cacheCreationInputTokens` nil.
+    /// OpenAI and xAI cache hits are a subset of prompt tokens, with no write count.
     @Test func cachedFixtureSurfacesCachedTokensInUsage() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-cached"))
         let provider = makeProvider(http: http)
@@ -288,8 +274,6 @@ struct OpenAICompatibleLLMProviderTests {
     }
 
     @Test func httpErrorBodyIsFoldedIntoProviderErrorMessage() async throws {
-        // The captured response body (e.g. Gemini's schema-validation
-        // explanation) must reach the surfaced error so a 400 is diagnosable.
         let body = "entries.items: missing field"
         let events = try await collectErrorRun(error: HTTPError.badStatus(400, body: body))
         #expect(errorEvents(events) == [.providerError(code: "400", message: "HTTP 400: \(body)")])
@@ -431,7 +415,7 @@ struct OpenAICompatibleLLMProviderTests {
             messages: [LLMMessage(role: .user, text: "hi")],
             model: model,
             tools: [],
-            temperature: 9.9   // Out of OpenAI's [0.0, 2.0] range.
+            temperature: 9.9
         ))
         let request = try #require(http.observed.all.first)
         let body = try #require(request.httpBody)
@@ -506,7 +490,7 @@ struct OpenAICompatibleLLMProviderTests {
                     name: "timezone",
                     type: .string,
                     description: "IANA tz id",
-                    isRequired: false   // none required
+                    isRequired: false
                 ),
             ],
             appletId: "chat"
@@ -522,8 +506,7 @@ struct OpenAICompatibleLLMProviderTests {
         let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let tools = try #require(decoded["tools"] as? [[String: Any]])
         let parameters = try #require((tools[0]["function"] as? [String: Any])?["parameters"] as? [String: Any])
-        // `required` must be absent (not `[]`) — some local OpenAI shims
-        // reject empty arrays.
+        // Some local shims reject an empty required array; omit it instead.
         #expect(parameters["required"] == nil)
     }
 
@@ -574,8 +557,6 @@ struct OpenAICompatibleLLMProviderTests {
     }
 
     @Test func captureThoughtSignatureFromToolCallExtraContent() async throws {
-        // Gemini over the OpenAI-compat shim carries the thought signature in
-        // `extra_content.google.thought_signature` on the streamed tool call.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-toolcall-signature"))
         let provider = makeProvider(http: http)
         let events = try await collect(provider.stream(
@@ -590,8 +571,7 @@ struct OpenAICompatibleLLMProviderTests {
     }
 
     @Test func replayedToolCallEncodesThoughtSignatureInExtraContent() async throws {
-        // On the follow-up turn the signature must ride the outgoing tool call's
-        // `extra_content.google.thought_signature`, or the shim 400s.
+        // Gemini shim replay requires extra_content.google.thought_signature.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         let provider = makeProvider(http: http)
         let messages: [LLMMessage] = [
@@ -618,9 +598,7 @@ struct OpenAICompatibleLLMProviderTests {
 
     // MARK: - Tool wire-name sanitization (dot-namespaced tool IDs)
 
-    /// Regression: OpenAI's chat/completions enforces the same
-    /// `^[a-zA-Z0-9_-]+$` function-name pattern as the Responses API, so
-    /// Super's `time.now`-style tool IDs must be sanitized on the wire.
+    /// The API rejects dots in function names, so encode local tool IDs for the wire.
     @Test func dotNamespacedToolNameIsSanitizedInToolDefinitions() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         _ = try await collect(makeProvider(http: http).stream(
@@ -701,7 +679,6 @@ struct OpenAICompatibleLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         #expect(body["prompt_cache_key"] as? String == "conv-123")
-        // OpenAI takes the body field, never the xAI header.
         #expect(try #require(http.observed.all.first).value(forHTTPHeaderField: CacheRoutingKey.xaiHeaderField) == nil)
     }
 
@@ -715,13 +692,10 @@ struct OpenAICompatibleLLMProviderTests {
         ))
         let request = try #require(http.observed.all.first)
         #expect(request.value(forHTTPHeaderField: CacheRoutingKey.xaiHeaderField) == "conv-456")
-        // xAI carries it as a header only — never the body field.
         #expect(try Self.decodeBody(http)["prompt_cache_key"] == nil)
     }
 
     @Test func noRoutingKeyForOtherHostsEvenWithOptions() async throws {
-        // The default test host is a generic compatible endpoint (DeepSeek /
-        // Groq / Ollama / Custom stand-in): neither form is attached.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         let provider = makeProvider(http: http)
         _ = try await collect(provider.stream(
@@ -735,7 +709,6 @@ struct OpenAICompatibleLLMProviderTests {
     }
 
     @Test func noPromptCacheKeyForOpenAIHostWithEmptyOrNoneOptions() async throws {
-        // `.none` (the 4-arg path) and an empty key both omit the field.
         for options in [LLMRequestOptions.none, LLMRequestOptions(conversationCacheKey: "")] {
             let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
             let provider = makeProvider(http: http, baseURL: URL(string: "https://api.openai.com/v1")!)
@@ -747,10 +720,7 @@ struct OpenAICompatibleLLMProviderTests {
         }
     }
 
-    /// Stability: a non-gated host's request body is unchanged with vs. without
-    /// options, so DeepSeek/Ollama/Groq/Custom see no difference at all.
-    /// Compared as parsed JSON (NSDictionary) — Foundation's JSONEncoder doesn't
-    /// guarantee keyed-container byte order, so a raw-Data compare is unreliable.
+    /// Compare parsed JSON because keyed-container encoding order is unspecified.
     @Test func nonGatedHostRequestBodyUnchangedWithAndWithoutOptions() async throws {
         func body(options: LLMRequestOptions) async throws -> NSDictionary {
             let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
@@ -767,8 +737,6 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(withoutOptions == withOptions)
     }
 
-    /// Compact one-token-per-event label so an expected-vs-actual mismatch
-    /// is human-readable.
     private func eventKind(_ event: LLMStreamEvent) -> String {
         switch event {
         case .messageStart: return "messageStart"

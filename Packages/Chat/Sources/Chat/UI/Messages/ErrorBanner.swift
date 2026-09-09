@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Compact error pill rendered above the composer. Pulls its message +
-/// optional custom action button (or default Retry pill) from a
-/// ``MessageList/ErrorState`` value.
-///
-/// When the error carries a verbose ``MessageList/ErrorState/detail`` (e.g. a
-/// provider's raw error body), the banner stays compact and offers a "Details"
-/// disclosure that expands to show the full text — rather than dumping the
-/// whole payload inline.
 struct ErrorBanner: View {
     let banner: MessageList.ErrorState
     let onRetry: () -> Void
@@ -15,9 +7,7 @@ struct ErrorBanner: View {
     @Environment(\.superTypography) private var typography
     @State private var showsDetail: Bool
 
-    /// - Parameter initiallyExpanded: Seeds the detail-disclosure state.
-    ///   Production always starts collapsed; snapshot tests pass `true` to
-    ///   pin the expanded state (otherwise reachable only via tap).
+    /// initiallyExpanded pins the details-open snapshot state.
     init(
         banner: MessageList.ErrorState,
         initiallyExpanded: Bool = false,
@@ -106,10 +96,7 @@ struct ErrorBanner: View {
         .accessibilityLabel(showsDetail ? "Hide error details" : "Show error details")
 
         if showsDetail, let detail = banner.detail {
-            // Rendered inline (not a nested ScrollView): the banner lives inside
-            // the chat transcript's own ScrollView, so a second scroll view here
-            // would fight it for the scroll gesture. The outer transcript scrolls
-            // the expanded detail instead.
+            // Let the transcript scroll expanded detail; a nested scroll view would compete for gestures.
             Text(detail)
                 .font(typography.mono(11))
                 .foregroundStyle(theme.errorInk)

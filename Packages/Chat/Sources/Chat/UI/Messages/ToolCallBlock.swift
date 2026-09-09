@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Collapsible tool-call card: header with the tool's friendly display name +
-/// status, expanded body with the technical function name plus INPUT and
-/// RESULT panels in monospace. `.verbose` opens by default; `.simple` and
-/// `.thinking` keep it collapsed behind the chip.
 struct ToolCallBlock: View {
     let call: MessageList.ToolCallItem
     let verbosity: ChatVerbosity
@@ -17,9 +13,6 @@ struct ToolCallBlock: View {
         self._isExpanded = State(initialValue: Self.shouldExpand(for: verbosity))
     }
 
-    /// Tool blocks are heavyweight (parameters + result), so only the
-    /// `.verbose` setting opens them by default. `.simple` and `.thinking`
-    /// keep them collapsed behind the header pill.
     static func shouldExpand(for verbosity: ChatVerbosity) -> Bool {
         verbosity == .verbose
     }
@@ -30,9 +23,6 @@ struct ToolCallBlock: View {
                 isExpanded.toggle()
             } label: {
                 HStack(spacing: 8) {
-                    // Header typography is shared with `WebSearchCallCell` and
-                    // `SourceCitationsPill` so every tool-call-style cell reads
-                    // identically: subheadline icon + name, caption chevron.
                     Image(systemName: "wrench.and.screwdriver")
                         .font(typography.font(.subheadline))
                         .foregroundStyle(theme.inkSoft)
@@ -54,9 +44,6 @@ struct ToolCallBlock: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Surface the technical function name here (it's hidden
-                    // from the header, which shows the friendly display name)
-                    // so the actual tool the model invoked stays inspectable.
                     if call.toolName != call.toolDisplayName {
                         sectionLabel("FUNCTION")
                         Text(call.toolName)
@@ -82,8 +69,7 @@ struct ToolCallBlock: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(theme.borderFaint, lineWidth: 1)
         )
-        // Verbosity changes broadcast a new default expansion state to every
-        // block. Individual taps after that still win until the next switch.
+        // A verbosity change resets expansion; later manual toggles win until the next change.
         .onChange(of: verbosity) { _, newValue in
             isExpanded = Self.shouldExpand(for: newValue)
         }
@@ -100,17 +86,11 @@ struct ToolCallBlock: View {
                     .foregroundStyle(theme.inkFaint)
             }
         case .awaitingConfirmation:
-            // Generic tool path — the native-search proposal renders its own
-            // approve/skip row (`SearchConfirmationRow`) and never reaches
-            // here, but a future destructive tool parked for approval would.
+            // Native search proposals use SearchConfirmationRow; other approval requests can reach this badge.
             HStack(spacing: 4) {
                 Image(systemName: "hourglass")
                     .font(typography.font(.caption2))
                     .foregroundStyle(theme.inkFaint)
-                // Sentence case (vs. the lowercase `running`/`done`/`failed`
-                // siblings): this is the one badge that demands user action,
-                // and VoiceOver reads the raw string — "Awaiting approval"
-                // announces more cleanly than the passive lowercase form.
                 Text("Awaiting approval")
                     .font(typography.font(.caption2))
                     .foregroundStyle(theme.inkFaint)

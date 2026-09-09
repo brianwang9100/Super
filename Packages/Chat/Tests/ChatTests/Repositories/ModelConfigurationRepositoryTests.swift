@@ -4,20 +4,11 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBModelConfigurationRepository` — selected-exclusive
-/// invariant, Keychain pairing on delete, and ordering.
 @Suite("GRDBModelConfigurationRepository")
 struct ModelConfigurationRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// Buildability predicate that treats `.geminiNative` as unbuildable so the
-    /// known-but-unbuildable-kind guards (`selected()`/seed/`setSelected`
-    /// filters) stay exercised. As of web-search PR3c every shipping kind is
-    /// buildable, so this scenario is otherwise unreachable until a future
-    /// native kind is added ahead of its adapter; `.geminiNative` stands in for
-    /// "a known kind this binary can't build a provider for". (Production
-    /// defaults to `LLMProviderKind.hasProviderAdapter`, where gemini is
-    /// buildable.)
+    // Simulate a known kind without an adapter; production Gemini is buildable.
     private static let geminiTreatedAsUnbuildable: @Sendable (LLMProviderKind) -> Bool = {
         $0 != .geminiNative && $0.hasProviderAdapter
     }
@@ -168,20 +159,14 @@ struct ModelConfigurationRepositoryTests {
 
     @Test("selected() excludes a native-kind row whose adapter hasn't shipped")
     func selectedExcludesUnbuildableNativeKind() async throws {
-        // A native-search kind decodes fine (it's in `allCases`) but has no
-        // provider adapter yet. If `selected()` returned it, hydration would
-        // skip the row, `setActive` would throw `unknownProvider`, the throw
-        // would be swallowed, and the registry would be left with no active
-        // provider. So `selected()` filters it out — the row stays visible in
-        // `all()` (editable in the Models list) but can't claim the active
-        // slot, letting the first-registered fallback fire cleanly.
+        // An unbuildable row stays editable but cannot claim active selection and
+        // prevent the registered-provider fallback.
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(
             id: "native", kind: .geminiNative, apiKeyRef: "kn", isSelected: true
         ))
 
         #expect(try await repo.selected() == nil)
-        // …but it remains visible/editable in the list.
         #expect(try await repo.all().map(\.id) == ["native"])
         #expect(try await repo.fetch(id: "native")?.kind == .geminiNative)
     }
@@ -189,9 +174,6 @@ struct ModelConfigurationRepositoryTests {
     @Test("selected() still returns a buildable row alongside a native one")
     func selectedReturnsBuildableRowDespiteNativeSibling() async throws {
         let (repo, _) = try makeRepo()
-        // Only one row may be selected (partial unique index), so the native
-        // sibling is unselected here; the point is that a buildable selected
-        // row is unaffected by the new filter.
         try await repo.save(makeRecord(
             id: "native", kind: .geminiNative, apiKeyRef: "kn", createdOffset: 0
         ))
@@ -212,12 +194,7 @@ struct ModelConfigurationRepositoryTests {
         }
     }
 
-    /// `setSelected` must refuse a native-kind row the binary can't build a
-    /// provider for. Without the guard the demote would run, clear the prior
-    /// selection, and then `selected()` would return nil (native kinds are
-    /// filtered out) — no active model, no error. The guard throws *before*
-    /// the demote so the existing selection survives. Regression for the
-    /// `setSelected`/`selected()` filter mismatch on PR #138.
+    /// Reject unbuildable selections before demoting the current one.
     @Test func setSelectedRefusesUnbuildableNativeKind() async throws {
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(id: "compat", kind: .openAICompatible, apiKeyRef: "kc", isSelected: true))
@@ -231,7 +208,6 @@ struct ModelConfigurationRepositoryTests {
             try await repo.setSelected(id: "native")
         }
 
-        // The prior selection is intact — the demote never ran.
         #expect(try await repo.selected()?.id == "compat")
         #expect(try await repo.all().filter(\.isSelected).map(\.id) == ["compat"])
     }
@@ -287,7 +263,6 @@ struct ModelConfigurationRepositoryTests {
             try await repo.save(makeRecord(id: "b", apiKeyRef: "kb", isSelected: true))
         }
 
-        // The first row remains the unique selection.
         let selectedIDs = try await repo.all().filter(\.isSelected).map(\.id)
         #expect(selectedIDs == ["a"])
     }
@@ -309,14 +284,11 @@ struct ModelConfigurationRepositoryTests {
         #expect(fetched?.baseURL == nil)
         #expect(fetched?.apiKeyRef == nil)
         #expect(fetched?.modelId == "system-default")
-        // Projection carries the kind through to the Core value.
         #expect(fetched?.configuration.kind == .appleFoundation)
         #expect(fetched?.configuration.baseURL == nil)
         #expect(fetched?.configuration.apiKeyRef == nil)
     }
 
-    /// Insert a row with an arbitrary unknown `kind` value via raw SQL.
-    /// Returned closure runs synchronously from a `queue.write` block.
     private func insertUnknownKindRow(
         queue: DatabaseQueue,
         id: String,
@@ -337,8 +309,7 @@ struct ModelConfigurationRepositoryTests {
         }
     }
 
-    /// Read `isSelected` for `id` via raw SQL so the assertion works
-    /// even when the row's `kind` would be filtered out by reads.
+    /// Bypass kind filtering to inspect the physical selection slot.
     private func rawIsSelected(queue: DatabaseQueue, id: String) async throws -> Bool? {
         try await queue.read { db in
             let row = try Row.fetchOne(
@@ -350,61 +321,37 @@ struct ModelConfigurationRepositoryTests {
         }
     }
 
-    /// Rows whose `kind` column holds a string the running binary
-    /// doesn't recognise must be skipped by every read, not surfaced as
-    /// decode errors. The Release-build crash this guards against
-    /// (DEBUG seeds `kind = "debug"`; same simulator installs a Release
-    /// build that has no `.debug` case → decode trap on every read) is
-    /// the exact shape simulated here by inserting an arbitrary unknown
-    /// `kind` value via raw SQL.
+    /// A Release build may inherit DEBUG or newer-binary kinds. Filter them before decoding.
     @Test func readsFilterOutRowsWithUnrecognisedKindValue() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(makeRecord(id: "known", apiKeyRef: "ka", isSelected: true))
         try await insertUnknownKindRow(queue: queue, id: "future")
 
-        // `all()` returns only the recognised row.
         #expect(try await repo.all().map(\.id) == ["known"])
-        // `fetch(id:)` returns nil for the unrecognised row even though
-        // it's physically present in the table.
         #expect(try await repo.fetch(id: "future") == nil)
         #expect(try await repo.fetch(id: "known")?.id == "known")
-        // `selected()` projects through the same filter (defensive — in
-        // practice an unknown-kind row with isSelected=1 would only
-        // surface if a future binary downgrade happened).
         #expect(try await repo.selected()?.id == "known")
     }
 
-    /// `insertIfEmpty` must apply the same known-kind filter as the
-    /// read paths. Otherwise a leftover `kind = "debug"` row in a
-    /// Release build makes the table look non-empty, the AFM seed
-    /// no-ops, and the provider registry ends up empty — bug
-    /// #3293413130 on PR #92.
+    /// Unknown kinds must not prevent seeding a usable provider.
     @Test func insertIfEmptyTreatsUnknownKindRowsAsAbsent() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
-        // Seed the DB with only an unknown-kind row.
         try await insertUnknownKindRow(queue: queue, id: "orphan")
 
         let seeded = try await repo.insertIfEmpty {
             self.makeRecord(id: "seeded", kind: .openAICompatible, apiKeyRef: "ks")
         }
 
-        // The seed runs because the unknown-kind row doesn't count
-        // toward emptiness from the binary's perspective.
         #expect(seeded?.id == "seeded")
         #expect(try await repo.all().map(\.id) == ["seeded"])
     }
 
-    /// `delete(id:)` must work for rows whose `kind` the binary doesn't
-    /// recognise — otherwise a leftover DEBUG `kind = "debug"` row is
-    /// permanently orphaned because `fetch(id:)` filters it out. Bug
-    /// #3293413328 on PR #92.
+    /// Filtered-out rows still need deletion and associated keychain cleanup.
     @Test func deleteWorksForRowsWithUnrecognisedKindValue() async throws {
         let (repo, queue, keychain) = try makeRepoExposingQueue()
         try await repo.storeAPIKey("sk-orphan", ref: "ko")
         try await insertUnknownKindRow(queue: queue, id: "orphan", apiKeyRef: "ko")
 
-        // Sanity: the row is physically present even though it doesn't
-        // show through the filtered read paths.
         let raw: Int? = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT 1 FROM modelConfiguration WHERE id = 'orphan'")
         }
@@ -412,7 +359,6 @@ struct ModelConfigurationRepositoryTests {
 
         try await repo.delete(id: "orphan")
 
-        // Both the row and its keychain entry are gone.
         let rawAfter: Int? = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT 1 FROM modelConfiguration WHERE id = 'orphan'")
         }
@@ -420,10 +366,7 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await keychain.getString(ref: "ko") == nil)
     }
 
-    /// `insertIfEmpty` must not UNIQUE-violate when a downgraded binary
-    /// finds an unknown-kind row already holding the `isSelected = 1`
-    /// slot (the schema's partial unique index covers every row
-    /// regardless of kind). Bug #3293450824 on PR #92.
+    /// The partial unique index includes unknown kinds; demote their selections before seeding.
     @Test func insertIfEmptyDemotesUnknownKindSelectedRowBeforeSeeding() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await insertUnknownKindRow(queue: queue, id: "future-selected", isSelected: true)
@@ -432,24 +375,14 @@ struct ModelConfigurationRepositoryTests {
             self.makeRecord(id: "seeded", apiKeyRef: "ks", isSelected: true)
         }
 
-        // The seed lands without UNIQUE-violating.
         #expect(seeded?.id == "seeded")
         #expect(try await repo.all().map(\.id) == ["seeded"])
-        // The previously-selected unknown row is demoted so the new
-        // seed can hold the selection slot.
         #expect(try await rawIsSelected(queue: queue, id: "future-selected") == false)
         #expect(try await rawIsSelected(queue: queue, id: "seeded") == true)
-        // `selected()` reports the seed as the active model.
         #expect(try await repo.selected()?.id == "seeded")
     }
 
-    /// A native-search kind decodes fine (it's in `allCases`) but has no
-    /// shipped adapter, so `selected()` filters it out via
-    /// `buildableKindRequest`. `insertIfEmpty`'s empty-check must use the
-    /// *same* filter — otherwise a DB carrying only a native-kind row looks
-    /// non-empty, the AFM seed no-ops, and the registry ends up empty with no
-    /// recoverable model. Regression for the seed/`selected()` filter
-    /// mismatch on PR #138.
+    /// Seed and selected() must agree on buildability or the registry can stay empty.
     @Test func insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists() async throws {
         let (repo, _, _) = try makeRepoExposingQueue()
         try await repo.save(
@@ -460,20 +393,11 @@ struct ModelConfigurationRepositoryTests {
             self.makeRecord(id: "seeded", kind: .openAICompatible, apiKeyRef: "ks", isSelected: true)
         }
 
-        // The native row doesn't count toward emptiness (it isn't buildable),
-        // so the seed runs and becomes the recoverable active model.
         #expect(seeded?.id == "seeded")
         #expect(try await repo.selected()?.id == "seeded")
-        // Both rows physically coexist — the native row stays visible/editable.
         #expect(try await repo.all().map(\.id).sorted() == ["native", "seeded"])
     }
 
-    /// When a selected native-kind row holds the partial-unique slot,
-    /// `insertIfEmpty` must demote it before inserting a selected seed —
-    /// `demoteUnselectableSelections` now covers native kinds (not just
-    /// truly-unknown ones), so the seed lands without a UNIQUE violation and
-    /// `selected()` reports the buildable seed instead of nil. Regression for
-    /// the blocking seed/`selected()` mismatch on PR #138.
     @Test func insertIfEmptyDemotesSelectedNativeRowBeforeSeeding() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(
@@ -484,20 +408,13 @@ struct ModelConfigurationRepositoryTests {
             self.makeRecord(id: "seeded", apiKeyRef: "ks", isSelected: true)
         }
 
-        // The seed lands without UNIQUE-violating against the selected native row.
         #expect(seeded?.id == "seeded")
-        // The native row is demoted; the seed holds the selection slot.
         #expect(try await rawIsSelected(queue: queue, id: "native-selected") == false)
         #expect(try await rawIsSelected(queue: queue, id: "seeded") == true)
-        // `selected()` reports the buildable seed — not nil.
         #expect(try await repo.selected()?.id == "seeded")
     }
 
     #if DEBUG
-    /// `insertDebugIfMissing` must use the filtered selection check so
-    /// the debug row claims the selection slot when no recognised row
-    /// is selected — even when an unknown-kind row holds the partial
-    /// unique slot. Bug #3293450647 on PR #92.
     @Test func insertDebugIfMissingTakesSelectionWhenOnlyUnknownKindRowIsSelected() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await insertUnknownKindRow(queue: queue, id: "future-selected", isSelected: true)
@@ -513,17 +430,11 @@ struct ModelConfigurationRepositoryTests {
         }
 
         #expect(inserted?.id == "debug-canned")
-        // The unknown-kind row is demoted; the debug row holds selection.
         #expect(try await rawIsSelected(queue: queue, id: "future-selected") == false)
         #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == true)
-        // `selected()` now reports the debug row.
         #expect(try await repo.selected()?.id == "debug-canned")
     }
 
-    /// Sibling of the unknown-kind case: a selected *native* kind row is
-    /// also unbuildable, so `insertDebugIfMissing`'s `hasBuildableSelected`
-    /// check must report no active selection and let the debug row claim it.
-    /// Regression for the seed/`selected()` filter mismatch on PR #138.
     @Test func insertDebugIfMissingTakesSelectionWhenOnlyNativeKindRowIsSelected() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(
@@ -541,7 +452,6 @@ struct ModelConfigurationRepositoryTests {
         }
 
         #expect(inserted?.id == "debug-canned")
-        // The native row is demoted; the debug row holds selection.
         #expect(try await rawIsSelected(queue: queue, id: "native-selected") == false)
         #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == true)
         #expect(try await repo.selected()?.id == "debug-canned")
@@ -562,15 +472,11 @@ struct ModelConfigurationRepositoryTests {
         }
 
         #expect(inserted?.id == "debug-canned")
-        // AFM keeps the slot; debug is inserted unselected.
         #expect(try await rawIsSelected(queue: queue, id: "afm") == true)
         #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == false)
         #expect(try await repo.selected()?.id == "afm")
     }
 
-    /// A `selectable: false` debug row (the annotate/note providers) is never
-    /// auto-selected, even on a fresh empty table where it *could* claim the
-    /// slot. It's an alternative in the picker, not the default.
     @Test func insertDebugRowIfMissingNeverSelectsWhenNotSelectable() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
 
@@ -585,8 +491,6 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await repo.selected() == nil)
     }
 
-    /// Existence is keyed on row `id`, so each debug row seeds independently
-    /// and a second call for the same id is a no-op (idempotent re-launch).
     @Test func insertDebugRowIfMissingIsIdempotentPerID() async throws {
         let (repo, _, _) = try makeRepoExposingQueue()
         let make: @Sendable (Bool) -> ModelConfigurationRecord = { shouldSelect in
@@ -604,18 +508,12 @@ struct ModelConfigurationRepositoryTests {
 
     @Test func deleteOnUnknownIDDoesNotDeleteAnythingOrThrow() async throws {
         let (repo, _) = try makeRepo()
-        // No rows in the DB; delete is a no-op (matches the prior
-        // `delete(id: "ghost")` test that already covers the no-keychain
-        // branch — this complements it by exercising the new raw-probe
-        // path on an absent row).
         try await repo.delete(id: "ghost")
         #expect(try await repo.all().isEmpty)
     }
 
     @Test func deletingAppleFoundationRowDoesNotTouchKeychain() async throws {
         let (repo, keychain) = try makeRepo()
-        // A pre-existing unrelated key — it must survive the delete since
-        // the AFM row references no keychain entry.
         try await keychain.setString("unrelated-secret", ref: "ka")
         try await repo.save(makeRecord(
             id: "afm",

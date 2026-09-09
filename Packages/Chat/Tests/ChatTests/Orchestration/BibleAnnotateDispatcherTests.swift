@@ -4,24 +4,10 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `BibleAnnotateDispatcher` — the Chat-side observer that
-/// runs one-off `bible.annotate` turns in response to a Bible UI tap.
-///
-/// Each test scripts a `FakeLLMProvider` to emit a `bible.annotate`
-/// tool call (or not, for failure-path coverage), registers a
-/// `FakeToolExecutor` under `"bible.annotate"` to stand in for the
-/// real `AnnotateBibleTool` (Chat tests can't import the Bible
-/// package), publishes a `bibleAnnotateRequested` envelope on a real
-/// `SuperEventBus`, and asserts on the completion envelope plus the
-/// chat DB's post-dispatch state.
 @Suite("BibleAnnotateDispatcher")
 @MainActor
 struct BibleAnnotateDispatcherTests {
 
-    /// Wires the fixture once per test. Producing the dispatcher takes
-    /// many pieces (chat DB + every repository + provider registry +
-    /// tool registry + compactor + model config), so doing it inline
-    /// in each `@Test` would drown the assertions.
     private struct Setup {
         let database: ChatDatabase
         let conversationRepo: GRDBConversationRepository
@@ -61,12 +47,8 @@ struct BibleAnnotateDispatcherTests {
         }
 
         if seedSelectedModel {
-            // Seed a selected model row. By default its `modelId` matches
-            // the fake provider's model; `selectedModelId` overrides it to
-            // simulate a selection that's desynced from the active provider
-            // (e.g. Apple Intelligence picked on a device where AFM didn't
-            // register). The dispatcher resolves its model from the active
-            // provider, so the desynced row must be ignored, not fatal.
+            // A persisted selection can outlive provider availability. The dispatcher
+            // must resolve against the active provider even when this row disagrees.
             try await modelConfigRepo.save(
                 ModelConfigurationRecord(
                     id: "cfg-1",
@@ -153,11 +135,7 @@ struct BibleAnnotateDispatcherTests {
         )
     }
 
-    /// Drain `stream` until the matching `bibleAnnotateCompleted`
-    /// envelope arrives. The caller is responsible for subscribing
-    /// (`await bus.events()`) before publishing the request — that
-    /// ensures the dispatcher's later completion event is delivered
-    /// on this iterator instead of being missed.
+    /// Subscribe before publishing the request so its completion cannot be missed.
     private func drainUntilCompletion(
         requestId: String,
         stream: AsyncStream<SuperEvent>
@@ -173,8 +151,6 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("a scripted tool call succeeds and the transient conversation is hard-deleted")
     func happyPathSucceedsAndCleansUp() async throws {
-        // Script: turn 1 — the model issues a tool call to bible.annotate;
-        // turn 2 — the model emits a short final text and ends.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
@@ -189,31 +165,21 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference()
-        // Subscribe to the bus *before* publishing the request so the
-        // completion the dispatcher fires after its turn is guaranteed
-        // to land in the iterator below.
         let stream = await setup.bus.events()
         await setup.bus.publish(.bibleAnnotateRequested(reference: request))
         let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
         #expect(result == .success(annotationCount: 2))
 
-        // Tool was invoked exactly once with the dispatcher's prompt.
         #expect(await setup.toolExecutor.executionCount() == 1)
 
-        // Transient conversation row is gone after the dispatch.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
 
     @Test("a tool call that returns zero artifacts is reported as success, not failure")
     func zeroArtifactsIsStillSuccess() async throws {
-        // Regression for the doc-code contract on `BibleAnnotateResult`:
-        // `.success(annotationCount: 0)` is a valid outcome when the
-        // tool was called but produced no new rows (e.g., the
-        // `replace` cleared an already-present set without inserting).
-        // Distinct from "the model never called the tool" — that's
-        // still a failure.
+        // A called tool with zero new artifacts is successful; an uncalled tool is not.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
@@ -226,9 +192,6 @@ struct BibleAnnotateDispatcherTests {
                 .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
             ],
         ])
-        // Override the default 2-artifact result with a no-artifact
-        // success (mimics the "all rows already exist" cleared-replace
-        // case the tool's `content` line uses).
         await setup.toolExecutor.setResult(ToolResult(
             toolID: "bible.annotate",
             content: "Cleared annotations for the target.",
@@ -246,13 +209,8 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("a successful tool call followed by a trailing stream error is still success")
     func successfulToolCallSurvivesTrailingError() async throws {
-        // Regression for the spurious "Couldn't regenerate annotations."
-        // toast: a real model can call bible.annotate cleanly (rows are
-        // written — the user sees the cards), then emit a trailing `.error`
-        // on the *next* turn. The annotations exist, so the turn must be
-        // reported `.success`, not `.failure` — otherwise the Bible sheet
-        // shows the new cards *and* an error toast, and the bulk ledger
-        // records a succeeded unit as failed.
+        // Once annotations are written, a trailing response error must not turn the
+        // completed work into a failed bulk unit or a misleading error toast.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
@@ -272,8 +230,6 @@ struct BibleAnnotateDispatcherTests {
         let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
         #expect(result == .success(annotationCount: 2))
-        // The tool ran (rows were written), which is what makes the
-        // trailing error irrelevant.
         #expect(await setup.toolExecutor.executionCount() == 1)
     }
 
@@ -298,7 +254,6 @@ struct BibleAnnotateDispatcherTests {
         }
         #expect(message.contains("didn't call bible.annotate"))
 
-        // Even on failure the transient conversation is cleaned up.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
@@ -328,9 +283,6 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("with no provider registered the dispatcher fails fast before opening a conversation")
     func noActiveProviderFailsFast() async throws {
-        // No provider registered → `llmProviderRegistry.active()` is nil,
-        // so the dispatcher hits `resolveActiveModel` before opening the
-        // conversation and bails on `.noActiveProvider`.
         let setup = try await makeSetup(
             scripts: [],
             registerProvider: false,
@@ -348,22 +300,16 @@ struct BibleAnnotateDispatcherTests {
         }
         #expect(message.contains("No LLM provider is configured"))
 
-        // Guards the ordering invariant: `resolveActiveModel` must throw
-        // *before* `dispatch` saves the conversation. The deterministic
-        // generator names the first (unconsumed) id "id-1", so a regression
-        // that saved the row before resolving — and skipped cleanup on the
-        // throw path — would leave "id-1" behind and fail this assertion.
+        // Resolving the provider must precede saving a conversation. id-1 would
+        // remain here if an early failure bypassed cleanup after saving.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
 
     // MARK: - Failure classification
 
-    // The bus path flattens to `BibleAnnotateResult` (asserted in the tests
-    // above, proving zero behavior change); these call `generate(reference:)`
-    // directly to assert the richer `BibleAnnotateOutcome` classification the
-    // bulk runner's circuit breaker reads. `generate` runs the same dispatch
-    // the bus handler does.
+    // The bus result flattens failures; generate(reference:) exposes the richer
+    // classification consumed by the bulk circuit breaker.
 
     private func classification(of outcome: BibleAnnotateOutcome) -> BibleAnnotateFailure? {
         guard case .failure(_, let classification) = outcome else { return nil }
@@ -430,15 +376,13 @@ struct BibleAnnotateDispatcherTests {
                 .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
-            // The session feeds the tool error back for a second turn.
             [
                 .messageStart(id: "m2", model: "fake-model-1"),
                 .textDelta(index: 0, text: "Sorry."),
                 .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
             ],
         ])
-        // The tool itself reports a failure (e.g. a bad-arguments reject) —
-        // transient from the run's perspective, so the unit can be retried.
+        // Tool failures are retryable from the bulk runner perspective.
         await setup.toolExecutor.setResult(ToolResult(
             toolID: "bible.annotate",
             content: "target arguments were invalid",
@@ -476,12 +420,8 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("a selection desynced from the active provider resolves the active provider's model, not a failure")
     func desyncedSelectionUsesActiveProviderModel() async throws {
-        // Regression: the selected config row points at Apple Intelligence
-        // ("system-default") but AFM never registered, so the active
-        // provider is a different one. The dispatcher must run the turn
-        // against the active provider's model — the same model normal chat
-        // sessions use — instead of hard-failing because the persisted
-        // selection isn't in the active provider's `supportedModels`.
+        // An unavailable selected provider can leave a stale model ID. Use the
+        // active provider model, as normal chat sessions do.
         let setup = try await makeSetup(
             scripts: [
                 [
@@ -506,27 +446,15 @@ struct BibleAnnotateDispatcherTests {
         #expect(result == .success(annotationCount: 2))
         #expect(await setup.toolExecutor.executionCount() == 1)
 
-        // The turn ran against the *active provider's* model
-        // ("fake-model-1"), not the desynced selected row's
-        // "system-default" — this is the assertion that makes the test a
-        // real regression guard rather than a happy-path duplicate. Every
-        // captured request carries the active provider's model id.
         let capturedModels = await setup.provider.capturedRequests().map(\.modelID)
         #expect(!capturedModels.isEmpty)
         #expect(capturedModels.allSatisfy { $0 == "fake-model-1" })
 
-        // Transient conversation is hard-deleted like every other dispatch.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
 
     // MARK: - Per-scope section guidance
-
-    // `prompt(for:)` is a pure static function, so these exercise it
-    // directly — no bus, session, or model needed. They're the
-    // regression guard for the per-scope steer: each scope names the
-    // `###` sections the one markdown summary should carry, per
-    // `ANNOTATIONS.md` §1.
 
     @Test("a book request's prompt names the book-level sections to cover")
     func bookPromptNamesBookSections() {
@@ -552,8 +480,7 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("a verse-range request's prompt names the verse-level sections to cover")
     func versePromptNamesVerseSections() {
-        // Note the kind is "verseRange", not "verse" — the Bible UI
-        // stamps the former, while the tool's `target` is "verse".
+        // Bible references use verseRange; the tool target uses verse.
         let prompt = BibleAnnotateDispatcher.prompt(
             for: reference(kind: "verseRange", sourceID: "verse:ROM:8:28:30")
         )
@@ -570,7 +497,6 @@ struct BibleAnnotateDispatcherTests {
         )
         #expect(prompt.contains("Exact text of the target"))
         #expect(prompt.contains("28. And we know that all things work together for good"))
-        // The instruction to call the tool still comes after the grounding text.
         #expect(prompt.contains("Call `bible.annotate` once"))
     }
 
@@ -585,24 +511,16 @@ struct BibleAnnotateDispatcherTests {
         let prompt = BibleAnnotateDispatcher.prompt(
             for: reference(kind: "mystery", sourceID: "mystery:ROM")
         )
-        // No per-scope steer leaked in...
         #expect(!prompt.contains("structure the summary around"))
         #expect(BibleAnnotateDispatcher.sectionGuidance(forKind: "mystery") == nil)
-        // ...the target-identification block still names the target so the
-        // model can still produce valid arguments (guards against the
-        // first paragraph being dropped on the fallback path)...
         #expect(prompt.contains("Target kind: mystery"))
         #expect(prompt.contains("Reference id: mystery:ROM"))
         #expect(prompt.contains("Romans 8:28-30 (WEB)"))
-        // ...and the structural instruction to call the tool once stands.
         #expect(prompt.contains("Call `bible.annotate` once"))
     }
 
     @Test("the dispatcher briefing keeps its load-bearing one-tool mandate")
     func briefingKeepsToolMandate() {
-        // The briefing is steering the model, not just documentation:
-        // guard the invariants a future edit could silently blank — the
-        // single `bible.annotate` call and the no-other-tool constraint.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing
         #expect(briefing.contains("`bible.annotate`"))
         #expect(briefing.contains("exactly once"))
@@ -611,10 +529,6 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("the dispatcher briefing teaches the single-summary contract")
     func briefingCarriesSingleSummaryContract() {
-        // The briefing must steer the model to the one `summary` field and
-        // its long-form markdown shape — a revert to the old multi-entry
-        // category wording would silently break generation (the tool would
-        // reject the arguments) with no other test catching it.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing
         #expect(briefing.contains("ONE markdown study summary in `summary`"))
         #expect(briefing.contains("150–400 words"))
@@ -624,9 +538,7 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("the dispatcher briefing pins the full-book-name citation format")
     func briefingPinsCitationFormat() {
-        // Citations must use the full book name in `Book Chapter:Verse`
-        // form — that exact format is what the shared renderer linkifies
-        // into tappable `super://bible/...` references.
+        // The shared renderer linkifies this exact citation format.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing
         #expect(briefing.contains("full book name"))
         #expect(briefing.contains("Book Chapter:Verse"))
@@ -634,19 +546,13 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("the dispatcher briefing forbids repeating the verse text verbatim")
     func briefingForbidsVerbatimVerseText() {
-        // The reader displays the target's verse text above the summary, so
-        // the briefing must stop the model from duplicating it inside it.
+        // The reader already displays the target verse above the summary.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing
         #expect(briefing.contains("Do NOT repeat the target's verse text verbatim"))
     }
 
     @Test("the dispatcher briefing restricts cross-references to genuine intertextual links")
     func briefingRestrictsCrossReferences() {
-        // A cross-reference mention must be a real intertextual link — a
-        // passage the target quotes/alludes to/cites — never a merely
-        // thematically similar verse. Guards against the prior "genuinely
-        // illuminating" wording that produced junk "see this similar verse"
-        // references.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing.lowercased()
         #expect(briefing.contains("alludes to"))
         #expect(briefing.contains("thematically"))
@@ -655,9 +561,6 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("verse-range section guidance makes the cross-references section conditional")
     func verseRangeCrossReferenceGuidanceIsConditional() {
-        // Cross-references are not a section we always cover for a verse
-        // range — the section appears only on a genuine quotation/allusion
-        // and is omitted entirely when there are none.
         let guidance = BibleAnnotateDispatcher.sectionGuidance(forKind: "verseRange")?.lowercased()
         #expect(guidance?.contains("genuine cross-references") == true)
         #expect(guidance?.contains("omit the section entirely") == true)
@@ -667,11 +570,6 @@ struct BibleAnnotateDispatcherTests {
 
     @Test("a chapterVerses dispatch counts every bible.annotate call in the turn")
     func chapterVersesAccumulatesMultipleToolCalls() async throws {
-        // The bulk notable-verses mode asks the model to call bible.annotate
-        // once per notable verse range. Two tool-call turns (each writing the
-        // default 2 artifacts) must accumulate into the success count — the
-        // mechanism that lets a `chapterVerses` unit's producedCount reflect
-        // however many verses the model annotated.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
@@ -689,7 +587,6 @@ struct BibleAnnotateDispatcherTests {
                 .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
             ],
         ])
-        // One artifact per call so the accumulation is unambiguous: 2 calls → 2.
         await setup.toolExecutor.setResult(ToolResult(
             toolID: "bible.annotate",
             content: "Wrote an annotation for the target.",
@@ -721,7 +618,6 @@ struct BibleAnnotateDispatcherTests {
         #expect(briefing.contains("once for EACH"))
         #expect(briefing.contains("\"verse\""))
         #expect(briefing.contains("at least one call"))
-        // It must NOT inherit the single-shot "exactly once" mandate.
         #expect(!briefing.contains("exactly once"))
     }
 
@@ -730,7 +626,6 @@ struct BibleAnnotateDispatcherTests {
         let prompt = BibleAnnotateDispatcher.prompt(for: chapterVersesReference())
         #expect(prompt.contains("once for each"))
         #expect(prompt.contains("most notable verse ranges"))
-        // The single-shot "Call ... once" closing line must not be used here.
         #expect(!prompt.contains("Call `bible.annotate` once"))
     }
 

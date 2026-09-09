@@ -1,14 +1,9 @@
 import SwiftUI
 
-/// Small 26pt icon-only button used by ``AssistantMessage`` for the
-/// Copy / Regenerate row beneath each assistant reply.
 struct MessageActionButton: View {
     let systemName: String
     let label: String
     let action: () -> Void
-    /// When `true`, the button still renders so the action row's layout
-    /// stays stable, but taps are ignored and the glyph dims to half
-    /// opacity. Regenerate uses this during in-flight streaming.
     var disabled: Bool = false
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

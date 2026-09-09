@@ -7,24 +7,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of the morphing `ChatOverlay`. Replaces the
-/// prior `ChatOverlayContainerSnapshotTests`, which captured three
-/// discrete view hierarchies. The morphing overlay is one continuous
-/// surface, so we sample it at:
-///
-/// - the three settled anchors (`.expanded` / `.semiExpanded` /
-///   `.minimized`), driven by `state:` only,
-/// - one mid-drag intermediate height between minimized and
-///   semi-expanded so the composer morph (label → editor, footer fade)
-///   is on a baseline.
-///
-/// All four sample points × three themes for the settled anchors;
-/// light only for the mid-drag baseline (the morph timing matters far
-/// more than per-theme color matching at the intermediate point).
-// `.serialized` — snapshot baselines are read/written per-test against
-// the same on-disk `__Snapshots__/ChatOverlaySnapshotTests/` directory.
-// Parallel execution races on the PNG files (TOCTOU), not on any async
-// behavior in the code under test — serialization is the right tool.
 @Suite("ChatOverlay snapshots", .serialized)
 @MainActor
 struct ChatOverlaySnapshotTests {
@@ -79,12 +61,7 @@ struct ChatOverlaySnapshotTests {
 
     // MARK: - Mid-drag morph
 
-    /// Pins the chat surface at ≈ 22% of the way from minimized to
-    /// expanded — well into the composer's cross-fade band so the pill
-    /// label has faded out (≈ progress 0.2) but the footer has only
-    /// just begun to appear (≈ progress 0.15 → 0.45 fade-in). This
-    /// baseline catches regressions in the smoothstep timings that the
-    /// settled-anchor snapshots can't see.
+    /// Sample the composer cross-fade that settled anchors cannot expose.
     @Test("mid-drag intermediate height — light")
     func midDragLight() {
         let viewModel = makeViewModel(initialMessages: populatedMessages)
@@ -93,9 +70,6 @@ struct ChatOverlaySnapshotTests {
             usedTokens: 1_200
         )
 
-        // Minimized base height (60pt) + 0.22 × (full-height 874 − 60)
-        // ≈ 239pt. Inside the composer's morph band; transcript is
-        // visible at low opacity.
         let view = ChatOverlay(
             state: .constant(.minimized),
             viewModel: viewModel,
@@ -115,18 +89,9 @@ struct ChatOverlaySnapshotTests {
         }
     }
 
-    // MARK: - Semi-expanded with the keyboard up (handle stays in place)
+    // MARK: - Keyboard-up semi-expanded
 
-    /// Pins the outer keyboard-aware region to 538pt (≈ 874pt viewport
-    /// minus a 336pt iPhone keyboard) so the semi-expanded surface
-    /// renders as it would with the user typing. The chat surface's
-    /// outer frame uses `keyboardAwareHeight` so the surface shrinks
-    /// to that 538pt region; the composer is parked in
-    /// `safeAreaInset(edge: .bottom)` of the content and rides the
-    /// bottom edge of the shrunken surface — flush above where the
-    /// keyboard would be. Baseline catches regressions in the
-    /// surface's keyboard-up shape (header position, transcript
-    /// clipping, composer hoist).
+    /// Constrain the outer region to model keyboard space and check header/composer positions.
     @Test("semi-expanded with the keyboard up — light")
     func semiExpandedKeyboardLight() {
         verifyKeyboardSemi(theme: .vellumLight, name: "overlay_semi_expanded_keyboard_light")
@@ -196,10 +161,7 @@ struct ChatOverlaySnapshotTests {
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
 
-        // Slight precision tolerance — the chat overlay's translucent
-        // surface and blurred backdrop produce sub-pixel anti-aliasing
-        // around the rounded corners that's runtime-stable but not
-        // pixel-identical across recording sessions.
+        // Translucent rounded edges need tolerance for cross-runner antialiasing drift.
         let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
@@ -229,12 +191,6 @@ struct ChatOverlaySnapshotTests {
 }
 
 // MARK: - Local snapshot helpers
-//
-// Mirrors the `NoopDriver` + `Snapshot*Repository` private helpers in
-// `ChatScreenSnapshotTests.swift`. Inlined here because those types are
-// file-private and the project doesn't yet have a shared snapshot-test
-// helper module. Promotable to a single shared helper file if more
-// suites need them.
 
 private struct OverlayNoopDriver: ChatSessionDriver {
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {

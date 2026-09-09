@@ -1,25 +1,9 @@
 import Core
 import Foundation
 
-/// Built-in `ToolExecutor` that lets the LLM (Large Language Model) save,
-/// update, and forget user preferences across conversations.
-///
-/// One tool with an `op` enum parameter rather than three sibling tools —
-/// keeps the Settings tools pane to a single toggle and prevents the LLM
-/// from enabling "save" without "forget" (which would let memory grow
-/// without a recall path).
-///
-/// What gets *saved* is governed by the descriptor's `description` field
-/// (read by the LLM when picking tools); what gets *recalled* lives in
-/// `ContextAssembler`, which prepends saved memories to the system prompt
-/// when this tool is enabled.
-///
-/// Clock and ID generator are injected so tests can assert deterministic
-/// `MemoryEntry` ids and timestamps.
+/// Bundle memory operations under one toggle so saving cannot be enabled without forgetting.
+/// ContextAssembler recalls saved memories only while this tool is enabled.
 public struct MemoryTool: ToolExecutor {
-    /// Stable identifier used by both the LLM advertisement and registry
-    /// dispatch. No dot-namespace because there's only one verb-bundle
-    /// here — the `op` parameter is the namespacing.
     public static let toolID = "memory"
     public static let appletID = "chat"
 
@@ -39,17 +23,12 @@ public struct MemoryTool: ToolExecutor {
         self.idGenerator = idGenerator
     }
 
-    /// Operations the LLM may perform on the memory store.
     public enum Op: String, Sendable, Equatable, CaseIterable {
         case save
         case update
         case forget
     }
 
-    /// Tool descriptor advertised to the LLM. The `description` is what
-    /// trains the model on *when* to call this — keep it specific enough
-    /// to discourage saving one-off context but permissive enough to
-    /// capture real preferences.
     public static let descriptor: LLMTool = LLMTool(
         id: MemoryTool.toolID,
         name: "memory",
@@ -108,13 +87,7 @@ public struct MemoryTool: ToolExecutor {
         """
     )
 
-    /// Convenience that builds a `ToolRegistration` for a ready-to-use
-    /// instance. Composition root calls this and hands the result to
-    /// `ToolRegistry.register(_:)`.
-    ///
-    /// Default `isEnabled: false` — memory is opt-in. Surfacing every
-    /// preference the user mentions without their say-so is the kind of
-    /// behaviour that erodes trust in the first hour.
+    /// Memory is opt-in; registration defaults to disabled.
     public static func registration(
         repository: any MemoryRepository,
         clock: any Clock = SystemClock(),
@@ -147,8 +120,6 @@ public struct MemoryTool: ToolExecutor {
             return errorResult("Unknown `op` value '\(raw)'. Pass one of: \(Op.allCases.map(\.rawValue).joined(separator: ", ")).")
         }
     }
-
-    // MARK: - Operations
 
     private func runSave(text: String?) async -> ToolResult {
         guard let text else {
@@ -211,10 +182,7 @@ public struct MemoryTool: ToolExecutor {
             return errorResult("`op:'forget'` requires an `id` parameter.")
         }
         do {
-            // Single transaction — without this the artifact's `text`
-            // could race a concurrent Settings-pane update between the
-            // read and the delete, and the expanded pill would show
-            // stale content for what we just forgot.
+            // Read and delete atomically so the artifact describes the entry actually removed.
             let priorText = (try await repository.fetchAndDelete(id: id))?.text
             return ToolResult(
                 toolID: MemoryTool.toolID,
@@ -232,8 +200,6 @@ public struct MemoryTool: ToolExecutor {
             return errorResult("Could not forget memory: \(error.localizedDescription)")
         }
     }
-
-    // MARK: - Helpers
 
     private enum ParsedOp {
         case ok(Op)
@@ -254,10 +220,7 @@ public struct MemoryTool: ToolExecutor {
     private func stringValue(_ value: JSONValue?) -> String? {
         guard case .string(let raw) = value else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Return the trimmed form, not `raw`: `SettingsViewModel.updateMemory`
-        // trims before writing, so without trimming here the two write
-        // paths would leave different byte sequences for logically
-        // equivalent memory text.
+        // Match SettingsViewModel.updateMemory's normalization.
         return trimmed.isEmpty ? nil : trimmed
     }
 

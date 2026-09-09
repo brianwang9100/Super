@@ -2,18 +2,9 @@ import Core
 import Foundation
 import GRDB
 
-/// User-configured LLM (Large Language Model) endpoint + model triple.
-///
-/// `apiKeyRef` is a Keychain reference (typically a UUID), never the raw
-/// key — see `ModelConfigurationRepository` for the Keychain wiring. The
-/// "at most one selected row" invariant is enforced by a partial unique
-/// index on `(isSelected) WHERE isSelected = 1`, so any second selected
-/// row throws a UNIQUE constraint violation at insert time.
-///
-/// `baseURL` and `apiKeyRef` are nullable because on-device kinds like
-/// `.appleFoundation` have neither. For `.openAICompatible` rows `baseURL`
-/// is required by the OpenAI-compatible provider; `apiKeyRef` may be nil
-/// for local servers that don't require auth.
+/// apiKeyRef names a Keychain entry, never plaintext. On-device kinds need no URL
+/// or key; network providers require a URL but may allow unauthenticated local servers.
+/// A partial unique index permits at most one selected row.
 public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "modelConfiguration"
 
@@ -27,20 +18,10 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
     public var maxContextTokens: Int
     public var isSelected: Bool
     public var createdAt: Date
-    /// Selected web-search engine: `"native"` (provider's own server-side
-    /// search, paired with a native `kind`), `"debug"` (the DEBUG client-side
-    /// mock backend — canned results via `DebugWebSearchFulfiller`, works on
-    /// any model), a standalone search-provider id, or `nil` for no web
-    /// search. Nullable column added by the `v6_searchBackend` migration; old
-    /// rows decode as `nil`.
-    ///
-    /// The `"native"` ⇒ native-`kind` pairing is an **add-time invariant**
-    /// established by the Add-Model web-search picker, which resolves
-    /// `kind`/`baseURL` from the catalog's
-    /// `nativeSearchAdapter`/`nativeSearchBaseURL`; it is not enforced by this
-    /// type. `"debug"` leaves the `kind` as `.openAICompatible` (or `.debug`
-    /// for the seeded mock row) — the mock backend rides any provider.
+    /// Provider identity is explicit; compatible protocol kinds do not imply a company.
     public var providerId: String?
+    /// native selects server search; debug selects mock search; other IDs name standalone backends.
+    /// The picker establishes native kind/URL pairing; this record does not enforce it.
     public var searchBackend: String?
 
     public init(
@@ -71,10 +52,6 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
         self.providerId = providerId
     }
 
-    /// Project this row to the Core `ModelConfiguration` value used by
-    /// `LLMProvider` consumers. Core's field is `modelID` (uppercase) —
-    /// Chat uses `modelId` to stay consistent with the package's other
-    /// foreign-key columns.
     public var configuration: ModelConfiguration {
         ModelConfiguration(
             id: id,
