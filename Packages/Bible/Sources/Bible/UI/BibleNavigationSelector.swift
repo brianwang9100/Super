@@ -54,9 +54,9 @@ struct BibleNavigationSelector: View {
 
     private var historyButtons: some View {
         HStack(spacing: 0) {
-            historyButton(image: "arrow.uturn.backward", offset: 2, label: "Go back",
+            historyButton(image: "chevron.left", offset: 2, label: "Go back",
                           destination: backLabel, action: onBack)
-            historyButton(image: "arrow.uturn.forward", offset: -2, label: "Go forward",
+            historyButton(image: "chevron.right", offset: -2, label: "Go forward",
                           destination: forwardLabel, action: onForward)
         }
     }
@@ -91,7 +91,7 @@ struct BibleNavigationSelector: View {
             .accessibilityHidden(true)
     }
 
-    /// Keep compact spacing at standard sizes and let larger history glyphs expand their tap regions.
+    /// The opposing image offsets keep adjacent glyph centers 28 points apart.
     private func historyButton(
         image: String, offset: CGFloat, label: String,
         destination: String?, action: @escaping () -> Void
@@ -100,11 +100,8 @@ struct BibleNavigationSelector: View {
             Image(systemName: image)
                 .font(typography.font(size: glyphSize, weight: .medium))
                 .foregroundStyle(theme.ink)
-                .fixedSize()
-                .padding(.horizontal, 6)
-                .padding(.vertical, 8)
                 .offset(x: offset)
-                .frame(minWidth: 32, minHeight: 44)
+                .frame(width: 32, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
