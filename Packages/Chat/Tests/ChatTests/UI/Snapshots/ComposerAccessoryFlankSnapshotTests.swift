@@ -14,6 +14,7 @@ struct ComposerAccessoryFlankSnapshotTests {
     private func chevrons(
         leadingEnabled: Bool = true,
         trailingEnabled: Bool = true,
+        center: ComposerAccessoryButton? = nil,
         selection: ComposerAccessorySelection? = nil,
         hideButtons: Bool = false
     ) -> ComposerAccessoryButtons {
@@ -30,6 +31,7 @@ struct ComposerAccessoryFlankSnapshotTests {
                 isEnabled: trailingEnabled,
                 action: {}
             ),
+            center: center,
             selection: selection,
             shouldHideButtons: { hideButtons }
         )
@@ -61,6 +63,33 @@ struct ComposerAccessoryFlankSnapshotTests {
     @Test("both chevrons enabled — light")
     func bothEnabledLight() {
         recordOrCompare(view: host(chevrons(), theme: .vellumLight), name: "flank_both_enabled_light")
+    }
+
+    @Test("sound controls center alone and fit beside selection, including hidden arrows and large text")
+    func soundControlGallery() {
+        let sound = ComposerAccessoryButton(
+            systemImage: "speaker.wave.2.fill", accessibilityLabel: "Open narration controls",
+            isEnabled: true, action: {}
+        )
+        let selected = ComposerAccessorySelection(
+            title: "1 Peter 2:4-6, 9", accessibilityLabel: "Show verse actions",
+            onExpand: {}, onClear: {}
+        )
+        let long = ComposerAccessorySelection(
+            title: "2 Thessalonians 3:1-3, 5, 7, 9-12, 15, 17", accessibilityLabel: "Show verse actions",
+            onExpand: {}, onClear: {}
+        )
+        let view = VStack(spacing: 0) {
+            host(chevrons(center: sound), theme: .vellumLight)
+            host(chevrons(center: sound, selection: selected), theme: .vellumLight)
+            host(chevrons(center: sound, selection: selected, hideButtons: true), theme: .vellumDark)
+            host(chevrons(center: sound, selection: long), theme: .vellumLight, fontScale: 1.5)
+        }
+        let failure = verifyVisualSnapshot(
+            of: view, as: .image(layout: .fixed(width: 402, height: 240)),
+            named: "sound_controls", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
     }
 
     @Test("both chevrons enabled — dark")

@@ -24,19 +24,22 @@ public struct ComposerAccessoryButton {
 public struct ComposerAccessoryButtons {
     public let leading: ComposerAccessoryButton?
     public let trailing: ComposerAccessoryButton?
+    public let center: ComposerAccessoryButton?
     public let selection: ComposerAccessorySelection?
-    /// Hides only edge buttons; selection stays visible. Nil never hides them.
+    /// Hides only edge buttons; center and selection stay visible. Nil never hides them.
     /// Evaluated in the rendering body so reads of observable applet state remain reactive.
     public let shouldHideButtons: (() -> Bool)?
 
     public init(
         leading: ComposerAccessoryButton? = nil,
         trailing: ComposerAccessoryButton? = nil,
+        center: ComposerAccessoryButton? = nil,
         selection: ComposerAccessorySelection? = nil,
         shouldHideButtons: (() -> Bool)? = nil
     ) {
         self.leading = leading
         self.trailing = trailing
+        self.center = center
         self.selection = selection
         self.shouldHideButtons = shouldHideButtons
     }
@@ -44,7 +47,7 @@ public struct ComposerAccessoryButtons {
     // Computed because action closures make the descriptor non-Sendable global state.
     public static var none: ComposerAccessoryButtons { ComposerAccessoryButtons() }
 
-    public var isEmpty: Bool { leading == nil && trailing == nil && selection == nil }
+    public var isEmpty: Bool { leading == nil && trailing == nil && center == nil && selection == nil }
 }
 
 /// Inject one shell-owned instance above both applet and composer siblings.

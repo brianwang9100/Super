@@ -952,15 +952,18 @@ struct BibleScreenViewModelTests {
     @Test("dismissing and reopening narration controls preserves the session", arguments: [
         NarrationController.State.preparing, .speaking, .paused,
     ])
-    func dismissNarrationSheetPreservesSession(state: NarrationController.State) async {
+    func dismissNarrationSheetPreservesSession(state: NarrationController.State) async throws {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
         await viewModel.load()
 
+        #expect(viewModel.narrationAccessoryButton == nil)
+
         viewModel.startNarration()
         if state != .preparing { controller._simulateEvent(.started(verseNumber: 1)) }
         if state == .paused { controller._simulateEvent(.paused) }
+        #expect(viewModel.narrationAccessoryButton == nil)
 
         viewModel.dismissNarrationSheet()
         #expect(!viewModel.isNarrationSheetPresented)
@@ -968,8 +971,11 @@ struct BibleScreenViewModelTests {
         #expect(controller.currentVerseNumber == (state == .preparing ? nil : 1))
         #expect(service.stopCallCount == 0)
 
-        viewModel.presentNarrationSheet()
+        let button = try #require(viewModel.narrationAccessoryButton)
+        #expect(button.isEnabled)
+        button.action()
         #expect(viewModel.isNarrationSheetPresented)
+        #expect(viewModel.narrationAccessoryButton == nil)
         #expect(controller.state == state)
         #expect(service.startCallCount == 1)
         #expect(service.stopCallCount == 0)
@@ -978,6 +984,8 @@ struct BibleScreenViewModelTests {
         #expect(controller.state == .idle)
         #expect(service.stopCallCount == 1)
         #expect(viewModel.isNarrationSheetPresented)
+        viewModel.dismissNarrationSheet()
+        #expect(viewModel.narrationAccessoryButton == nil)
     }
 
     // MARK: - openReference
