@@ -53,25 +53,14 @@ public struct BibleScreen: View {
         return nil
     }
 
-    /// `.sheet(item:)` binding for the book picker. `bookSheet` is `private(set)`
-    /// on the view model, so the dismiss path routes through `dismissBookSheet()`
+    /// `.sheet(item:)` binding for the book picker. `selectionSheet` is `private(set)`
+    /// on the view model, so the dismiss path routes through `dismissSelectionSheet()`
     /// rather than writing the property directly.
-    private var bookSheetBinding: Binding<BibleBookSheetViewModel?> {
+    private var selectionSheetBinding: Binding<BibleSelectionSheetViewModel?> {
         Binding(
-            get: { viewModel.bookSheet },
+            get: { viewModel.selectionSheet },
             set: { newValue in
-                if newValue == nil { viewModel.dismissBookSheet() }
-            }
-        )
-    }
-
-    /// `.sheet(isPresented:)` binding for the translation picker, routing the
-    /// dismiss path through `dismissTranslationSheet()` for the same reason.
-    private var translationSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.isTranslationSheetPresented },
-            set: { newValue in
-                if !newValue { viewModel.dismissTranslationSheet() }
+                if newValue == nil { viewModel.dismissSelectionSheet() }
             }
         )
     }
@@ -198,12 +187,9 @@ public struct BibleScreen: View {
             onOpenLink: { viewModel.navigateToDeepLink($0) },
             onAddToChat: { publishReferenceToChat($0, startNew: $1) }
         ))
-        .sheet(item: bookSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
+        .sheet(item: selectionSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
             bookPicker(sheetViewModel)
                 .onAppear { studyPresentation.didPresent(.book, identity: studyIdentity) }
-        }
-        .sheet(isPresented: translationSheetBinding) {
-            translationPicker
         }
     }
 
@@ -353,8 +339,7 @@ public struct BibleScreen: View {
             narrationCitation: viewModel.narrationCitation,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
-            onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
-            onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
+            onPill: { withAnimation(motion.animation) { viewModel.presentSelectionSheet() } },
             onSelectionPill: { withAnimation(motion.animation) { viewModel.presentActionSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
             onSparkMenuAction: handleSparkAction,
@@ -405,40 +390,12 @@ public struct BibleScreen: View {
         return "\(book.name) \(position.chapterNumber)"
     }
 
-    /// The translation picker content, presented as a native `.sheet`. Sizes to
-    /// its rows via the compact detent; no chat-pill inset since the sheet may
-    /// cover the pill.
-    private var translationPicker: some View {
-        BibleTranslationSheet(
-            current: viewModel.translation,
-            bottomInset: 0,
-            onSelect: { translation in
-                viewModel.selectTranslation(translation)
-            },
-            onClose: { viewModel.dismissTranslationSheet() }
-        )
-    }
-
-    /// The book picker content, presented as a native `.sheet`. The annotation /
-    /// note rows record a deferred hand-off and dismiss the picker; the hand-off
-    /// runs from the sheet's `onDismiss` through the shared coordinator so the next
-    /// sheet presents onto the bare reader rather than racing the picker's
-    /// dismissal.
-    private func bookPicker(_ sheetViewModel: BibleBookSheetViewModel) -> some View {
-        BibleBookSheet(
+    /// Book study actions continue only after the combined selector has finished native dismissal.
+    private func bookPicker(_ sheetViewModel: BibleSelectionSheetViewModel) -> some View {
+        BibleSelectionSheet(
             viewModel: sheetViewModel,
-            currentBookId: viewModel.position.bookId,
-            currentChapterNumber: viewModel.position.chapterNumber,
-            onSelectChapter: { bookId, chapterNumber in
-                viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
-            },
-            onSelectVerseRange: { bookId, chapterNumber, verseStart, verseEnd in
-                viewModel.openReference(
-                    bookId: bookId, chapterNumber: chapterNumber,
-                    verseStart: verseStart, verseEnd: verseEnd
-                )
-            },
-            onClose: { viewModel.dismissBookSheet() },
+            onRead: { viewModel.applySelection() },
+            onClose: { viewModel.dismissSelectionSheet() },
             onPresentBookAnnotations: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }
             },
@@ -448,13 +405,9 @@ public struct BibleScreen: View {
             onPresentBookNotes: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentNoteList(for: .book(bookId: bookId)) }
             },
-            // Books with an in-flight `.book`-target dispatch — their
-            // bubbles render generating. Reading the view model's status
-            // map here keeps the picker reactive as dispatches start and
-            // finish.
-            generatingBookIds: generatingBookIds,
-            bottomInset: 0
+            generatingBookIds: generatingBookIds
         )
+        .disabled(viewModel.isRestoringNavigation)
     }
 
     private var chapterContent: some View {

@@ -24,14 +24,8 @@ public final class BibleScreenViewModel {
     /// and which bundled resource the text loads from.
     public private(set) var translation: BibleTranslation = .defaultTranslation
 
-    /// The book picker's view model while its sheet is presented; `nil`
-    /// closes the sheet. Non-nil acts as the presentation flag.
-    public private(set) var bookSheet: BibleBookSheetViewModel?
-
-    /// Whether the translation picker is on screen. The sheet is stateless —
-    /// it renders `BibleTranslation.allCases` against `translation` — so a
-    /// flag is all the presentation state it needs.
-    public private(set) var isTranslationSheetPresented = false
+    /// The combined selector's isolated draft while its native sheet is presented.
+    public private(set) var selectionSheet: BibleSelectionSheetViewModel?
 
     /// Verse numbers the reader has tapped to select. Selection remains in
     /// the reader and nav bar after the action sheet closes.
@@ -342,28 +336,25 @@ public final class BibleScreenViewModel {
         traverseHistory(to: navigationHistory.current)
     }
 
-    /// Open the book picker. It opens with the current book expanded and
-    /// scrolled to so the highlighted chapter is on screen — passed in via
-    /// `currentPosition` so the sheet doesn't have to reach back for it.
-    public func presentBookSheet() {
+    /// Open fresh passage/translation drafts with the current book expanded and chapter in view.
+    public func presentSelectionSheet() {
         guard !isRestoringNavigation else { return }
-        bookSheet = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
+        selectionSheet = BibleSelectionSheetViewModel(position: position, translation: translation, catalog: catalog)
     }
 
-    /// Close the book picker without changing the reading position.
-    public func dismissBookSheet() {
-        bookSheet = nil
+    /// Discard the selector's drafts without changing the reader.
+    public func dismissSelectionSheet() {
+        selectionSheet = nil
     }
 
-    /// Open the translation picker.
-    public func presentTranslationSheet() {
-        guard !isRestoringNavigation else { return }
-        isTranslationSheetPresented = true
-    }
-
-    /// Close the translation picker without changing the translation.
-    public func dismissTranslationSheet() {
-        isTranslationSheetPresented = false
+    /// Apply both draft choices as one navigation/persistence update, then dismiss the selector.
+    func applySelection() {
+        guard !isRestoringNavigation, let selectionSheet else { return }
+        latestExplicitTranslation = selectionSheet.translation
+        let range = selectionSheet.verseRange
+        applyReference(position: selectionSheet.position, translation: selectionSheet.translation) {
+            range?.contains($0) ?? false
+        }
     }
 
     /// Switch the reading translation and close the picker. The chapter text
@@ -371,7 +362,7 @@ public final class BibleScreenViewModel {
     /// like a chapter step. Selecting the current translation just closes.
     /// Stops any active narration — the queue is keyed to the old text.
     public func selectTranslation(_ selected: BibleTranslation) {
-        isTranslationSheetPresented = false
+        selectionSheet = nil
         latestExplicitTranslation = selected
         if isRestoringNavigation {
             queuedNavigationIntents.append(.translation(selected))
@@ -410,7 +401,7 @@ public final class BibleScreenViewModel {
         } else {
             visitChapter(destination)
         }
-        bookSheet = nil
+        selectionSheet = nil
     }
 
     /// Open the reader at a specific verse range — switches book/chapter
@@ -514,7 +505,7 @@ public final class BibleScreenViewModel {
         pendingScrollVerse = selectedVerses.min()
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
-        bookSheet = nil
+        selectionSheet = nil
     }
 
     /// Read and clear the pending scroll target. The chapter reader calls
@@ -1071,8 +1062,7 @@ public final class BibleScreenViewModel {
     private func dismissPresentedSheets() {
         dismissActionSheet()
         dismissNarrationSheet()
-        dismissBookSheet()
-        dismissTranslationSheet()
+        dismissSelectionSheet()
         dismissAnnotationSheet()
         dismissNoteList()
     }
@@ -1799,8 +1789,7 @@ public final class BibleScreenViewModel {
         isNarrationSheetPresented = false
         clearSelection()
         pendingScrollVerse = nil
-        bookSheet = nil
-        isTranslationSheetPresented = false
+        selectionSheet = nil
         presentedAnnotationTarget = nil
         presentedNoteList = nil
         presentedBookmarkSheet = nil

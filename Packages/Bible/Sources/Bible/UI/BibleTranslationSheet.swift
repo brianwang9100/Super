@@ -1,12 +1,13 @@
 import Core
 import SwiftUI
 
-/// The translation picker: a short bottom-aligned sheet listing the bundled
-/// translations. Tapping a row switches the reading translation and closes
-/// the sheet; the active translation's row is tinted and checked.
+/// Bundled translation choices, embedded in the unified selector or presented on their own.
 struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    @ScaledMetric(relativeTo: .caption) private var codeSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .footnote) private var detailSize: CGFloat = 13
 
     /// Declared once and shared by the nav bar and the presentation so the two
     /// can't drift; a short content-sized sheet.
@@ -19,10 +20,19 @@ struct BibleTranslationSheet: View {
     let bottomInset: CGFloat
     let onSelect: (BibleTranslation) -> Void
     let onClose: () -> Void
+    var isEmbedded = false
 
     var body: some View {
+        if isEmbedded {
+            content
+        } else {
+            content.sheetPresentation(sizing, estimatedHeight: 320)
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
-            header
+            if !isEmbedded { header }
             VStack(spacing: 2) {
                 ForEach(BibleTranslation.allCases) { translation in
                     row(translation)
@@ -32,8 +42,6 @@ struct BibleTranslationSheet: View {
             .padding(.top, 2)
             .padding(.bottom, 22 + bottomInset)
         }
-        // Detents + drag indicator + background, derived from `sizing`.
-        .sheetPresentation(sizing, estimatedHeight: 320)
     }
 
     private var header: some View {
@@ -47,10 +55,11 @@ struct BibleTranslationSheet: View {
         } label: {
             HStack(spacing: 14) {
                 Text(translation.rawValue)
-                    .font(typography.font(size: 12, weight: .semibold, design: .monospaced))
+                    .font(typography.font(size: codeSize, weight: .semibold, design: .monospaced))
                     .tracking(0.5)
                     .foregroundStyle(isActive ? theme.accentInk : theme.inkSoft)
-                    .frame(width: 44, height: 44)
+                    .padding(4)
+                    .frame(minWidth: 44, minHeight: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 11)
                             .fill(isActive ? theme.accent : theme.backgroundSunken)
@@ -58,10 +67,10 @@ struct BibleTranslationSheet: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(translation.rawValue)
-                        .font(typography.font(size: 15, weight: isActive ? .semibold : .medium))
+                        .font(typography.font(size: titleSize, weight: isActive ? .semibold : .medium))
                         .foregroundStyle(isActive ? theme.accent : theme.ink)
                     Text(translation.name)
-                        .font(typography.font(size: 13))
+                        .font(typography.font(size: detailSize))
                         .foregroundStyle(theme.inkFaint)
                 }
 
@@ -69,7 +78,7 @@ struct BibleTranslationSheet: View {
 
                 if isActive {
                     Image(systemName: "checkmark")
-                        .font(typography.font(size: 13, weight: .bold))
+                        .font(typography.font(size: detailSize, weight: .bold))
                         .foregroundStyle(theme.accent)
                 }
             }

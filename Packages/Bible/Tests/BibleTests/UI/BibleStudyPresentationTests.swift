@@ -67,7 +67,7 @@ struct BibleStudyPresentationTests {
         let sheet: BibleStudyPresentationViewModel.Sheet
         if fromBook {
             sheet = .book
-            model.presentBookSheet()
+            model.presentSelectionSheet()
             presentation.didPresent(.book, identity: presentation.identity)
             presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
         } else {
@@ -143,7 +143,7 @@ struct BibleStudyPresentationTests {
         case .disclaimer: model.triggerAnnotationGeneration(for: target)
         case .note: model.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
         case .bookmark: model.presentBookmarkSheet()
-        case .book: model.presentBookSheet()
+        case .book: model.presentSelectionSheet()
         case .bottom: Issue.record("This scenario covers secondary sheets")
         }
         var completed = false
@@ -154,7 +154,7 @@ struct BibleStudyPresentationTests {
         #expect(model.pendingAnnotationIntents.isEmpty)
         #expect(model.presentedNoteList == nil)
         #expect(model.presentedBookmarkSheet == nil)
-        #expect(model.bookSheet == nil)
+        #expect(model.selectionSheet == nil)
     }
 
     @Test("selection handoffs cancel unmounted actions without waiting for dismissal", arguments: [
@@ -282,7 +282,7 @@ struct BibleStudyPresentationTests {
     func bookHandoff() async {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
-        model.presentBookSheet()
+        model.presentSelectionSheet()
         presentation.didPresent(.book, identity: presentation.identity)
         presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
         #expect(model.presentedNoteList == nil)
@@ -296,9 +296,9 @@ struct BibleStudyPresentationTests {
     func handoffBeforeBookMount() async {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
-        model.presentBookSheet()
+        model.presentSelectionSheet()
         presentation.handOffAfterBookDismiss { model.presentNoteList(for: .book(bookId: "ROM")) }
-        #expect(model.bookSheet == nil)
+        #expect(model.selectionSheet == nil)
         #expect(model.presentedNoteList?.spec == .book(bookId: "ROM"))
         var completed = false
         presentation.finish { completed = true }

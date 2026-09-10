@@ -69,13 +69,13 @@ final class BibleStudyPresentationViewModel {
     func handOffAfterBookDismiss(_ work: @escaping () -> Void) {
         guard isActive, !isFinishing else { return }
         guard presented.contains(.book) || dismissing.contains(.book) else {
-            viewModel.dismissBookSheet()
+            viewModel.dismissSelectionSheet()
             work()
             return
         }
         pendingHandoff = (.book, viewModel.position, work)
         dismissing.insert(.book)
-        viewModel.dismissBookSheet()
+        viewModel.dismissSelectionSheet()
     }
 
     private func handOffAfterSelectionDismiss(_ work: @escaping () -> Void) {
@@ -137,7 +137,7 @@ final class BibleStudyPresentationViewModel {
         // Preview has no narration contribution. Avoid stopping a full-reader session
         // unless its own host explicitly requests completion.
         if viewModel.isNarrationSheetPresented { viewModel.dismissNarrationSheet() }
-        viewModel.dismissBookSheet()
+        viewModel.dismissSelectionSheet()
         completeIfDismissed()
     }
 

@@ -34,6 +34,9 @@ struct BibleBookSheet: View {
     /// triggered by search/order toggles would yank the scroll back to the
     /// current position after the reader has moved it.
     @State private var didAutoScroll = false
+    @FocusState private var isSearchFocused: Bool
+    private let isEmbedded: Bool
+    private let isActive: Bool
     /// Extra bottom padding so the order toggle clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
@@ -125,7 +128,9 @@ struct BibleBookSheet: View {
         onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
         onPresentBookNotes: @escaping (_ bookId: String) -> Void,
         generatingBookIds: Set<String> = [],
-        bottomInset: CGFloat = 0
+        bottomInset: CGFloat = 0,
+        isEmbedded: Bool = false,
+        isActive: Bool = true
     ) {
         self.viewModel = viewModel
         self.currentBookId = currentBookId
@@ -138,20 +143,33 @@ struct BibleBookSheet: View {
         self.onPresentBookNotes = onPresentBookNotes
         self.generatingBookIds = generatingBookIds
         self.bottomInset = bottomInset
+        self.isEmbedded = isEmbedded
+        self.isActive = isActive
         self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
         self._booksWithNotes = Query(constant: BookNotesExistenceRequest())
         self._bookmarks = Query(constant: AllBookmarksRequest())
     }
 
     var body: some View {
+        Group {
+            if isEmbedded {
+                content
+            } else {
+                content.sheetPresentation(sizing)
+            }
+        }
+        .onChange(of: isActive) { _, active in
+            if !active { isSearchFocused = false }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
-            header
+            if !isEmbedded { header }
             searchField
             bookList
             orderToggle
         }
-        // Detents + drag indicator + background, derived from `sizing`.
-        .sheetPresentation(sizing)
     }
 
     private var header: some View {
@@ -169,6 +187,7 @@ struct BibleBookSheet: View {
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
                 .autocorrectionDisabled()
+                .focused($isSearchFocused)
 
             if !viewModel.query.isEmpty {
                 Button { viewModel.clearQuery() } label: {
@@ -272,6 +291,7 @@ struct BibleBookSheet: View {
     /// chapter or verse range. Tapping it deep-links and closes the sheet.
     private func deepLinkRow(_ result: BibleSearchResult) -> some View {
         Button {
+            isSearchFocused = false
             switch result {
             case let .chapter(bookId, _, chapterNumber):
                 onSelectChapter(bookId, chapterNumber)
@@ -284,7 +304,7 @@ struct BibleBookSheet: View {
                     Text(result.displayLabel)
                         .font(typography.font(size: bookNameSize, weight: .medium))
                         .foregroundStyle(theme.ink)
-                    Text(result.subtitle)
+                    Text(isEmbedded ? "Select passage" : result.subtitle)
                         .font(typography.font(size: countSize))
                         .foregroundStyle(theme.inkFaint)
                 }
@@ -298,7 +318,7 @@ struct BibleBookSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Go to \(result.displayLabel)")
+        .accessibilityLabel("\(isEmbedded ? "Select" : "Go to") \(result.displayLabel)")
     }
 
     @ViewBuilder
@@ -343,7 +363,8 @@ struct BibleBookSheet: View {
                 Text("\(book.chapterCount)")
                     .font(typography.font(size: countSize, design: .monospaced))
                     .foregroundStyle(theme.inkFaint)
-                    .frame(width: countWidth, alignment: .trailing)
+                    .fixedSize()
+                    .frame(minWidth: countWidth, alignment: .trailing)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
@@ -510,6 +531,7 @@ struct BibleBookSheet: View {
         let isCurrent = book.id == currentBookId && number == currentChapterNumber
         let bookmark = bookmarkColor(forBook: book.id, chapter: number)
         Button {
+            isSearchFocused = false
             onSelectChapter(book.id, number)
         } label: {
             cellBody(number: number, isCurrent: isCurrent)
@@ -526,6 +548,7 @@ struct BibleBookSheet: View {
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel(Self.chapterCellLabel(bookName: book.name, number: number, bookmark: bookmark))
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
     }
 
@@ -558,9 +581,16 @@ struct BibleBookSheet: View {
     }
 
     private var orderToggle: some View {
-        HStack(spacing: 0) {
-            toggleSegment("Traditional", order: .traditional)
-            toggleSegment("Alphabetical", order: .alphabetical)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                toggleSegment("Traditional", order: .traditional)
+                toggleSegment("Alphabetical", order: .alphabetical)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(spacing: 0) {
+                toggleSegment("Traditional", order: .traditional)
+                toggleSegment("Alphabetical", order: .alphabetical)
+            }
         }
         .padding(4)
         // Frosted glass track for the segmented toggle, matching the nav-bar
@@ -568,7 +598,7 @@ struct BibleBookSheet: View {
         // still reads as selected against the surface.
         .superGlassSurface(in: Capsule())
         .padding(.top, 8)
-        .padding(.bottom, 22 + bottomInset)
+        .padding(.bottom, (isEmbedded ? 6 : 22) + bottomInset)
     }
 
     private func toggleSegment(_ title: String, order: BibleBookOrder) -> some View {
@@ -579,6 +609,8 @@ struct BibleBookSheet: View {
             Text(title)
                 .font(typography.font(size: controlSize, weight: isActive ? .medium : .regular))
                 .foregroundStyle(isActive ? theme.ink : theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.center)
                 .padding(.horizontal, 22)
                 .padding(.vertical, 8)
                 .background(Capsule().fill(isActive ? theme.backgroundRaised : .clear))

@@ -1318,6 +1318,50 @@
   },
   {
     "package": "Bible",
+    "suite": "BibleSelectionSheetSnapshotTests",
+    "testName": "bookDark",
+    "captureName": "book_dark",
+    "image": "Bible_BibleSelectionSheetSnapshotTests_bookDark.book_dark.png",
+    "pixels": [
+      1125,
+      1920
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleSelectionSheetSnapshotTests",
+    "testName": "bookLight",
+    "captureName": "book_light",
+    "image": "Bible_BibleSelectionSheetSnapshotTests_bookLight.book_light.png",
+    "pixels": [
+      1125,
+      1920
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleSelectionSheetSnapshotTests",
+    "testName": "largeText",
+    "captureName": "large_text",
+    "image": "Bible_BibleSelectionSheetSnapshotTests_largeText.large_text.png",
+    "pixels": [
+      1125,
+      1920
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleSelectionSheetSnapshotTests",
+    "testName": "translationLight",
+    "captureName": "translation_light",
+    "image": "Bible_BibleSelectionSheetSnapshotTests_translationLight.translation_light.png",
+    "pixels": [
+      1125,
+      1920
+    ]
+  },
+  {
+    "package": "Bible",
     "suite": "BibleTranslationSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleTranslationSheetSnapshotTests/dark.dark.png",
     "image": "Bible_BibleTranslationSheetSnapshotTests_dark.dark.png",

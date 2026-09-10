@@ -4,8 +4,8 @@ import SwiftUI
 /// The reading surface's top bar: chapter stepping (optional), the book /
 /// translation pill, and the trailing action control.
 ///
-/// The prev / next arrows step chapters and the pill's two segments open the
-/// book and translation pickers. The arrows flank the pill as one centred glass
+/// The prev / next arrows step chapters and the stacked passage/translation
+/// button opens the combined selector. The arrows flank the pill as one centred glass
 /// cluster (a shared `glassEffectID` namespace), with the leading hamburger
 /// placeholder and the trailing action pushed to the edges so the cluster stays
 /// centred. With `showsSelectionPill`, selecting verses morphs the arrows into
@@ -76,7 +76,6 @@ struct BibleNavBar: View {
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
-    let onTranslation: () -> Void
     let onSelectionPill: () -> Void
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
@@ -174,7 +173,7 @@ struct BibleNavBar: View {
             wraps: wraps, isRestoring: isRestoringNavigation,
             morph: GlassMorphID("nav.center", in: glassNamespace),
             onBack: controls.onBack, onForward: controls.onForward,
-            onBook: onPill, onTranslation: onTranslation
+            onSelect: onPill
         )
     }
 

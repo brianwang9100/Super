@@ -80,21 +80,24 @@ struct BibleScreenViewModelSidebarTests {
         #expect(!viewModel.isNarrationSheetPresented)
     }
 
-    @Test("opening the sidebar dismisses the book and translation pickers")
+    @Test("opening the sidebar discards the selector from either tab")
     func dismissesPickers() async {
         let bus = SuperEventBus()
         let viewModel = await makeViewModel(bus: bus)
-        viewModel.presentBookSheet()
-        #expect(viewModel.bookSheet != nil)
+        viewModel.presentSelectionSheet()
+        viewModel.selectionSheet?.tab = .translation
+        viewModel.selectionSheet?.translation = .web
+        #expect(viewModel.selectionSheet != nil)
 
         await openSidebarAndAwait(on: bus, through: viewModel)
-        #expect(viewModel.bookSheet == nil)
+        #expect(viewModel.selectionSheet == nil)
+        #expect(viewModel.translation == .kjv)
 
-        viewModel.presentTranslationSheet()
-        #expect(viewModel.isTranslationSheetPresented)
+        viewModel.presentSelectionSheet()
+        #expect(viewModel.selectionSheet != nil)
 
         await openSidebarAndAwait(on: bus, through: viewModel)
-        #expect(!viewModel.isTranslationSheetPresented)
+        #expect(viewModel.selectionSheet == nil)
     }
 
     @Test("opening the sidebar dismisses the annotation sheet and the note list")

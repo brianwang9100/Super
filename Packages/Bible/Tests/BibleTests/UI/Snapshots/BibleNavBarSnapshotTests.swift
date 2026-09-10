@@ -115,9 +115,10 @@ struct BibleNavBarSnapshotTests {
     @Test("history states keep independent disabled controls without changing layout")
     func historyStatesGallery() {
         let states: [(String?, String?)] = [(nil, nil), (nil, "Psalm 23"), ("John 3", "Psalm 23"), ("John 3", nil)]
+        let books = ["John", "2 Chronicles", "1 Corinthians", "2 Thessalonians"]
         let view = VStack(spacing: 0) {
             ForEach(states.indices, id: \.self) { index in
-                bar(showsChapterChevrons: false, history: .init(
+                bar(bookName: books[index], showsChapterChevrons: false, history: .init(
                     backLabel: states[index].0, forwardLabel: states[index].1,
                     onBack: {}, onForward: {}
                 ))
@@ -148,6 +149,40 @@ struct BibleNavBarSnapshotTests {
         if let failure { Issue.record("\(failure)") }
     }
 
+    @Test("ordinary long book names fit in the primary row on a compact iPhone", arguments: ["2 Corinthians", "2 Thessalonians"])
+    func longNamesStayInPrimaryRow(book: String) {
+        let host = UIHostingController(rootView: bar(bookName: book, showsChapterChevrons: false)
+            .superTheme(.make(.vellumLight)))
+        let size = host.sizeThatFits(in: CGSize(width: 375, height: 1000))
+        #expect(size.height < 100, "A second toolbar row exceeds the single-row height budget")
+    }
+
+    @Test("the selector hugs short content and grows only to fit a longer passage")
+    func selectorHugsContent() {
+        let short = UIHostingController(rootView: SelectorSizeProbe(book: "John"))
+            .sizeThatFits(in: CGSize(width: 375, height: 1000))
+        let long = UIHostingController(rootView: SelectorSizeProbe(book: "2 Corinthians"))
+            .sizeThatFits(in: CGSize(width: 375, height: 1000))
+        #expect(long.width > short.width + 30)
+        #expect(long.width <= 231, "Leave room for both 44pt utility buttons and the toolbar gaps")
+        #expect(short.height >= 44)
+    }
+
+    private struct SelectorSizeProbe: View {
+        @Namespace private var namespace
+        let book: String
+
+        var body: some View {
+            BibleNavigationSelector(
+                bookName: book, chapterNumber: 13, translation: .web,
+                backLabel: nil, forwardLabel: nil, wraps: false, isRestoring: false,
+                morph: GlassMorphID("probe", in: namespace), onBack: {}, onForward: {}, onSelect: {}
+            )
+            .fixedSize()
+            .superTheme(.make(.vellumLight))
+        }
+    }
+
     private func bar(
         bookName: String = "1 Peter",
         canStepBackward: Bool = true,
@@ -166,7 +201,7 @@ struct BibleNavBarSnapshotTests {
             showsChapterChevrons: showsChapterChevrons,
             canStepBackward: canStepBackward, canStepForward: canStepForward,
             narrationState: narrationState, narrationCitation: narrationCitation,
-            onPrevious: {}, onNext: {}, onPill: {}, onTranslation: {},
+            onPrevious: {}, onNext: {}, onPill: {},
             onSelectionPill: {}, onClearSelection: {}, onSparkMenuAction: { _ in },
             onTapNarrationPill: {}, historyControls: history
         )
