@@ -72,14 +72,20 @@ struct BibleChapterPreviewTests {
         #expect(try await repository.load() == restored)
     }
 
-    @Test("native readiness is identity guarded and one shot, preserving the scroll request")
+    @Test("native readiness preserves selection and scroll without opening actions")
     func readiness() {
         let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { _ in })
         preview.presentationDidComplete(identity: UUID())
+        #expect(!preview.isReady)
+        preview.reopenActions()
         #expect(!preview.reader.isActionSheetPresented)
         preview.presentationDidComplete(identity: preview.identity)
-        #expect(preview.reader.isActionSheetPresented)
+        #expect(preview.isReady)
+        #expect(!preview.reader.isActionSheetPresented)
+        #expect(preview.reader.selectedVerses == [28, 29, 30])
         #expect(preview.reader.pendingScrollVerse == 28)
+        preview.reopenActions()
+        #expect(preview.reader.isActionSheetPresented)
         preview.reader.dismissActionSheet()
         preview.presentationDidComplete(identity: preview.identity)
         #expect(!preview.reader.isActionSheetPresented)
@@ -104,6 +110,7 @@ struct BibleChapterPreviewTests {
         var completions: [RecordPreviewCompletion] = []
         let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completions.append($0) })
         preview.presentationDidComplete(identity: preview.identity)
+        preview.reopenActions()
         #expect(preview.reader.isActionSheetPresented)
         let expected = BibleReaderReference(position: preview.reader.position, translation: preview.reader.translation,
                                             selectedVerses: preview.reader.selectedVerses)
@@ -121,11 +128,27 @@ struct BibleChapterPreviewTests {
         #expect(completions.count == 1)
     }
 
+    @Test("a ready preview can open in Bible without presenting actions")
+    func openWithoutActions() {
+        var completions: [RecordPreviewCompletion] = []
+        let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completions.append($0) })
+        preview.presentationDidComplete(identity: preview.identity)
+        #expect(!preview.reader.isActionSheetPresented)
+
+        preview.openInBible()
+
+        let target = BibleReaderReference(position: BiblePosition(bookId: "ROM", chapterNumber: 8),
+                                          translation: .web, selectedVerses: [28, 29, 30])
+        #expect(completions == [.openRecord(reference: target.recordReference)])
+        #expect(!preview.isReady)
+    }
+
     @Test("Open in Bible captures exact current verses and waits for the native study dismissal", arguments: [Set([28, 29]), Set([28, 30]), Set<Int>()])
     func currentSelection(selection: Set<Int>) throws {
         var completions: [RecordPreviewCompletion] = []
         let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completions.append($0) })
         preview.presentationDidComplete(identity: preview.identity)
+        preview.reopenActions()
         preview.study.didPresent(.bottom, identity: preview.study.identity)
         preview.reader.clearSelection()
         for verse in selection { preview.reader.toggleVerse(verse) }
@@ -156,6 +179,7 @@ struct BibleChapterPreviewTests {
         var completion: RecordPreviewCompletion?
         let preview = BibleChapterPreviewViewModel(reader: source().makePreviewReader(for: link), onFinish: { completion = $0 })
         preview.presentationDidComplete(identity: preview.identity)
+        preview.reopenActions()
         preview.study.didPresent(.bottom, identity: preview.study.identity)
         let reference = try #require(preview.reader.makeVerseReference())
         preview.addToChat(reference: reference, startNewConversation: startNew)
@@ -267,6 +291,7 @@ struct BibleChapterPreviewTests {
         #expect(preview.reader.selectedVerses == expected)
         #expect(preview.reader.pendingScrollVerse == expected.min())
         preview.presentationDidComplete(identity: preview.identity)
-        #expect(preview.reader.isActionSheetPresented == !expected.isEmpty)
+        #expect(preview.isReady)
+        #expect(!preview.reader.isActionSheetPresented)
     }
 }

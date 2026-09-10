@@ -167,9 +167,6 @@ public final class BibleScreenViewModel {
         reader.isRestoringNavigation = false
         reader.openReference(bookId: link.bookId, chapterNumber: link.chapter,
                              verseStart: link.verseStart, verseEnd: link.verseEnd)
-        // Keep the exact selection and pending scroll, but wait for the native
-        // chapter presentation to complete before opening its child action sheet.
-        reader.dismissActionSheet()
         return reader
     }
 
@@ -302,7 +299,7 @@ public final class BibleScreenViewModel {
 
     /// Navigates with an inclusive 1-based verse range. Unknown books, invalid chapters,
     /// nonpositive starts, and inverted ranges are ignored. Nil start opens the chapter
-    /// unselected; nil end selects only the start verse.
+    /// unselected; nil end selects only the start verse. Actions remain closed.
     public func openReference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?) {
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
@@ -381,7 +378,7 @@ public final class BibleScreenViewModel {
         selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
         // Changing the pending verse also scrolls same-chapter links; chapter-only navigation leaves it nil.
         pendingScrollVerse = selectedVerses.min()
-        isActionSheetPresented = !selectedVerses.isEmpty
+        dismissActionSheet()
         persist()
         bookSheet = nil
     }

@@ -57,6 +57,7 @@ struct BibleReaderInitializationTests {
         #expect(model.translation == .asv)
         #expect(model.selectedVerses == [16, 18])
         #expect(model.pendingScrollVerse == 16)
+        #expect(!model.isActionSheetPresented)
         #expect(model.backDestination == BiblePosition(bookId: "ROM", chapterNumber: 8))
         #expect(await repository.writes.allSatisfy { $0.bookId == "JHN" && $0.translationId == "ASV" })
     }
@@ -101,6 +102,7 @@ struct BibleReaderInitializationTests {
         #expect(model.position == target.position)
         #expect(model.selectedVerses == [16, 18])
         #expect(model.translation == .web)
+        #expect(!model.isActionSheetPresented)
     }
 
     @Test("a range extending to Int.max selects only loaded verses")
@@ -125,7 +127,7 @@ struct BibleReaderInitializationTests {
         ))
         #expect(model.selectedVerses == verses.intersection([35]))
         #expect(model.pendingScrollVerse == model.selectedVerses.min())
-        #expect(model.isActionSheetPresented == !model.selectedVerses.isEmpty)
+        #expect(!model.isActionSheetPresented)
     }
 
     private func makeModel(repository: (any BibleReadingPositionRepository)? = nil) -> BibleScreenViewModel {
