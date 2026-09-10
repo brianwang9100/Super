@@ -91,12 +91,6 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.isRestoringNavigation) { _, _ in
             publishComposerAccessories()
         }
-        .onChange(of: viewModel.narration.state) { _, _ in
-            publishComposerAccessories()
-        }
-        .onChange(of: viewModel.isNarrationSheetPresented) { _, _ in
-            publishComposerAccessories()
-        }
         // Mirror reader visibility to shell chrome only on actual state changes.
         .onChange(of: viewModel.isImmersive) { _, immersive in
             publishChromeVisibility(!immersive)
@@ -181,7 +175,6 @@ public struct BibleScreen: View {
                 isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
-            center: viewModel.narrationAccessoryButton,
             selection: viewModel.selectionCitation.map { citation in
                 ComposerAccessorySelection(
                     title: citation,
@@ -190,7 +183,6 @@ public struct BibleScreen: View {
                     onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
                 )
             },
-            // Footer visibility hides only arrows; center controls must remain available.
             // Read inside the renderer to stay reactive without republishing.
             shouldHideButtons: { viewModel.isChapterFooterVisible }
         )
@@ -215,7 +207,7 @@ public struct BibleScreen: View {
         }
     }
 
-    private func handleSparkAction(_ action: BibleNavBar.SparkMenuAction) {
+    private func handleMenuAction(_ action: BibleNavBar.MenuAction) {
         switch action {
         case .annotate:
             if viewModel.selectedVerses.isEmpty {
@@ -235,8 +227,6 @@ public struct BibleScreen: View {
             } else {
                 addSelectionToChat(startNew: true)
             }
-        case .narrate:
-            withAnimation(motion.animation) { viewModel.startNarration() }
         }
     }
 
@@ -257,14 +247,10 @@ public struct BibleScreen: View {
             onPill: { withAnimation(motion.animation) { viewModel.presentSelectionSheet() } },
             onSelectionPill: { withAnimation(motion.animation) { viewModel.presentActionSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
-            onSparkMenuAction: handleSparkAction,
-            onTapNarrationPill: {
+            onMenuAction: handleMenuAction,
+            onNarration: {
                 withAnimation(motion.animation) {
-                    if viewModel.isNarrationSheetPresented {
-                        viewModel.dismissNarrationSheet()
-                    } else {
-                        viewModel.presentNarrationSheet()
-                    }
+                    viewModel.toggleNarrationControls()
                 }
             },
             historyControls: .init(
