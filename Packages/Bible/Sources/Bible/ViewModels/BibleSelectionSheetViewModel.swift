@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// One selector presentation's draft passage and translation, isolated from the reader until Read.
+/// One selector presentation's passage choice and current reader translation.
 @MainActor
 @Observable
 public final class BibleSelectionSheetViewModel: Identifiable {
@@ -25,15 +25,6 @@ public final class BibleSelectionSheetViewModel: Identifiable {
         self.translation = translation
         self.catalog = catalog
         self.bookPicker = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
-    }
-
-    var citation: String {
-        let name = catalog.book(id: position.bookId)?.name ?? position.bookId
-        let chapter = "\(name) \(position.chapterNumber)"
-        guard let verseRange else { return chapter }
-        let verses = verseRange.lowerBound == verseRange.upperBound
-            ? "\(verseRange.lowerBound)" : "\(verseRange.lowerBound)-\(verseRange.upperBound)"
-        return "\(chapter):\(verses)"
     }
 
     func selectChapter(bookId: String, chapterNumber: Int) {

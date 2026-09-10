@@ -13,7 +13,7 @@ public final class BibleScreenViewModel {
     public private(set) var chapter: BibleChapter?
     public private(set) var translation: BibleTranslation = .defaultTranslation
 
-    /// The combined selector's isolated draft while its native sheet is presented.
+    /// The combined selector's passage state and live translation while its native sheet is presented.
     public private(set) var selectionSheet: BibleSelectionSheetViewModel?
 
     /// Selection survives action-sheet dismissal.
@@ -236,13 +236,13 @@ public final class BibleScreenViewModel {
         traverseHistory(to: navigationHistory.current)
     }
 
-    /// Open fresh passage/translation drafts with the current book expanded and chapter in view.
+    /// Open the selector with the current book expanded and chapter in view.
     public func presentSelectionSheet() {
         guard !isRestoringNavigation else { return }
         selectionSheet = BibleSelectionSheetViewModel(position: position, translation: translation, catalog: catalog)
     }
 
-    /// Discard the selector's drafts without changing the reader.
+    /// Close the selector without changing the reader.
     public func dismissSelectionSheet() {
         selectionSheet = nil
     }
@@ -257,10 +257,9 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Closes the picker. A changed translation stops narration, reloads text, and persists;
-    /// reselecting the current translation only closes.
+    /// Keeps the selector open. A changed translation stops narration, reloads text, and persists.
     public func selectTranslation(_ selected: BibleTranslation) {
-        selectionSheet = nil
+        selectionSheet?.translation = selected
         latestExplicitTranslation = selected
         if isRestoringNavigation {
             queuedNavigationIntents.append(.translation(selected))

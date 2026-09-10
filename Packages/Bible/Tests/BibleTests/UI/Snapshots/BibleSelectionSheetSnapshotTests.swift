@@ -6,28 +6,27 @@ import Testing
 import VisualTestSupport
 @testable import Bible
 
-/// Unified sheet chrome, tab selection, and footer reflow around the retained picker content.
 @Suite("BibleSelectionSheet snapshots", .serialized)
 @MainActor
 struct BibleSelectionSheetSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
-    @Test("the book tab and shared Read footer render in light appearance")
+    @Test("the book tab renders without a Read footer in light appearance")
     func bookLight() {
         verify(theme: .vellumLight, name: "book_light")
     }
 
-    @Test("glass segments and the selected chapter remain distinct in dark appearance")
+    @Test("the selected glass segment and flat base remain distinct in dark appearance")
     func bookDark() {
         verify(theme: .vellumDark, name: "book_dark")
     }
 
-    @Test("the translation tab preserves the pending chapter in the Read action")
+    @Test("the translation tab renders without a Read footer")
     func translationLight() {
         verify(theme: .vellumLight, tab: .translation, name: "translation_light")
     }
 
-    @Test("large type and maximum app font scale reflow the unified controls and footer")
+    @Test("large type and maximum app font scale reflow the unified controls")
     func largeText() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, fontScale: 1.2, name: "large_text")
     }
@@ -45,7 +44,7 @@ struct BibleSelectionSheetSnapshotTests {
         )
         model.tab = tab
         let view = BibleSelectionSheet(
-            viewModel: model, onRead: {}, onClose: {},
+            viewModel: model, onSelect: {}, onSelectTranslation: { model.translation = $0 }, onClose: {},
             onPresentBookAnnotations: { _ in }, onRequestBookAnnotations: { _ in },
             onPresentBookNotes: { _ in }
         )

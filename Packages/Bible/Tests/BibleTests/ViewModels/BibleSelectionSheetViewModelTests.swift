@@ -3,10 +3,61 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Draft reading choices remain isolated until a single, bounded navigation commit.
 @Suite("Bible selection sheet")
 @MainActor
 struct BibleSelectionSheetViewModelTests {
+    @Test("translation changes persist immediately while retaining the same selector")
+    func translationStaysOpen() async throws {
+        let (model, repository) = await loadedModel()
+        model.selectChapter(bookId: "JHN", chapterNumber: 3)
+        model.goBack()
+        await model._waitForPendingPersist()
+        let writes = await repository.saveAttempts.count
+        model.presentSelectionSheet()
+        let sheet = try #require(model.selectionSheet)
+        sheet.tab = .translation
+        sheet.bookPicker.query = "John"
+
+        model.selectTranslation(.web)
+        await model._waitForPendingPersist()
+
+        #expect(model.selectionSheet === sheet)
+        #expect(sheet.tab == .translation)
+        #expect(sheet.bookPicker.query == "John")
+        #expect(sheet.translation == .web)
+        #expect(model.translation == .web)
+        #expect(model.position == BibleScreenViewModel.defaultPosition)
+        #expect(model.forwardDestination == BiblePosition(bookId: "JHN", chapterNumber: 3))
+        let saves = await repository.saveAttempts
+        #expect(saves.count == writes + 1)
+        #expect(saves.last?.translationId == "WEB")
+
+        model.dismissSelectionSheet()
+        model.presentSelectionSheet()
+        #expect(model.translation == .web)
+        #expect(model.selectionSheet?.translation == .web)
+    }
+
+    @Test("a chapter selected after a translation uses that translation and dismisses")
+    func chapterAfterTranslation() async throws {
+        let (model, repository) = await loadedModel()
+        model.presentSelectionSheet()
+        let sheet = try #require(model.selectionSheet)
+        model.selectTranslation(.asv)
+        sheet.selectChapter(bookId: "SNG", chapterNumber: 5)
+        model.applySelection()
+        await model._waitForPendingPersist()
+
+        #expect(model.position == BiblePosition(bookId: "SNG", chapterNumber: 5))
+        #expect(model.translation == .asv)
+        #expect(model.chapter?.number == 5)
+        #expect(model.selectionSheet == nil)
+        let saved = try #require(await repository.saveAttempts.last)
+        #expect(saved.bookId == "SNG")
+        #expect(saved.chapterNumber == 5)
+        #expect(saved.translationId == "ASV")
+    }
+
     @Test("staging either tab does not change the reader or persist intermediate choices")
     func draftsStayIsolated() async throws {
         let (model, repository) = await loadedModel()
@@ -33,7 +84,7 @@ struct BibleSelectionSheetViewModelTests {
         #expect(await repository.saveAttempts.count == writes)
     }
 
-    @Test("Read persists one final chapter and translation and adds exactly one visit")
+    @Test("passage selection persists chapter and translation and adds exactly one visit")
     func appliesTogether() async throws {
         let (model, repository) = await loadedModel()
         let writes = await repository.saveAttempts.count
@@ -94,10 +145,8 @@ struct BibleSelectionSheetViewModelTests {
         sheet.tab = .translation
         sheet.tab = .book
         #expect(sheet.verseRange == 16...18)
-        #expect(sheet.citation == "John 3:16-18")
         sheet.selectChapter(bookId: "JHN", chapterNumber: 3)
         #expect(sheet.verseRange == nil)
-        #expect(sheet.citation == "John 3")
         #expect(sheet.translation == .web)
     }
 
@@ -113,7 +162,7 @@ struct BibleSelectionSheetViewModelTests {
         #expect(sheet.verseRange == nil)
     }
 
-    @Test("Read bounds huge verse ranges to the real chapter without allocating the range")
+    @Test("passage selection bounds huge verse ranges to the real chapter without allocating the range")
     func boundedVerseCommit() async throws {
         let (model, _) = await loadedModel()
         model.presentSelectionSheet()
@@ -129,7 +178,7 @@ struct BibleSelectionSheetViewModelTests {
         #expect(model.selectionSheet == nil)
     }
 
-    @Test("translation-only Read keeps the forward history branch")
+    @Test("same-chapter selection with a changed translation keeps the forward history branch")
     func translationKeepsForwardHistory() async throws {
         let (model, _) = await loadedModel()
         model.selectChapter(bookId: "JHN", chapterNumber: 3)

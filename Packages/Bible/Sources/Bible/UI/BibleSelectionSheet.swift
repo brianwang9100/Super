@@ -1,18 +1,16 @@
 import Core
 import SwiftUI
 
-/// A native selector that stages a passage and translation together before reading.
 struct BibleSelectionSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var viewModel: BibleSelectionSheetViewModel
     @ScaledMetric(relativeTo: .subheadline) private var controlSize: CGFloat = 14
-    @ScaledMetric(relativeTo: .body) private var readSize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var subtitleSize: CGFloat = 11
     @Namespace private var segmentNamespace
 
-    let onRead: () -> Void
+    let onSelect: () -> Void
+    let onSelectTranslation: (BibleTranslation) -> Void
     let onClose: () -> Void
     let onPresentBookAnnotations: (String) -> Void
     let onRequestBookAnnotations: (String) -> Void
@@ -31,7 +29,7 @@ struct BibleSelectionSheet: View {
                 ScrollView {
                     BibleTranslationSheet(
                         current: viewModel.translation, bottomInset: 0,
-                        onSelect: { viewModel.translation = $0 }, onClose: onClose,
+                        onSelect: onSelectTranslation, onClose: onClose,
                         isEmbedded: true
                     )
                 }
@@ -40,7 +38,6 @@ struct BibleSelectionSheet: View {
                 .accessibilityHidden(viewModel.tab != .translation)
             }
             .frame(maxHeight: .infinity)
-            readButton
         }
         .background(theme.background)
         .presentationDetents([.large])
@@ -53,8 +50,16 @@ struct BibleSelectionSheet: View {
             viewModel: viewModel.bookPicker,
             currentBookId: viewModel.position.bookId,
             currentChapterNumber: viewModel.position.chapterNumber,
-            onSelectChapter: viewModel.selectChapter,
-            onSelectVerseRange: viewModel.selectVerseRange,
+            onSelectChapter: { bookId, chapterNumber in
+                viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
+                onSelect()
+            },
+            onSelectVerseRange: { bookId, chapterNumber, verseStart, verseEnd in
+                viewModel.selectVerseRange(
+                    bookId: bookId, chapterNumber: chapterNumber, verseStart: verseStart, verseEnd: verseEnd
+                )
+                onSelect()
+            },
             onClose: onClose,
             onPresentBookAnnotations: onPresentBookAnnotations,
             onRequestBookAnnotations: onRequestBookAnnotations,
@@ -73,7 +78,7 @@ struct BibleSelectionSheet: View {
                 }
             }
             .padding(4)
-            .superGlassSurface(in: Capsule())
+            .background(theme.backgroundRaised, in: Capsule())
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 12)
@@ -84,7 +89,7 @@ struct BibleSelectionSheet: View {
         return Button {
             withAnimation(BibleSheetMotion(reduceMotion: reduceMotion).animation) { viewModel.tab = tab }
         } label: {
-            Text(tab.rawValue)
+            let label = Text(tab.rawValue)
                 .font(typography.font(size: controlSize, weight: .medium))
                 .foregroundStyle(isSelected ? theme.ink : theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -92,45 +97,14 @@ struct BibleSelectionSheet: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background {
-                    if isSelected {
-                        Capsule()
-                            .fill(.clear)
-                            .superGlassButton(in: Capsule(), morph: GlassMorphID("selection.tab", in: segmentNamespace))
-                    }
-                }
                 .contentShape(Capsule())
+            if isSelected {
+                label.superGlassButton(in: Capsule(), morph: GlassMorphID("selection.tab", in: segmentNamespace))
+            } else {
+                label
+            }
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var readButton: some View {
-        Button(action: onRead) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Read \(viewModel.citation)")
-                        .font(typography.font(size: readSize, weight: .medium))
-                        .foregroundStyle(theme.ink)
-                    Text("\(viewModel.translation.name) · \(viewModel.translation.rawValue)")
-                        .font(typography.font(size: subtitleSize))
-                        .foregroundStyle(theme.inkSoft)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                Image(systemName: "arrow.right")
-                    .font(typography.font(size: readSize, weight: .medium))
-                    .foregroundStyle(theme.ink)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .superGlassButton(in: RoundedRectangle(cornerRadius: 26))
-        }
-        .buttonStyle(GlassHapticButtonStyle(.selection))
-        .accessibilityLabel("Read \(viewModel.citation), \(viewModel.translation.name)")
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
     }
 }
