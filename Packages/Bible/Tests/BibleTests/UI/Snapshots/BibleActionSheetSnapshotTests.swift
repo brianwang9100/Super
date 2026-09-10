@@ -48,6 +48,7 @@ struct BibleActionSheetSnapshotTests {
                 onHighlight: { _ in },
                 onClearHighlight: {},
                 onCopy: {},
+                onNarrate: {},
                 onAddToChat: {},
                 onNewChat: {},
                 onAnnotate: {},

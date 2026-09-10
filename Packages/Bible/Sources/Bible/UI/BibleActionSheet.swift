@@ -12,6 +12,7 @@ struct BibleActionSheet: View {
     let onHighlight: (BibleHighlightColor) -> Void
     let onClearHighlight: () -> Void
     let onCopy: () -> Void
+    let onNarrate: (() -> Void)?
     let onAddToChat: () -> Void
     let onNewChat: () -> Void
     let onAnnotate: () -> Void
@@ -116,8 +117,14 @@ struct BibleActionSheet: View {
                 .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
                 .accessibilityLabel("Share")
             }
+            if let onNarrate {
+                actionButton(label: "Narrate", accent: false, action: onNarrate) {
+                    sfIcon("speaker.wave.2", accent: false)
+                }
+            } else {
+                actionPlaceholderTile
+            }
             // Hidden real tiles preserve column width and height; flexible spacers can stretch the sheet.
-            actionPlaceholderTile
             actionPlaceholderTile
         }
     }
