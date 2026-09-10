@@ -56,7 +56,8 @@ public struct ContextAssembler: Sendable {
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
         memories: [MemoryEntry] = [],
-        tools: [LLMTool] = []
+        tools: [LLMTool] = [],
+        allowsWebSearch: Bool = true
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls, activeModelId: model.id)
@@ -77,7 +78,7 @@ public struct ContextAssembler: Sendable {
             fixedBlockTokens += estimator.estimate(memoriesBlock)
         }
         // Anthropic caches the stable briefing prefix separately from volatile memories.
-        if let webSearchBlock = Self.formatWebSearchBlock(model: model) {
+        if allowsWebSearch, let webSearchBlock = Self.formatWebSearchBlock(model: model) {
             prompt.insert(LLMMessage(role: .system, text: webSearchBlock, cacheHint: .stablePrefix), at: 0)
             fixedBlockTokens += estimator.estimate(webSearchBlock)
         }

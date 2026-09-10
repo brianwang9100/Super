@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import Testing
 @testable import Bible
@@ -43,6 +44,22 @@ struct AnnotationPresentationTests {
         #expect(!presentation.isWorking)
         #expect(presentation.canReturnToSaved)
         #expect(presentation.treatAsPartial)
+    }
+
+    @Test("provider failures retain actionable details and access to the saved annotation")
+    func providerFailure() {
+        let error = LLMError.providerError(code: "400", message: "HTTP 400: Unsupported temperature.")
+        let presentation = AnnotationPresentation(
+            snapshot: .init(records: [row("old")], completedRequestID: nil),
+            draft: .init(requestID: "r", text: "", isComplete: false),
+            dispatchStatus: .failed(message: error.localizedDescription)
+        )
+
+        #expect(presentation.errorMessage?.contains("HTTP 400") == true)
+        #expect(presentation.errorMessage?.contains("Unsupported temperature.") == true)
+        #expect(presentation.text.isEmpty)
+        #expect(presentation.canReturnToSaved)
+        #expect(presentation.savedRecord?.id == "old")
     }
 
     @Test("before-first-token failure preserves the error without showing stale prose")

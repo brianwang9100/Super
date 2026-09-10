@@ -174,6 +174,10 @@ struct BibleAnnotateDispatcherTests {
         #expect(inputs.count == 1)
         #expect(inputs.first?["summary"] == .string("First paragraph."))
         #expect(try await setup.conversationRepo.fetch(id: "id-1") == nil)
+        #expect(try await setup.conversationRepo.listActive().isEmpty)
+        #expect(try await setup.database.queue.read { db in
+            try MessageRecord.fetchCount(db) == 0 && ToolCallRecord.fetchCount(db) == 0
+        })
     }
 
     @Test("a scripted tool call succeeds and the transient conversation is hard-deleted")

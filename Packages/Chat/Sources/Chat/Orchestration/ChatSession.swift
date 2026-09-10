@@ -20,6 +20,7 @@ public actor ChatSession {
     private let compactor: Compactor
     private let clock: any Clock
     private let idGenerator: any IDGenerator
+    private let configuration: ChatSessionConfiguration
 
     /// Read per assembly so settings and tool edits affect the next turn.
     private let memoryRepository: (any MemoryRepository)?
@@ -107,7 +108,8 @@ public actor ChatSession {
         activeAppletID: (@Sendable () async -> String?)? = nil,
         userPersonalization: String = "",
         memoryRepository: (any MemoryRepository)? = nil,
-        webSearchFulfiller: (any WebSearchFulfilling)? = nil
+        webSearchFulfiller: (any WebSearchFulfilling)? = nil,
+        configuration: ChatSessionConfiguration = .init()
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
@@ -130,6 +132,7 @@ public actor ChatSession {
         self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
         self.webSearchFulfiller = webSearchFulfiller
+        self.configuration = configuration
     }
 
     public func setAutoCompactPolicy(enabled: Bool, threshold: Double) {
@@ -174,8 +177,9 @@ public actor ChatSession {
         text: String,
         model: LLMModel,
         references: [RecordReference] = [],
-        temperature: Double = 1.0
+        temperature: Double = ChatSessionConfiguration.defaultTemperature
     ) async -> AsyncStream<ChatEvent> {
+        guard !Task.isCancelled else { return cancelledStream() }
         if let command = SlashCommand(rawText: text) {
             return await dispatch(command: command, model: model)
         }
@@ -184,6 +188,7 @@ public actor ChatSession {
             prior.cancel()
             await prior.value
         }
+        guard !Task.isCancelled else { return cancelledStream() }
 
         liveTurn = LiveTurn()
         let subscription = subscribe()
@@ -199,12 +204,14 @@ public actor ChatSession {
     /// Re-runs the persisted turn without inserting another user message.
     public func retry(
         model: LLMModel,
-        temperature: Double = 1.0
+        temperature: Double = ChatSessionConfiguration.defaultTemperature
     ) async -> AsyncStream<ChatEvent> {
+        guard !Task.isCancelled else { return cancelledStream() }
         if let prior = currentTask {
             prior.cancel()
             await prior.value
         }
+        guard !Task.isCancelled else { return cancelledStream() }
 
         liveTurn = LiveTurn()
         let subscription = subscribe()
@@ -303,6 +310,13 @@ public actor ChatSession {
         await currentTask?.value
     }
 
+    private func cancelledStream() -> AsyncStream<ChatEvent> {
+        AsyncStream { continuation in
+            continuation.yield(.error(.cancelled))
+            continuation.finish()
+        }
+    }
+
     private func run(
         userText: String,
         references: [RecordReference],
@@ -373,8 +387,9 @@ public actor ChatSession {
         temperature: Double,
         provider: LLMProvider
     ) async throws {
-        let nativeSearch = NativeWebSearch.usesNativeSearch(model)
-        let mockSearch = NativeWebSearch.usesMockSearch(model)
+        let toolsEnabled = configuration.tools == .enabled
+        let nativeSearch = toolsEnabled && NativeWebSearch.usesNativeSearch(model)
+        let mockSearch = toolsEnabled && NativeWebSearch.usesMockSearch(model)
         // Approval and refusal apply only to this user message's tool loop.
         var searchApproved = false
         var searchDeclined = false
@@ -386,10 +401,10 @@ public actor ChatSession {
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
-            var tools = CompactToolPolicy.filter(
+            var tools = toolsEnabled ? CompactToolPolicy.filter(
                 await toolRegistry.enabledTools(for: provider),
                 tier: ModelContextTier(maxContextTokens: model.maxContextTokens)
-            )
+            ) : []
             // Native search uses the sentinel after approval; mock search stays client-side.
             let nativeProposalActive = nativeSearch && askBeforeSearching && !searchApproved && !searchDeclined
             let mockProposalActive = mockSearch && !searchApproved && !searchDeclined
@@ -545,7 +560,8 @@ public actor ChatSession {
         async let tools = toolRegistry.enabledTools()
         let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
         // Match the tier-filtered live request; transient search tools are a deliberate undercount.
-        let budgetedTools = CompactToolPolicy.filter(await tools, tier: tier)
+        let budgetedTools = configuration.tools == .enabled
+            ? CompactToolPolicy.filter(await tools, tier: tier) : []
         let briefings = await selectedBriefings(for: tier)
         return try await contextAssembler.assemble(
             messages: messages,
@@ -556,7 +572,8 @@ public actor ChatSession {
             appletBriefings: briefings.applets,
             userPersonalization: currentUserPersonalization,
             memories: memories,
-            tools: budgetedTools
+            tools: budgetedTools,
+            allowsWebSearch: configuration.tools == .enabled
         )
     }
 
@@ -674,7 +691,10 @@ public actor ChatSession {
             model: model,
             tools: tools,
             temperature: temperature,
-            options: LLMRequestOptions(conversationCacheKey: conversationId)
+            options: LLMRequestOptions(
+                conversationCacheKey: conversationId,
+                requiresCompleteResponse: configuration.requiresCompleteResponse
+            )
         )
 
         liveTurn?.accumulatedText = ""
@@ -691,6 +711,15 @@ public actor ChatSession {
 
         for try await event in stream {
             try Task.checkCancellation()
+            if configuration.requiresCompleteResponse, capturedUsage != nil {
+                switch event {
+                case .error(let error): throw error
+                case .textDelta, .thinkingDelta, .thinkingSignature, .toolUse,
+                     .messageStart, .contentBlockStart:
+                    throw LLMError.requestFailed("The response continued after it finished. Try again.")
+                default: break
+                }
+            }
             switch event {
             case .messageStart, .contentBlockStart, .contentBlockStop:
                 break
@@ -707,6 +736,9 @@ public actor ChatSession {
                 // Anthropic requires verbatim signed-thinking replay in tool loops.
                 capturedThinkingSignature = signature
             case .toolUse(_, let id, let name, let input, let signature):
+                guard configuration.tools == .enabled else {
+                    throw LLMError.requestFailed("The model returned a tool call instead of a response. Try again.")
+                }
                 pendingCalls.append((id, name, input, signature))
             case .searchStarted(let query):
                 searchStartedQuery = query
@@ -726,7 +758,17 @@ public actor ChatSession {
             }
         }
 
+        if configuration.requiresCompleteResponse { try Task.checkCancellation() }
         if let err = streamError { throw err }
+        if configuration.requiresCompleteResponse {
+            guard capturedUsage != nil else {
+                throw LLMError.requestFailed("The response was interrupted before it finished. Try again.")
+            }
+            if configuration.tools == .disabled,
+               (liveTurn?.accumulatedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw LLMError.requestFailed("The model returned an empty response. Try again or choose another model.")
+            }
+        }
 
         // Cache telemetry records counts only, never message content.
         if let usage = capturedUsage {

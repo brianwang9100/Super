@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import SwiftUI
 
@@ -83,59 +84,8 @@ extension MessageList {
         }
     }
 
-    /// Action replaces Retry only when both actionLabel and action are set.
     /// Disable retry for voice failures: the default retry resends the last LLM message.
-    /// Equality ignores action closure identity.
-    public struct ErrorState: Sendable, Equatable {
-        /// Distinguishes origins so resolving one condition does not clear an unrelated error.
-        public enum Kind: Sendable, Equatable {
-            case generic
-            case noModelConfigured
-        }
-
-        public let message: String
-        public let detail: String?
-        public let actionLabel: String?
-        public let action: (@MainActor @Sendable () -> Void)?
-        public let showsRetry: Bool
-        public let kind: Kind
-
-        public init(
-            message: String,
-            detail: String? = nil,
-            actionLabel: String? = nil,
-            action: (@MainActor @Sendable () -> Void)? = nil,
-            showsRetry: Bool = true,
-            kind: Kind = .generic
-        ) {
-            self.message = message
-            self.detail = detail
-            self.actionLabel = actionLabel
-            self.action = action
-            self.showsRetry = showsRetry
-            self.kind = kind
-        }
-
-        public static func noModelConfigured(
-            onAddModel: @escaping @MainActor @Sendable () -> Void
-        ) -> ErrorState {
-            ErrorState(
-                message: "Add a model to send messages.",
-                actionLabel: "Add model",
-                action: onAddModel,
-                showsRetry: false,
-                kind: .noModelConfigured
-            )
-        }
-
-        public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
-            lhs.message == rhs.message
-                && lhs.detail == rhs.detail
-                && lhs.actionLabel == rhs.actionLabel
-                && lhs.showsRetry == rhs.showsRetry
-                && lhs.kind == rhs.kind
-        }
-    }
+    public typealias ErrorState = ResponseErrorState
 
     /// An explicit user action that positions a turn at the top. A new
     /// sequence can refocus the same message when retrying or regenerating.
@@ -147,5 +97,19 @@ extension MessageList {
             self.messageID = messageID
             self.sequence = sequence
         }
+    }
+}
+
+extension ResponseErrorState {
+    public static func noModelConfigured(
+        onAddModel: @escaping @MainActor @Sendable () -> Void
+    ) -> ResponseErrorState {
+        ResponseErrorState(
+            message: "Add a model to send messages.",
+            actionLabel: "Add model",
+            action: onAddModel,
+            showsRetry: false,
+            kind: .noModelConfigured
+        )
     }
 }
