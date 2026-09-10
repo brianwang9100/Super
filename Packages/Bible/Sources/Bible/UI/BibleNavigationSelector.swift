@@ -7,6 +7,8 @@ struct BibleNavigationSelector: View {
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var bookSize: CGFloat = 15
     @ScaledMetric(relativeTo: .body) private var translationSize: CGFloat = 11
+    // Mean of 66 book names at 15pt medium (59.62pt), plus " 12" (20pt), rounded up.
+    @ScaledMetric(relativeTo: .body) private var minimumLabelWidth: CGFloat = 80
 
     let bookName: String
     let chapterNumber: Int
@@ -32,7 +34,7 @@ struct BibleNavigationSelector: View {
                             .frame(height: 1)
                             .padding(.horizontal, 12)
                             .accessibilityHidden(true)
-                        passageButton
+                        passageButton(minimumWidth: nil)
                     }
                 }
             } else {
@@ -46,7 +48,7 @@ struct BibleNavigationSelector: View {
         HStack(spacing: 0) {
             historyButtons
             divider
-            passageButton
+            passageButton(minimumWidth: minimumLabelWidth * typography.fontScale)
         }
     }
 
@@ -59,7 +61,7 @@ struct BibleNavigationSelector: View {
         }
     }
 
-    private var passageButton: some View {
+    private func passageButton(minimumWidth: CGFloat?) -> some View {
         Button(action: onSelect) {
             VStack(spacing: 2) {
                 Text("\(bookName) \(chapterNumber)")
@@ -73,6 +75,7 @@ struct BibleNavigationSelector: View {
                     .foregroundStyle(theme.inkSoft)
                     .fixedSize()
             }
+            .frame(minWidth: minimumWidth)
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
             .frame(minHeight: 44)
