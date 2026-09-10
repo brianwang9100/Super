@@ -109,7 +109,7 @@ enum SuperBibleAppBootstrap {
                 return rows.compactMap { row in
                     guard ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL),
                           let ref = row.apiKeyRef else { return nil }
-                    return ProviderAudioCredential(id: row.id, name: "\(row.name) · \(row.id.prefix(6))", keyRef: ref)
+                    return ProviderAudioCredential(id: row.id, name: row.name, keyRef: ref)
                 }
             }
         )

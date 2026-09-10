@@ -101,7 +101,7 @@ struct OpenAINarrationSetupSheet: View {
                         Text(source.name).font(typography.font(.body)).tag(source.id)
                     }
                     ForEach(settings.sources) { source in
-                        Text(source.name).font(typography.font(.body)).tag(source.id)
+                        Text("Use existing key (\(source.name))").font(typography.font(.body)).tag(source.id)
                     }
                 }
                 .font(typography.font(.body))
