@@ -69,9 +69,9 @@ struct BibleNavBar: View {
             HStack(spacing: 0) {
                 Color.clear.frame(width: 44, height: 44)
                     .padding(.trailing, 8)
+                Spacer(minLength: 0)
                 centerControls(controls, wraps: false)
                     .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
             }
 
             VStack(spacing: 8) {
@@ -85,6 +85,7 @@ struct BibleNavBar: View {
                     Spacer(minLength: 0)
                 }
                 centerControls(controls, wraps: true)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .frame(maxWidth: .infinity)

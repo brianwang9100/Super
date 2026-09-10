@@ -4,6 +4,8 @@
 
 **Approach:** Keep the change inside the Bible package. `BibleNavBar` owns the shared glass surface and action segments; `BibleNavigationSelector` supplies history and passage content without a second glass surface. Preserve the existing adaptive layout and independent history/chapter navigation. The standalone selection citation and clear action share the same pill. The shell-hosted reader continues to show its selection controls at the bottom.
 
+**Alignment correction:** Anchor the shared pill to the top trailing edge with the existing 12pt outer inset. Move spare horizontal space before the controls and align the adaptive fallback's pill row to the trailing edge. Preserve sidebar clearance, compact-width geometry, and existing wrapping. Reuse the navbar/reader snapshots to verify alignment and refresh only inspected output; rebuild and relaunch the simulator app for user review. Obtain a fresh current-revision Codex review before merging the updated PR.
+
 ## Implementation
 
 - [x] Review this plan with a separate agent and address actionable findings. Include the UIKit narration lifecycle suite, which previously expected a bottom speaker.
@@ -31,3 +33,5 @@
 - Capture inventory remains 590 total, including 259 Bible captures. No fixture identities, sizes, or tolerances changed.
 - Scoped SwiftLint exits successfully with existing view-model warnings only; `git diff --check` passes.
 - PR creation, CI/Codex monitoring, and gated merge follow the delivery workflow.
+
+The alignment follow-up anchors both the primary pill and wrapped fallback to the trailing edge. Review found no actionable issues; compact-name geometry remains covered. SuperBible was rebuilt for interactive simulator inspection.
