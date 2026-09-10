@@ -143,12 +143,34 @@ struct EphemeralChatSessionTests {
         #expect(await !session.isStreaming)
     }
 
-    @Test("cancellation at a clean EOF cannot save the completed buffer")
-    func cancelledAtEOF() async throws {
+    @Test("only strict sessions reject completed output before the repository cancellation boundary", arguments: [false, true])
+    func cancelledAtEOF(requiresCompleteResponse: Bool) async throws {
         let provider = CancelAtEOFProvider()
-        let session = try await makeSession(provider: provider)
+        let database = try ChatDatabase.makeInMemory()
+        let clock = OrchestrationFixtures.defaultClock()
+        let ids = DeterministicIDGenerator()
+        let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
+        let messages = SaveAttemptMessageRepository(base: GRDBMessageRepository(database: database))
+        let providers = LLMProviderRegistry()
+        await providers.register(provider)
+        let session = ChatSession(
+            conversationId: conversation.id,
+            messageRepository: messages,
+            toolCallRepository: GRDBToolCallRepository(database: database),
+            checkpointRepository: GRDBCompactionCheckpointRepository(database: database),
+            llmProviderRegistry: providers,
+            toolRegistry: ToolRegistry(),
+            compactor: OrchestrationFixtures.makeCompactor(
+                database: database, llmRegistry: providers, clock: clock, idGenerator: ids
+            ),
+            clock: clock,
+            idGenerator: ids,
+            configuration: .init(tools: .disabled, requiresCompleteResponse: requiresCompleteResponse)
+        )
         let events = await collect(session.send(text: "Question", model: provider.supportedModels[0]))
         await session.waitUntilFinished()
+        #expect(await messages.assistantSaveAttempts == (requiresCompleteResponse ? [] : ["Complete text"]))
+        // Ordinary Chat still delegates to GRDB, which cancels its write independently.
         #expect(events.contains { if case .error(.cancelled) = $0 { return true }; return false })
         #expect(!events.contains { if case .assistantMessageSaved = $0 { return true }; return false })
     }
@@ -172,6 +194,32 @@ struct EphemeralChatSessionTests {
         #expect(!events.contains { if case .assistantMessageSaved = $0 { return true }; return false })
         #expect(await !session.isStreaming)
     }
+}
+
+private actor SaveAttemptMessageRepository: MessageRepository {
+    let base: GRDBMessageRepository
+    private(set) var assistantSaveAttempts: [String] = []
+
+    init(base: GRDBMessageRepository) { self.base = base }
+
+    func save(_ record: MessageRecord) async throws {
+        if record.role == .assistant { assistantSaveAttempts.append(record.content) }
+        try await base.save(record)
+    }
+
+    func fetchAll(conversationId: String) async throws -> [MessageRecord] {
+        try await base.fetchAll(conversationId: conversationId)
+    }
+
+    func fetch(id: String) async throws -> MessageRecord? { try await base.fetch(id: id) }
+
+    func hasUserMessage(conversationId: String) async throws -> Bool {
+        try await base.hasUserMessage(conversationId: conversationId)
+    }
+
+    func delete(ids: [String]) async throws { try await base.delete(ids: ids) }
+
+    func deleteAll(conversationId: String) async throws { try await base.deleteAll(conversationId: conversationId) }
 }
 
 private struct CancelAtEOFProvider: LLMProvider {

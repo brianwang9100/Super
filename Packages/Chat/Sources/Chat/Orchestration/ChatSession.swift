@@ -758,7 +758,7 @@ public actor ChatSession {
             }
         }
 
-        try Task.checkCancellation()
+        if configuration.requiresCompleteResponse { try Task.checkCancellation() }
         if let err = streamError { throw err }
         if configuration.requiresCompleteResponse {
             guard capturedUsage != nil else {

@@ -94,3 +94,5 @@ Files: Core LLM error descriptions and Core UI/Responses error types/banner; `Ch
 - Live simulator: gpt-5.6-luna generated and saved a 1 Peter 2 annotation; closed while generating and reopened successfully. Sidebar retained only the two prior chat rows, with no annotation conversation.
 - SwiftLint completed successfully with existing repository warnings; no warnings in new session/error files.
 - Live regular Chat on the same gpt-5.6-luna configuration completed the follow-up prompt “Reply with only OK.” with “OK”.
+- PR #362 Codex review identified the unconditional post-EOF cancellation fence. The fence is now restricted to `requiresCompleteResponse`, preserving ordinary Chat's existing delegation to repository cancellation. A deterministic strict/non-strict test records assistant save attempts at that boundary; GRDB independently rejects the cancelled write, so this does not promise a completed normal response will persist after Stop.
+- Review follow-up validation: boundary regression failed on the unconditional fence and passed after scoping it; full Chat suite passed all 1,144 tests.
