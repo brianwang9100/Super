@@ -13,9 +13,8 @@ public final class BibleScreenViewModel {
     public private(set) var chapter: BibleChapter?
     public private(set) var translation: BibleTranslation = .defaultTranslation
 
-    public private(set) var bookSheet: BibleBookSheetViewModel?
-
-    public private(set) var isTranslationSheetPresented = false
+    /// The combined selector's isolated draft while its native sheet is presented.
+    public private(set) var selectionSheet: BibleSelectionSheetViewModel?
 
     /// Selection survives action-sheet dismissal.
     public private(set) var selectedVerses: Set<Int> = []
@@ -238,28 +237,31 @@ public final class BibleScreenViewModel {
         traverseHistory(to: navigationHistory.current)
     }
 
-    public func presentBookSheet() {
+    /// Open fresh passage/translation drafts with the current book expanded and chapter in view.
+    public func presentSelectionSheet() {
         guard !isRestoringNavigation else { return }
-        bookSheet = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
+        selectionSheet = BibleSelectionSheetViewModel(position: position, translation: translation, catalog: catalog)
     }
 
-    public func dismissBookSheet() {
-        bookSheet = nil
+    /// Discard the selector's drafts without changing the reader.
+    public func dismissSelectionSheet() {
+        selectionSheet = nil
     }
 
-    public func presentTranslationSheet() {
-        guard !isRestoringNavigation else { return }
-        isTranslationSheetPresented = true
-    }
-
-    public func dismissTranslationSheet() {
-        isTranslationSheetPresented = false
+    /// Apply both draft choices as one navigation/persistence update, then dismiss the selector.
+    func applySelection() {
+        guard !isRestoringNavigation, let selectionSheet else { return }
+        latestExplicitTranslation = selectionSheet.translation
+        let range = selectionSheet.verseRange
+        applyReference(position: selectionSheet.position, translation: selectionSheet.translation) {
+            range?.contains($0) ?? false
+        }
     }
 
     /// Closes the picker. A changed translation stops narration, reloads text, and persists;
     /// reselecting the current translation only closes.
     public func selectTranslation(_ selected: BibleTranslation) {
-        isTranslationSheetPresented = false
+        selectionSheet = nil
         latestExplicitTranslation = selected
         if isRestoringNavigation {
             queuedNavigationIntents.append(.translation(selected))
@@ -294,7 +296,7 @@ public final class BibleScreenViewModel {
         } else {
             visitChapter(destination)
         }
-        bookSheet = nil
+        selectionSheet = nil
     }
 
     /// Navigates with an inclusive 1-based verse range. Unknown books, invalid chapters,
@@ -380,7 +382,7 @@ public final class BibleScreenViewModel {
         pendingScrollVerse = selectedVerses.min()
         dismissActionSheet()
         persist()
-        bookSheet = nil
+        selectionSheet = nil
     }
 
     /// Call after issuing the scroll so later navigation cannot replay it.
@@ -769,8 +771,7 @@ public final class BibleScreenViewModel {
     private func dismissPresentedSheets() {
         dismissActionSheet()
         dismissNarrationSheet()
-        dismissBookSheet()
-        dismissTranslationSheet()
+        dismissSelectionSheet()
         dismissAnnotationSheet()
         dismissNoteList()
     }
@@ -1371,8 +1372,7 @@ public final class BibleScreenViewModel {
         isNarrationSheetPresented = false
         clearSelection()
         pendingScrollVerse = nil
-        bookSheet = nil
-        isTranslationSheetPresented = false
+        selectionSheet = nil
         presentedAnnotationTarget = nil
         presentedNoteList = nil
         presentedBookmarkSheet = nil

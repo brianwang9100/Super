@@ -6,7 +6,7 @@ struct BibleNavigationSelector: View {
     @Environment(\.superTypography) private var typography
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var bookSize: CGFloat = 15
-    @ScaledMetric(relativeTo: .body) private var translationSize: CGFloat = 13
+    @ScaledMetric(relativeTo: .body) private var translationSize: CGFloat = 11
 
     let bookName: String
     let chapterNumber: Int
@@ -18,8 +18,7 @@ struct BibleNavigationSelector: View {
     let morph: GlassMorphID
     let onBack: () -> Void
     let onForward: () -> Void
-    let onBook: () -> Void
-    let onTranslation: () -> Void
+    let onSelect: () -> Void
 
     var body: some View {
         Group {
@@ -28,19 +27,13 @@ struct BibleNavigationSelector: View {
                     horizontalRow
                         .fixedSize(horizontal: true, vertical: false)
                     VStack(spacing: 0) {
-                        HStack(spacing: 0) {
-                            historyButtons
-                            divider
-                            bookButton
-                                .frame(maxWidth: .infinity)
-                        }
+                        historyButtons
                         Rectangle()
                             .fill(theme.border.opacity(0.6))
                             .frame(height: 1)
                             .padding(.horizontal, 12)
                             .accessibilityHidden(true)
-                        translationButton
-                            .frame(maxWidth: .infinity)
+                        passageButton
                     }
                 }
             } else {
@@ -55,9 +48,7 @@ struct BibleNavigationSelector: View {
         HStack(spacing: 0) {
             historyButtons
             divider
-            bookButton
-            divider
-            translationButton
+            passageButton
         }
     }
 
@@ -70,40 +61,27 @@ struct BibleNavigationSelector: View {
         }
     }
 
-    private var bookButton: some View {
-        Button(action: onBook) {
-            Text("\(bookName) \(chapterNumber)")
-                .font(typography.font(size: bookSize, weight: .medium))
-                .foregroundStyle(theme.ink)
-                .lineLimit(wraps ? nil : 1)
-                .fixedSize(horizontal: !wraps, vertical: true)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(GlassHapticButtonStyle(.selection))
-        .accessibilityLabel("\(bookName) \(chapterNumber), choose book")
-    }
-
-    private var translationButton: some View {
-        Button(action: onTranslation) {
-            HStack(spacing: 4) {
+    private var passageButton: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 2) {
+                Text("\(bookName) \(chapterNumber)")
+                    .font(typography.font(size: bookSize, weight: .medium))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(wraps ? nil : 1)
+                    .fixedSize(horizontal: !wraps, vertical: true)
+                    .multilineTextAlignment(.center)
                 Text(translation.rawValue)
-                Image(systemName: "chevron.down")
-                    .font(typography.font(size: translationSize * 0.7, weight: .semibold))
+                    .font(typography.font(size: translationSize, weight: .medium))
+                    .foregroundStyle(theme.inkSoft)
+                    .fixedSize()
             }
-            .font(typography.font(size: translationSize, weight: .medium))
-            .foregroundStyle(theme.inkSoft)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
-        .accessibilityLabel("Translation \(translation.rawValue), choose translation")
+        .accessibilityLabel("\(bookName) \(chapterNumber), \(translation.name), choose passage and translation")
     }
 
     private var divider: some View {

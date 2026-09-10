@@ -150,21 +150,21 @@ struct BibleScreenViewModelTests {
     func presentingBookSheetExpandsCurrentBook() async {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2
-        #expect(viewModel.bookSheet == nil)
+        #expect(viewModel.selectionSheet == nil)
 
-        viewModel.presentBookSheet()
-        #expect(viewModel.bookSheet != nil)
-        #expect(viewModel.bookSheet?.expandedBookId == "1PE")
-        #expect(viewModel.bookSheet?.currentPosition == viewModel.position)
+        viewModel.presentSelectionSheet()
+        #expect(viewModel.selectionSheet != nil)
+        #expect(viewModel.selectionSheet?.bookPicker.expandedBookId == "1PE")
+        #expect(viewModel.selectionSheet?.bookPicker.currentPosition == viewModel.position)
     }
 
     @Test("dismissing the book sheet clears it")
     func dismissingBookSheetClearsIt() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        viewModel.presentBookSheet()
-        viewModel.dismissBookSheet()
-        #expect(viewModel.bookSheet == nil)
+        viewModel.presentSelectionSheet()
+        viewModel.dismissSelectionSheet()
+        #expect(viewModel.selectionSheet == nil)
     }
 
     @Test("reopening the book sheet hands a fresh view model anchored on the current chapter")
@@ -172,33 +172,33 @@ struct BibleScreenViewModelTests {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2
 
-        viewModel.presentBookSheet()
-        let firstSheet = viewModel.bookSheet
-        firstSheet?.query = "psalms"
-        firstSheet?.order = .alphabetical
-        viewModel.dismissBookSheet()
+        viewModel.presentSelectionSheet()
+        let firstSheet = viewModel.selectionSheet
+        firstSheet?.bookPicker.query = "psalms"
+        firstSheet?.bookPicker.order = .alphabetical
+        viewModel.dismissSelectionSheet()
 
-        viewModel.presentBookSheet()
-        let secondSheet = viewModel.bookSheet
+        viewModel.presentSelectionSheet()
+        let secondSheet = viewModel.selectionSheet
 
         #expect(secondSheet !== firstSheet)
-        #expect(secondSheet?.query.isEmpty == true)
-        #expect(secondSheet?.order == .traditional)
-        #expect(secondSheet?.expandedBookId == "1PE")
-        #expect(secondSheet?.initialScrollAnchor == .bookRow(bookId: "1PE"))
+        #expect(secondSheet?.bookPicker.query.isEmpty == true)
+        #expect(secondSheet?.bookPicker.order == .traditional)
+        #expect(secondSheet?.bookPicker.expandedBookId == "1PE")
+        #expect(secondSheet?.bookPicker.initialScrollAnchor == .bookRow(bookId: "1PE"))
     }
 
     @Test("selecting a chapter navigates there and closes the sheet")
     func selectingChapterNavigatesAndClosesSheet() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        viewModel.presentBookSheet()
+        viewModel.presentSelectionSheet()
 
         viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
         #expect(viewModel.position == BiblePosition(bookId: "ROM", chapterNumber: 8))
         #expect(viewModel.bookName == "Romans")
         #expect(viewModel.chapter?.number == 8)
-        #expect(viewModel.bookSheet == nil)
+        #expect(viewModel.selectionSheet == nil)
     }
 
     @Test("selecting an unknown book or out-of-range chapter is a no-op")
@@ -248,17 +248,19 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.translation == .asv)
     }
 
-    @Test("presenting and dismissing the translation sheet toggles the flag")
+    @Test("the translation tab shares the selector's presentation lifetime")
     func translationSheetPresentation() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.selectionSheet == nil)
 
-        viewModel.presentTranslationSheet()
-        #expect(viewModel.isTranslationSheetPresented)
+        viewModel.presentSelectionSheet()
+        viewModel.selectionSheet?.tab = .translation
+        #expect(viewModel.selectionSheet != nil)
+        #expect(viewModel.selectionSheet?.tab == .translation)
 
-        viewModel.dismissTranslationSheet()
-        #expect(viewModel.isTranslationSheetPresented == false)
+        viewModel.dismissSelectionSheet()
+        #expect(viewModel.selectionSheet == nil)
     }
 
     @Test("selecting a translation reloads the chapter and closes the sheet")
@@ -266,11 +268,11 @@ struct BibleScreenViewModelTests {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2, KJV
         let kjvChapter = viewModel.chapter
-        viewModel.presentTranslationSheet()
+        viewModel.presentSelectionSheet()
 
         viewModel.selectTranslation(.web)
         #expect(viewModel.translation == .web)
-        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.selectionSheet == nil)
         #expect(viewModel.chapter?.number == 2)
         #expect(viewModel.chapter != kjvChapter, "the chapter should re-render in WEB text")
     }
@@ -280,11 +282,11 @@ struct BibleScreenViewModelTests {
         let viewModel = makeViewModel()
         await viewModel.load()                          // KJV
         let kjvChapter = viewModel.chapter
-        viewModel.presentTranslationSheet()
+        viewModel.presentSelectionSheet()
 
         viewModel.selectTranslation(.kjv)
         #expect(viewModel.translation == .kjv)
-        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.selectionSheet == nil)
         #expect(viewModel.chapter == kjvChapter)
     }
 
@@ -1058,11 +1060,11 @@ struct BibleScreenViewModelTests {
     func openReferenceClosesBookSheet() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        viewModel.presentBookSheet()
-        #expect(viewModel.bookSheet != nil)
+        viewModel.presentSelectionSheet()
+        #expect(viewModel.selectionSheet != nil)
 
         viewModel.openReference(bookId: "JHN", chapterNumber: 1, verseStart: 1, verseEnd: nil)
-        #expect(viewModel.bookSheet == nil)
+        #expect(viewModel.selectionSheet == nil)
     }
 
     @Test("openReference sets pendingScrollVerse to the first verse")

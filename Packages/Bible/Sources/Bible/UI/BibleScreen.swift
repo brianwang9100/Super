@@ -23,20 +23,11 @@ public struct BibleScreen: View {
         return nil
     }
 
-    private var bookSheetBinding: Binding<BibleBookSheetViewModel?> {
+    private var selectionSheetBinding: Binding<BibleSelectionSheetViewModel?> {
         Binding(
-            get: { viewModel.bookSheet },
+            get: { viewModel.selectionSheet },
             set: { newValue in
-                if newValue == nil { viewModel.dismissBookSheet() }
-            }
-        )
-    }
-
-    private var translationSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.isTranslationSheetPresented },
-            set: { newValue in
-                if !newValue { viewModel.dismissTranslationSheet() }
+                if newValue == nil { viewModel.dismissSelectionSheet() }
             }
         )
     }
@@ -134,12 +125,9 @@ public struct BibleScreen: View {
             onOpenLink: { viewModel.navigateToDeepLink($0) },
             onAddToChat: { publishReferenceToChat($0, startNew: $1) }
         ))
-        .sheet(item: bookSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
+        .sheet(item: selectionSheetBinding, onDismiss: { studyPresentation.didDismiss(.book, identity: studyIdentity) }) { sheetViewModel in
             bookPicker(sheetViewModel)
                 .onAppear { studyPresentation.didPresent(.book, identity: studyIdentity) }
-        }
-        .sheet(isPresented: translationSheetBinding) {
-            translationPicker
         }
     }
 
@@ -258,8 +246,7 @@ public struct BibleScreen: View {
             narrationCitation: viewModel.narrationCitation,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
-            onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
-            onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
+            onPill: { withAnimation(motion.animation) { viewModel.presentSelectionSheet() } },
             onSelectionPill: { withAnimation(motion.animation) { viewModel.presentActionSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
             onSparkMenuAction: handleSparkAction,
@@ -305,33 +292,12 @@ public struct BibleScreen: View {
         return "\(book.name) \(position.chapterNumber)"
     }
 
-    private var translationPicker: some View {
-        BibleTranslationSheet(
-            current: viewModel.translation,
-            bottomInset: 0,
-            onSelect: { translation in
-                viewModel.selectTranslation(translation)
-            },
-            onClose: { viewModel.dismissTranslationSheet() }
-        )
-    }
-
-    /// The coordinator waits for native dismissal before presenting the selected annotation or note sheet.
-    private func bookPicker(_ sheetViewModel: BibleBookSheetViewModel) -> some View {
-        BibleBookSheet(
+    /// Book study actions continue only after the combined selector has finished native dismissal.
+    private func bookPicker(_ sheetViewModel: BibleSelectionSheetViewModel) -> some View {
+        BibleSelectionSheet(
             viewModel: sheetViewModel,
-            currentBookId: viewModel.position.bookId,
-            currentChapterNumber: viewModel.position.chapterNumber,
-            onSelectChapter: { bookId, chapterNumber in
-                viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
-            },
-            onSelectVerseRange: { bookId, chapterNumber, verseStart, verseEnd in
-                viewModel.openReference(
-                    bookId: bookId, chapterNumber: chapterNumber,
-                    verseStart: verseStart, verseEnd: verseEnd
-                )
-            },
-            onClose: { viewModel.dismissBookSheet() },
+            onRead: { viewModel.applySelection() },
+            onClose: { viewModel.dismissSelectionSheet() },
             onPresentBookAnnotations: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }
             },
@@ -341,9 +307,9 @@ public struct BibleScreen: View {
             onPresentBookNotes: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentNoteList(for: .book(bookId: bookId)) }
             },
-            generatingBookIds: generatingBookIds,
-            bottomInset: 0
+            generatingBookIds: generatingBookIds
         )
+        .disabled(viewModel.isRestoringNavigation)
     }
 
     private var chapterContent: some View {

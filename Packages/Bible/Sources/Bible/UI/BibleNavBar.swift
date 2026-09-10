@@ -36,7 +36,6 @@ struct BibleNavBar: View {
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
-    let onTranslation: () -> Void
     let onSelectionPill: () -> Void
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
@@ -128,7 +127,7 @@ struct BibleNavBar: View {
             wraps: wraps, isRestoring: isRestoringNavigation,
             morph: GlassMorphID("nav.center", in: glassNamespace),
             onBack: controls.onBack, onForward: controls.onForward,
-            onBook: onPill, onTranslation: onTranslation
+            onSelect: onPill
         )
     }
 
