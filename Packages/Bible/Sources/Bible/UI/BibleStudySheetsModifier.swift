@@ -125,6 +125,9 @@ struct BibleStudySheetsModifier: ViewModifier {
                 onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
                 onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
                 onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
+                onNarrate: narrationContent == nil ? nil : {
+                    withAnimation(motion.animation) { viewModel.startNarration() }
+                },
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onAnnotate: { presentation.annotateSelection() },
