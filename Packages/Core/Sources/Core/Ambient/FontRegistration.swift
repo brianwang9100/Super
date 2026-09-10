@@ -3,44 +3,14 @@ import Foundation
 import os
 
 public extension Core {
-    /// Register the brand fonts shipped in `Bundle.module/Resources/Fonts/`
-    /// with the Core Text font manager so callers can resolve them via
-    /// `Font.custom("EBGaramond-Italic", size:)` and similar.
-    ///
-    /// Idempotent: re-entry is a no-op. The host must call this once before
-    /// the first SwiftUI render that asks for a bundled face.
-    ///
-    /// Bundled fonts (all four EB Garamond faces share the family name
-    /// `"EB Garamond"`, so weight/italic traits resolve to the right member
-    /// when a caller references the *family* — see `SuperTypography`):
-    /// - `EBGaramond-Italic.ttf` — splash wordmark + brand display (italic)
-    /// - `EBGaramond-Regular.ttf` — reading body (Bible verses, assistant text)
-    /// - `EBGaramond-SemiBold.ttf` / `EBGaramond-SemiBoldItalic.ttf` —
-    ///   markdown **strong** / section-heading weight (+ strong-emphasis)
-    /// - `JetBrainsMono-Regular.ttf` — splash version mark + numeric chrome
+    /// Registers bundled fonts once. Call before the first SwiftUI render.
     static func registerBundledFonts() {
         _ = FontRegistration.didRegister
     }
 }
 
-/// Internal one-shot registrar. The `static let` runs exactly once thanks to
-/// Swift's lazy static initialization, so callers don't need their own guard.
-///
-/// Each font is looked up by name+subdirectory rather than scanning the
-/// bundle for any `.ttf`. A missing or renamed file therefore surfaces as
-/// a *named* failure ("EBGaramond-Italic.ttf not found"), not as an
-/// empty enumeration result the caller can mistake for "no fonts to
-/// register." Registration failures (sandbox denial, CoreText rejecting the
-/// table layout) are surfaced two ways: `assertionFailure` halts debug
-/// builds with a named cause, and `os_log(.fault)` records the failure in
-/// release. Without these, `Font.custom(...)` would silently fall back to
-/// system faces and the splash would ship off-design with no breadcrumb.
+/// Reports named failures because `Font.custom` otherwise silently falls back.
 private enum FontRegistration {
-    /// Font face name (matches PostScript name, used at the `Font.custom`
-    /// call site) → file path under `Bundle.module/Resources/Fonts/`.
-    /// The four EB Garamond faces share family `"EB Garamond"` with distinct
-    /// weights/slants so `Font.custom("EB Garamond").weight(_:)` / `.italic()`
-    /// select the true member instead of synthesizing one.
     private static let bundledFaces: [(name: String, fileName: String)] = [
         ("EBGaramond-Regular", "EBGaramond-Regular"),
         ("EBGaramond-Italic", "EBGaramond-Italic"),
@@ -53,10 +23,7 @@ private enum FontRegistration {
         let log = Logger(subsystem: "com.brianwang.Super.Core", category: "FontRegistration")
         var allOK = true
         for face in bundledFaces {
-            // SwiftPM `.process("Resources")` flattens the source tree
-            // (`Resources/Fonts/*.ttf`) into the bundle root, so we look up
-            // by file name without a subdirectory. Confirmed by inspecting
-            // the built `Core_Core.bundle` — all the .ttfs sit at the root.
+            // SwiftPM processing flattens Resources/Fonts into the bundle root.
             guard let url = Bundle.module.url(
                 forResource: face.fileName,
                 withExtension: "ttf"
@@ -67,17 +34,12 @@ private enum FontRegistration {
                 continue
             }
             var cfError: Unmanaged<CFError>?
-            // `.process` scope registers the font for the lifetime of the
-            // running process — the right choice on iOS, where `.persistent`
-            // is rejected in the app sandbox.
+            // Persistent registration is rejected by the iOS sandbox; use process lifetime.
             let ok = CTFontManagerRegisterFontsForURL(url as CFURL, .process, &cfError)
             if !ok {
                 let err = cfError?.takeRetainedValue()
                 let code = err.map { CFErrorGetCode($0) }
-                // `kCTFontManagerErrorAlreadyRegistered` is benign — the
-                // host (or a prior call in the same process) already
-                // registered the face, and `Font.custom` will resolve it.
-                // Treat as success rather than tripping `assertionFailure`.
+                // An already registered face resolves correctly and is not a failure.
                 if code == CTFontManagerError.alreadyRegistered.rawValue {
                     continue
                 }

@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Search pane. Holds the global native web-search cost gate — the
-/// "Ask before each search" toggle (default ON). Native web search runs
-/// against the model's own BYOK key and costs money per query, so the
-/// default is to surface an inline confirm prompt before each search.
-///
-/// Phase 2 (standalone Tavily/Brave) expands this same pane with per-
-/// provider key entry and a max-results control; the cost gate stays the
-/// first row.
 struct SettingsSearchPane: View {
     @Bindable var viewModel: SettingsViewModel
 

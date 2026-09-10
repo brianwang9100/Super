@@ -3,15 +3,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Smoke checks for `BibleApplet` conformance. These don't render anything —
-/// they verify the metadata the shell's `AppletRegistry` and sidebar rely on
-/// so a future rename or accidental id flip surfaces here before the app
-/// silently loses its persisted backdrop selection.
 @Suite("BibleApplet conformance")
 @MainActor
 struct BibleAppletTests {
-    /// Build the applet via its test seam — an in-memory view model with no
-    /// persistence, so the suite never opens the real on-disk database.
     private func makeApplet() -> BibleApplet {
         BibleApplet(viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()))
     }
@@ -60,10 +54,7 @@ struct BibleAppletTests {
 
     @Test("appletID is stable and matches the persisted shell value")
     func appletIDMatchesPlaceholderPersistence() {
-        // The shell reads `UserDefaults["shell.activeAppletID"]` at launch.
-        // The previous `BiblePlaceholderApplet` wrote "bible" — the new
-        // applet must keep the same id or every existing install loses
-        // their persisted backdrop choice on upgrade.
+        // Preserve existing saved backdrop IDs.
         #expect(BibleApplet.appletID == "bible")
         #expect(makeApplet().appletID == "bible")
     }
@@ -75,8 +66,6 @@ struct BibleAppletTests {
 
     @Test("icon view renders without throwing for the sidebar size")
     func iconViewCompiles() {
-        // Touching `body` would force a SwiftUI render pipeline; here we
-        // just confirm the protocol contract returns a non-empty `AnyView`.
         _ = makeApplet().iconView(size: 20)
     }
 
@@ -94,23 +83,16 @@ struct BibleAppletTests {
     @Test("systemPrompt loads the bundled SystemPrompt.md")
     func systemPromptLoaded() {
         let body = makeApplet().systemPrompt
-        // We assert structural shape, not literal wording, so the test
-        // doesn't churn every time the prompt is edited.
         #expect(!body.isEmpty)
         #expect(body.contains("Bible applet"))
     }
 
-    /// Regression: the applet briefing must teach the model to reserve
-    /// `bible.annotate` for explicit annotate requests (so a plain
-    /// "give me context on this verse" is answered in chat, not
-    /// silently annotated). Before this guidance the prompt never
-    /// mentioned the tool, so the model annotated on context requests.
+    /// Context requests previously triggered silent annotations; only explicit requests should annotate.
     @Test("systemPrompt steers annotate vs. answering in chat")
     func systemPromptSteersAnnotateBehavior() {
         let body = makeApplet().systemPrompt
         #expect(body.contains("bible.annotate"))
         #expect(body.lowercased().contains("explicitly asks to *annotate*"))
-        // Free-text note requests route to `bible.note`, not annotate.
         #expect(body.contains("bible.note"))
     }
 
@@ -118,18 +100,13 @@ struct BibleAppletTests {
     func compactSystemPromptLoaded() {
         let applet = makeApplet()
         let compact = applet.compactSystemPrompt
-        // Packaging tripwire (an empty result silently falls back to the
-        // full briefing downstream and forfeits the window savings) +
-        // length guard on the file's reason to exist.
+        // An empty compact resource silently falls back to the full briefing downstream.
         #expect(!compact.isEmpty)
         #expect(compact != applet.systemPrompt)
         #expect(compact.count < applet.systemPrompt.count / 2)
     }
 
-    /// The compact tier drops `bible.annotate`/`bible.note` from the tool
-    /// set (Chat's `CompactToolPolicy`), so the compact briefing must not
-    /// describe them — prose about tools the model can't call invites
-    /// hallucinated calls. The kept grounding tools stay covered.
+    /// Describing tools omitted by CompactToolPolicy invites hallucinated calls.
     @Test("compactSystemPrompt omits dropped-tool guidance, keeps grounding tools")
     func compactSystemPromptMatchesCompactToolSet() {
         let compact = makeApplet().compactSystemPrompt
@@ -142,7 +119,6 @@ struct BibleAppletTests {
     func suggestedChatActions() {
         let actions = makeApplet().suggestedChatActions
         #expect(!actions.isEmpty)
-        // Labels are short button text; messages are the prompts actually sent.
         #expect(actions.allSatisfy { !$0.label.isEmpty && !$0.message.isEmpty })
         #expect(actions.contains { $0.label == "Today's reading" })
     }
@@ -157,14 +133,11 @@ struct BibleAppletTests {
         let bus = SuperEventBus()
         await applet.attach(to: bus)
 
-        // Arm a continuation that fires *after* the inbox has processed
-        // the next event — synchronisation by `await`, never `sleep`.
         await withCheckedContinuation { continuation in
             applet._referenceInbox._onNextEvent {
                 continuation.resume()
             }
-            // Publish on a child task so the continuation arming above
-            // is already in place when the subscriber handles the event.
+            // Publish after arming the completion continuation to avoid missing the event.
             Task {
                 let reference = BibleDeepLink(
                     bookId: "ROM", chapter: 8, verseStart: 28, verseEnd: 30
@@ -233,8 +206,6 @@ struct BibleAppletTests {
         #expect(viewModel.position == original)
     }
 
-    /// Build an applet with a real searcher over the bundled FTS index, so the
-    /// merged `bible.lookup` tool (which no-ops without a searcher) registers.
     private func makeSearchableApplet() throws -> BibleApplet {
         BibleApplet(
             viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()),
@@ -252,7 +223,6 @@ struct BibleAppletTests {
         #expect(lookup.isEnabled)
         #expect(lookup.tool.category == .query)
 
-        // Dispatch the read action through the registry against the real bundled KJV text.
         let result = try await registry.execute(
             toolID: LookupBibleTool.toolID,
             input: [
@@ -271,7 +241,6 @@ struct BibleAppletTests {
         let registry = ToolRegistry()
         await (try makeSearchableApplet()).registerLookupTool(in: registry)
 
-        // Dispatch the search action through the registry against the real bundled KJV text.
         let result = try await registry.execute(
             toolID: LookupBibleTool.toolID,
             input: [
@@ -290,9 +259,7 @@ struct BibleAppletTests {
         let registry = ToolRegistry()
         await (try makeSearchableApplet()).registerLookupTool(in: registry)
 
-        // "shepherd" appears in both Psalms (23:1) and John (10:11); scoping to
-        // Psalms must include the Psalm 23 hit and exclude the John one — proof
-        // the catalog-resolved book id ("PSA") actually filters the bundled rows.
+        // "shepherd" occurs in Psalms and John, so this proves the resolved book ID filters rows.
         let result = try await registry.execute(
             toolID: LookupBibleTool.toolID,
             input: [
@@ -309,8 +276,7 @@ struct BibleAppletTests {
     @Test("registerLookupTool is a no-op when the bundled text DB is unavailable")
     func registerLookupToolNoSearcherNoOp() async throws {
         let registry = ToolRegistry()
-        // `makeApplet()` builds without a searcher (textSearcher nil), so both
-        // the read loader and the searcher would be non-functional — nothing to register.
+        // Without a searcher the combined lookup tool must not register.
         await makeApplet().registerLookupTool(in: registry)
         let registrations = await registry.allRegistrations()
         #expect(!registrations.contains { $0.tool.id == LookupBibleTool.toolID })
@@ -323,12 +289,7 @@ struct BibleAppletTests {
 
         let applet = BibleApplet(viewModel: viewModel)
         let bus = SuperEventBus()
-        // PR4 onwards `BibleApplet.attach(to:)` wires both the
-        // `BibleReferenceInbox` (inbound `openRecord`) and the
-        // `BibleScreenViewModel` (inbound `bibleAnnotateCompleted`),
-        // so the absolute subscriber count after the first attach is
-        // implementation-defined. The load-bearing invariant is that
-        // the *second* attach doesn't change it.
+        // Several observers attach here; idempotence matters, not the absolute subscriber count.
         await applet.attach(to: bus)
         let firstCount = await bus.subscriberCount
         await applet.attach(to: bus)

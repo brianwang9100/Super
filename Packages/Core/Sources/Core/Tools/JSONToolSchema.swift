@@ -1,26 +1,12 @@
 import Foundation
 
-/// Renders an `LLMTool`'s declarative `[LLMToolParameter]` into the JSON-Schema
-/// `{ "type": "object", "properties": {…}, "required": […] }` object that every
-/// HTTP LLM (Large Language Model) adapter sends as a function/tool parameter
-/// schema (OpenAI `parameters`, Anthropic `input_schema`, Gemini `parameters`).
-///
-/// Centralizing it here is the single place that knows to emit JSON-Schema
-/// `items` for an `.array` parameter and nested `properties` for an `.object` —
-/// without which the native Gemini `generateContent` validator rejects the tool
-/// declaration with HTTP 400 (`parameters.properties[x].items: missing field`).
-/// The Apple Foundation path keeps its own `DynamicGenerationSchemaBuilder`
-/// (Apple's `GenerationSchema` is a different shape, not JSON Schema).
+/// Shared HTTP-adapter schema; the AFM GenerationSchema builder has a separate mapping.
 public enum JSONToolSchema {
-    /// The top-level parameters object for a tool's declared parameters.
     public static func parametersObject(for parameters: [LLMToolParameter]) -> JSONValue {
         objectSchema(properties: parameters)
     }
 
-    /// `{ "type": "object", "properties": {…}, "required": […] }` for a set of
-    /// named properties. `required` is omitted when empty — some local OpenAI
-    /// shims reject `"required": []`, and the spec treats absent and empty as
-    /// equivalent.
+    // Omit an empty required list because some local OpenAI shims reject required: [].
     private static func objectSchema(properties parameters: [LLMToolParameter]) -> JSONValue {
         var properties: [String: JSONValue] = [:]
         var required: [String] = []
@@ -38,8 +24,6 @@ public enum JSONToolSchema {
         return .object(object)
     }
 
-    /// One named parameter's schema, carrying its `description` alongside the
-    /// type-driven shape (`enum`, `items`, nested `properties`).
     private static func propertySchema(for parameter: LLMToolParameter) -> JSONValue {
         var fields = typeFields(
             type: parameter.type,
@@ -51,8 +35,6 @@ public enum JSONToolSchema {
         return .object(fields)
     }
 
-    /// The `{ "type": …, "enum"?, "items"?, "properties"?, "required"? }` fields
-    /// for a value of the given `type`, before any `description` is attached.
     private static func typeFields(
         type: ParameterType,
         enumValues: [String]?,
@@ -65,10 +47,8 @@ public enum JSONToolSchema {
         }
         switch type {
         case .array:
-            // JSON Schema requires `items`; native Gemini 400s without it. A
-            // missing `valueSchema` is a misconfigured tool — assert in debug,
-            // and fall back to string items so we never ship an array with no
-            // `items`.
+            // Gemini rejects arrays without items. Assert misconfiguration in debug and
+            // fall back to string items in release.
             guard let valueSchema else {
                 assertionFailure(
                     "array parameter '\(parameterName)' has no valueSchema; emitting string items"
@@ -78,7 +58,6 @@ public enum JSONToolSchema {
             }
             fields["items"] = schema(for: valueSchema)
         case .object:
-            // Merge a nested object's properties/required up onto this schema.
             if case .object(let nestedProperties) = valueSchema,
                case .object(let nested) = objectSchema(properties: nestedProperties) {
                 fields["properties"] = nested["properties"] ?? .object([:])
@@ -90,8 +69,6 @@ public enum JSONToolSchema {
         return fields
     }
 
-    /// Recursively render a `ToolValueSchema` into a self-contained schema
-    /// object (used for array `items` and nested arrays).
     private static func schema(for valueSchema: ToolValueSchema) -> JSONValue {
         switch valueSchema {
         case .scalar(let type, let enumValues):
@@ -110,8 +87,6 @@ public enum JSONToolSchema {
         }
     }
 
-    /// `LLMToolParameter`/`ToolValueSchema` reuse Swift-friendly names (`bool`);
-    /// JSON Schema uses `boolean`. Translate at the boundary.
     public static func jsonSchemaType(for parameterType: ParameterType) -> String {
         switch parameterType {
         case .bool: return "boolean"

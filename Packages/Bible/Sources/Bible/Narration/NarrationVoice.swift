@@ -4,7 +4,6 @@ import Foundation
 
 /// Persistent voice identity, independent of the speech engine's framework objects.
 public struct NarrationVoice: Codable, Sendable, Equatable, Identifiable {
-    /// Company shown alongside every voice in the narration picker.
     public enum Company: String, Codable, Sendable { case apple, openAI }
     public let company: Company
     public let identifier: String

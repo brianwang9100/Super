@@ -1,17 +1,11 @@
 import Foundation
 
-/// A resolved bulk-annotation run: the ordered books and, per book, the
-/// chapter numbers to generate. Built from a `BulkSelection` plus the catalog
-/// (for display names). The real engine (follow-on PR) and the in-memory fake
-/// both consume this.
 public struct BulkRunPlan: Sendable, Equatable {
     public struct Book: Sendable, Equatable {
         public let bookID: String
         public let name: String
         public let chapters: [Int]
-        /// `true` when the user selected the *whole* book (every chapter), which
-        /// also generates one book-level annotation ahead of the chapters. A
-        /// partial chapter pick leaves this `false`.
+        /// Adds a book-level annotation before chapters for whole-book selections.
         public let includesBookLevel: Bool
         public init(bookID: String, name: String, chapters: [Int], includesBookLevel: Bool = false) {
             self.bookID = bookID
@@ -23,15 +17,10 @@ public struct BulkRunPlan: Sendable, Equatable {
 
     public let books: [Book]
 
-    /// When `false` (the default), the runner skips a unit whose target slot is
-    /// already annotated — preserving the existing card without an LLM call. When
-    /// `true`, every unit regenerates and replaces its slot (the prior behavior).
+    /// False preserves existing target slots without generation; true replaces them.
     public let overwriteExisting: Bool
 
-    /// When `true`, each chapter in the run also enqueues a `chapterVerses` unit —
-    /// one dispatch turn that annotates the chapter's most notable verse ranges
-    /// (in addition to the chapter summary). `false` (the default) keeps the run
-    /// at book + chapter granularity.
+    /// Adds one notable-verse dispatch per chapter alongside its summary.
     public let includesNotableVerses: Bool
 
     public init(books: [Book], overwriteExisting: Bool = false, includesNotableVerses: Bool = false) {
@@ -43,18 +32,11 @@ public struct BulkRunPlan: Sendable, Equatable {
     public var isEmpty: Bool { books.allSatisfy { $0.chapters.isEmpty } }
 }
 
-/// The seam the hub view model drives. One job at a time; the runner owns the
-/// live `BulkRunSnapshot` and notifies the view model via `onSnapshotChange`
-/// (the view model mirrors it into its own `@Observable` state). The real
-/// `BulkAnnotationRunner` actor lands in a follow-on PR; this pass injects the
-/// in-memory `FakeBulkAnnotationRunner`.
+/// One active job; onSnapshotChange tells the view model to reread the snapshot.
 @MainActor
 public protocol BulkAnnotationRunning: AnyObject {
-    /// `nil` when idle; a snapshot while a job exists (running or paused).
+    /// Nil while idle; includes both running and paused jobs.
     var snapshot: BulkRunSnapshot? { get }
-    /// Called whenever `snapshot` changes so the view model re-reads. Marked
-    /// `@MainActor @Sendable` so the real `BulkAnnotationRunner` actor (follow-on)
-    /// can't invoke it without hopping to main first.
     var onSnapshotChange: (@MainActor @Sendable () -> Void)? { get set }
 
     func start(_ plan: BulkRunPlan)
@@ -63,11 +45,8 @@ public protocol BulkAnnotationRunning: AnyObject {
     func retryAllFailed()
     func cancel()
 
-    /// Re-adopt a finished run (from the hub's "Recently finished" list) as the
-    /// active job: revive its failed units and resume generation. A no-op when a
-    /// run is already active (one job at a time) or the id isn't a terminal run.
+    /// Revives failed work in a terminal run; no-op while another run is active or for a nonterminal ID.
     func resume(runID: String)
-    /// Remove a finished run from the ledger (the list's dismiss control). A
-    /// no-op for the active run, which is torn down via `cancel()` instead.
+    /// No-op for the active run; cancel it through cancel() instead.
     func dismissFinishedRun(id: String)
 }

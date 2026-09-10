@@ -2,7 +2,6 @@ import Core
 import Testing
 @testable import Bible
 
-/// Protects the internal reader handoff grammar and its exact selection/translation payload.
 @Suite("BibleReaderReference")
 struct BibleReaderReferenceTests {
     @Test(arguments: [Set<Int>(), [28], [28, 29, 30], [28, 30]])

@@ -33,7 +33,6 @@ public struct TaskDraft: Sendable, Equatable {
         self.labelIds = labelIds
     }
 
-    /// A blank draft for the create flow.
     public static let empty = TaskDraft()
 }
 
@@ -61,16 +60,13 @@ public struct TodoToastMessage: Sendable, Equatable, Identifiable {
 @Observable
 @MainActor
 public final class TodoScreenViewModel {
-    /// Whether a create or edit draft is open.
     public enum DraftMode: Sendable { case create, edit }
 
-    // User-driven UI state
     public var filter: TodoFilter = .defaults
     public var draft: TaskDraft?
     public var draftMode: DraftMode = .create
     public var toast: TodoToastMessage?
 
-    // Injected
     private let taskRepository: any TaskRepository
     private let labelRepository: any LabelRepository
     private let joinRepository: any TaskLabelRepository
@@ -103,8 +99,6 @@ public final class TodoScreenViewModel {
         self.calendar = calendar
     }
 
-    /// Current instant from the injected clock — read by the screen for
-    /// filtering and grouping.
     public var now: Date { clock.now() }
 
     // MARK: Mutators
@@ -116,7 +110,6 @@ public final class TodoScreenViewModel {
         await setState(taskID: row.task.id, to: next)
     }
 
-    /// Set a task's state. The reactive query refreshes the row.
     public func setState(taskID: String, to newState: TaskState) async {
         do {
             try await taskRepository.setState(id: taskID, state: newState, at: clock.now())
@@ -141,13 +134,11 @@ public final class TodoScreenViewModel {
         }
     }
 
-    /// Open a blank create draft.
     public func beginCreate() {
         draft = .empty
         draftMode = .create
     }
 
-    /// Open an edit draft pre-filled from `row`.
     public func beginEdit(_ row: TaskWithLabels) {
         draft = TaskDraft(
             id: row.task.id,
@@ -161,7 +152,6 @@ public final class TodoScreenViewModel {
         draftMode = .edit
     }
 
-    /// Discard the open draft.
     public func cancelDraft() {
         draft = nil
     }
@@ -182,42 +172,36 @@ public final class TodoScreenViewModel {
     // still commit a final value, and without the `nil` guard that late write
     // would resurrect a dismissed editor as a blank task.
 
-    /// Set the open draft's title; no-op when no draft is open.
     public func setDraftTitle(_ title: String) {
         guard var draft else { return }
         draft.title = title
         self.draft = draft
     }
 
-    /// Set the open draft's notes; no-op when no draft is open.
     public func setDraftNotes(_ notes: String) {
         guard var draft else { return }
         draft.notes = notes
         self.draft = draft
     }
 
-    /// Set the open draft's priority; no-op when no draft is open.
     public func setDraftPriority(_ priority: TaskPriority) {
         guard var draft else { return }
         draft.priority = priority
         self.draft = draft
     }
 
-    /// Set the open draft's due date (or clear it); no-op when no draft is open.
     public func setDraftDueAt(_ dueAt: Date?) {
         guard var draft else { return }
         draft.dueAt = dueAt
         self.draft = draft
     }
 
-    /// Set the open draft's label ids; no-op when no draft is open.
     public func setDraftLabelIds(_ labelIds: [String]) {
         guard var draft else { return }
         draft.labelIds = labelIds
         self.draft = draft
     }
 
-    /// Set the open draft's state; no-op when no draft is open.
     public func setDraftState(_ state: TaskState) {
         guard var draft else { return }
         draft.state = state

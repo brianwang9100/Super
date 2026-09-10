@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `AnnotationSnapshotComposer` — the pure markdown formatter
-/// that fills `RecordReference.snapshot` when an annotation is added to
-/// chat.
 @Suite("AnnotationSnapshotComposer")
 struct AnnotationSnapshotComposerTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

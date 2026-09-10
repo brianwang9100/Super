@@ -4,7 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Verifies the foreground stream's save boundary independently of the chat loop.
 @Suite("BibleAnnotationStreamGenerator")
 struct BibleAnnotationStreamGeneratorTests {
     private let complete = LLMStreamEvent.messageComplete(usage: TokenUsage(inputTokens: 3, outputTokens: 5))

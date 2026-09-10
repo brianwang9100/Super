@@ -1,11 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleParagraphBlock.flowItems(_:annotationsByVerseEnd:notesByVerseEnd:)`
-/// — the pure projection that interleaves verse words with their trailing
-/// annotation bubbles and note glyphs inside `VerseFlowLayout`. Locks the
-/// "word, then bubble(s), then note(s) per `isVerseEnd` token, then next word"
-/// contract that snapshot tests can't surface in isolation.
 @Suite("BibleParagraphBlock.flowItems")
 @MainActor
 struct BibleParagraphBlockFlowItemsTests {
@@ -65,7 +60,6 @@ struct BibleParagraphBlockFlowItemsTests {
             annotationsByVerseEnd: [30: [Self.spec1, Self.spec2]],
             notesByVerseEnd: [:]
         )
-        // word + two bubbles, bubbles in argument order.
         #expect(items.count == 3)
         #expect(items[1] == .bubble(Self.spec1))
         #expect(items[2] == .bubble(Self.spec2))
@@ -95,7 +89,6 @@ struct BibleParagraphBlockFlowItemsTests {
             annotationsByVerseEnd: [30: [Self.spec1, Self.spec2]],
             notesByVerseEnd: [30: [Self.note1, Self.note2]]
         )
-        // word + two bubbles + two notes, in [word, bubbles…, notes…] order.
         #expect(items.count == 5)
         #expect(items[1] == .bubble(Self.spec1))
         #expect(items[2] == .bubble(Self.spec2))
@@ -105,9 +98,7 @@ struct BibleParagraphBlockFlowItemsTests {
 
     @Test("a token without isVerseEnd never emits a bubble or note even when the maps list its verse")
     func verseEndFlagGatesEmission() {
-        // verse 28 has both an annotation and a note in the maps, but the only
-        // token of verse 28 in this run isn't flagged as the end — emission
-        // must wait for the final-fragment token in some later paragraph.
+        // A split verse emits its trailing controls only at the final fragment in a later paragraph.
         let tokens = [
             token(verseNumber: 28, word: "Continuing", isStart: true, isEnd: false)
         ]

@@ -1,10 +1,7 @@
 import Core
 import SwiftUI
 
-/// The single active generation job on the hub. Title lists every book in the
-/// run; progress is measured in **annotations added**, not chapters. The whole
-/// card is tappable (drills into per-book progress); the trailing control
-/// pauses/resumes.
+/// Displays annotation progress as produced / estimated, matching BulkRunSnapshot.
 struct BulkJobCard: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

@@ -1,8 +1,6 @@
 import Foundation
 @testable import Bible
 
-/// A `BibleHighlightRepository` whose every write throws — exercises the
-/// view model's highlight-failure toast path.
 struct ThrowingBibleHighlightRepository: BibleHighlightRepository {
     struct WriteFailure: Error {}
 

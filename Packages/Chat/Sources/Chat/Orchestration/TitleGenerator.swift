@@ -1,22 +1,6 @@
 import Core
 import Foundation
 
-/// Synthesizes a short, human-readable title for a chat conversation from
-/// its first user/assistant exchange. Wraps the LLM (Large Language Model)
-/// provider's existing streaming API — no separate non-streaming codepath —
-/// and returns the cleaned title once the stream completes.
-///
-/// The summarizer is user-configurable and independent of the conversation's
-/// active model: a master toggle (`ChatSettings.summarizeTitlesEnabled`) and
-/// a model selection (`ChatSettings.titleModelId`, `nil` ⇒ automatic → the
-/// Apple Foundation Model when available). `generate` reads both fresh on
-/// each call so a settings change takes effect without restarting the chat.
-///
-/// Returns `nil` when titling is disabled, no model resolves (AFM
-/// unavailable / the chosen model was deleted / no provider serves it), the
-/// request errors out, or the cleaned text is empty. Callers treat `nil` as
-/// "leave the existing title alone" (the truncated-message fallback stands)
-/// rather than overwriting it with an empty string.
 public struct TitleGenerator: Sendable {
     private let llmProviderRegistry: LLMProviderRegistry
     private let settingsStore: ChatSettingsStore
@@ -32,10 +16,8 @@ public struct TitleGenerator: Sendable {
         self.maxLength = maxLength
     }
 
-    /// Generate a title from the first turn's text. Caller is responsible
-    /// for skipping empty assistant turns (tool-only, errored). Resolves the
-    /// configured summarizer model and its provider internally; returns `nil`
-    /// (no titling) when the toggle is off or no usable model resolves.
+    /// Skip empty assistant turns at the caller. Read title settings afresh per request;
+    /// nil means preserve the existing title after disabled/unavailable/failed or empty generation.
     public func generate(
         userText: String,
         assistantText: String
@@ -47,9 +29,7 @@ public struct TitleGenerator: Sendable {
             selectedRecordId: await settingsStore.titleModelId(),
             available: available
         ) else { return nil }
-        // Resolve the provider directly by record id — no model-id scan, so two
-        // rows sharing a `modelId` (e.g. the debug rows) each resolve to exactly
-        // their own provider.
+        // Record identity distinguishes endpoints sharing an upstream model ID.
         guard let provider = await llmProviderRegistry.provider(id: chosen.recordId) else { return nil }
 
         let messages: [LLMMessage] = [
@@ -82,18 +62,8 @@ public struct TitleGenerator: Sendable {
         return Self.clean(accumulated, maxLength: maxLength)
     }
 
-    /// Resolve which model titles a chat from the persisted **record id** and
-    /// the currently-available models. `nil` selection ⇒ "automatic": the Apple
-    /// Foundation Model if it's available (its provider is only present when AFM
-    /// is supported on this device), else `nil`. An explicit id ⇒ that record
-    /// when still available, else `nil` (the model was deleted — fall back to no
-    /// titling rather than reverting to AFM).
-    ///
-    /// Backward-compat: an explicit id that doesn't match a record id is also
-    /// tried against `model.id` (how the summarizer was persisted before the
-    /// record-id convergence), so an upgraded install keeps titling with the
-    /// same model. The enabled/disabled gate is the caller's; this only picks
-    /// the model.
+    /// Nil selects available AFM. Explicit IDs resolve by record ID, then legacy model ID;
+    /// an unresolved explicit selection disables titling instead of falling back to AFM.
     static func resolveTitleModel(
         selectedRecordId: String?,
         available: [SelectableModel]
@@ -102,32 +72,20 @@ public struct TitleGenerator: Sendable {
             if let match = available.first(where: { $0.recordId == selectedRecordId }) {
                 return match
             }
-            // Legacy fallback: an old persisted `LLMModel.id`.
             return available.first { $0.model.id == selectedRecordId }
         }
         return available.first { $0.model.id == AppleFoundationLLMProvider.defaultModelID }
     }
 
-    /// System prompt sent on every title call. Pinned to a static so the
-    /// shape is exercised by the unit test rather than only at runtime.
     static let systemPrompt = """
     You generate concise titles for chat conversations. Given the first user message and the assistant's first reply, respond with a 3 to 6 word title that captures the conversation's topic. Respond with only the title text — no quotes, no surrounding punctuation, no explanation.
     """
 
-    /// Format the first turn for the title prompt. The trailing
-    /// `/no_think` is a Qwen3 chat-template soft-switch that suppresses
-    /// the model's reasoning chain — without it, Qwen3 streams several
-    /// seconds of thinking tokens before the title text. For non-Qwen
-    /// models the literal token is harmless trailing content. Replace
-    /// with a structured `reasoning_effort` request field once a
-    /// non-Qwen reasoning provider is on the BYOK roster.
+    /// Qwen3's /no_think hint avoids generating a reasoning trace before the short title.
     static func formatExchange(user: String, assistant: String) -> String {
         "User: \(user)\n\nAssistant: \(assistant)\n\n/no_think"
     }
 
-    /// Trim, strip wrapping quotes, drop trailing sentence punctuation, and
-    /// cap to `maxLength`. Returns `nil` for empty input so the caller can
-    /// distinguish "model said nothing useful" from "use this title."
     static func clean(_ raw: String, maxLength: Int) -> String? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         text = stripWrappingQuotes(text)

@@ -1,10 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleAnnotationTargetSpec` — the cross-cutting annotation
-/// target identifier. The `id` projection is the load-bearing surface
-/// (`.sheet(item:)` uses it), so the suite locks in identity stability
-/// across cases.
 @Suite("BibleAnnotationTargetSpec")
 struct BibleAnnotationTargetSpecTests {
     @Test("id is stable for the book case")

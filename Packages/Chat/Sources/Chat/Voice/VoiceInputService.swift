@@ -4,7 +4,6 @@ import Foundation
 /// hypotheses and completed phrases, never the accumulated text of prior utterances.
 /// Only one session may run at a time. Cancellation also tears down capture.
 public protocol VoiceInputService: Sendable {
-    /// Whether an on-device recognition model is available for this locale.
     func isAvailable(locale: Locale) -> Bool
 
     /// Requests both speech and microphone permissions, respecting cached denials.
@@ -18,7 +17,6 @@ public protocol VoiceInputService: Sendable {
     func stopRecognition()
 }
 
-/// Combined speech-recognition and microphone authorization result.
 public enum VoiceInputPermissionStatus: Sendable, Equatable {
     case granted
     case denied

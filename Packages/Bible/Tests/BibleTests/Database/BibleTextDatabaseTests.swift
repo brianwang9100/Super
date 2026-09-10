@@ -3,12 +3,9 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Guards the bundled flat verse rows and FTS index against the source JSON.
-/// These search representations are independent of structured chapter blobs,
-/// whose exhaustive comparison lives in `DatabaseBibleTextLoaderParityTests`.
+/// Checks flat verse/FTS data; DatabaseBibleTextLoaderParityTests separately covers structured chapter blobs.
 @Suite("BibleTextDatabase bundled artifact")
 struct BibleTextDatabaseTests {
-    /// One verse row from the bundled `verse` table.
     private struct VerseRow: FetchableRecord, Decodable {
         let translation: String
         let bookId: String
@@ -48,8 +45,7 @@ struct BibleTextDatabaseTests {
     func matchesCoalescedJSON() throws {
         let database = try BibleTextDatabase.openBundled()
         let loader = BundledBibleTextLoader()
-        // A spread across all four translations and Testaments — prose, poetry,
-        // and a verse known to span a poetry boundary all get covered.
+        // Cover every translation, both Testaments, prose, poetry, and a verse spanning a poetry boundary.
         let samples: [(BibleTranslation, String, Int)] = [
             (.kjv, "JHN", 3),
             (.web, "PSA", 23),

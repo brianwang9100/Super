@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for `AppletSystemPrompt.load(from:resource:)` — the per-applet
-/// bundled-markdown loader used by every `MiniApplet` conformance.
 @Suite("AppletSystemPrompt")
 struct AppletSystemPromptTests {
     @Test("Loads a bundled markdown file by default name")

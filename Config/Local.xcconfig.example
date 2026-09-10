@@ -6,10 +6,7 @@
 
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
 
-// PROVISIONING_PROFILE_SPECIFIER is only needed if you want to produce
-// Release archives locally (App Store / TestFlight distribution). For
-// Debug device builds, Automatic signing handles provisioning. CI's
-// TestFlight workflow writes this value at runtime from a secret, so
-// you do NOT need to set it just to land changes.
+// Set a profile only for local Release archives; Debug uses Automatic signing.
+// TestFlight CI supplies the profile from a secret.
 //
 // PROVISIONING_PROFILE_SPECIFIER = Your Profile Name

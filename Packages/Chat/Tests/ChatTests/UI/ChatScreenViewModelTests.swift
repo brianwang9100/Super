@@ -4,16 +4,6 @@ import Synchronization
 import Testing
 @testable import Chat
 
-/// End-to-end coverage on the view-model state machine. Drives a fake
-/// `ChatSessionDriver` whose stream yields a scripted sequence of
-/// `ChatEvent`s, and asserts the observable state the view reads.
-///
-/// Each test that injects a `TitleGenerator` calls
-/// `viewModel._waitForPendingTitleTask()` immediately after the driver
-/// drain — *before* assertions — so the auto-title `Task` is fully
-/// done before the test reads `headerTitle` or the title-fire spy.
-/// That ordering also lets the suite run in parallel: no `.serialized`
-/// safety net needed.
 @Suite("ChatScreenViewModel")
 @MainActor
 struct ChatScreenViewModelTests {
@@ -36,9 +26,6 @@ struct ChatScreenViewModelTests {
         )
     }
 
-    /// Build a `TitleGenerator` whose summarizer setting selects the test
-    /// `model` (titling on), so the auto-title path resolves to the provider
-    /// registered in these fixtures rather than the automatic AFM default.
     private func makeTitleGenerator(registry: LLMProviderRegistry) async -> TitleGenerator {
         let store = ChatSettingsStore(repository: TitleSettingRepository())
         try? await store.setSummarizeTitlesEnabled(true)
@@ -59,9 +46,7 @@ struct ChatScreenViewModelTests {
 
     @Test("resolveInitialModelId maps a legacy persisted model id to its record id")
     func resolveInitialModelIdMapsLegacyModelId() {
-        // Back-compat: before the record-id convergence, this was stored as the
-        // `LLMModel.id`. An upgraded install must still land on the same model,
-        // resolving to its record id (which then re-persists on next pick).
+        // Legacy preferences store model IDs; resolve to a record ID for the next save.
         let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
         let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
         let resolved = ChatScreenViewModel.resolveInitialModelId(
@@ -84,11 +69,6 @@ struct ChatScreenViewModelTests {
 
     @Test("resolveInitialModelId falls back to first available when persisted id is stale")
     func resolveInitialModelIdFallsBackWhenStalePersisted() {
-        // Regression: user deleted their previously-selected model
-        // between launches. Resolver must not return the stale id — the
-        // host would otherwise hand a nonexistent id to
-        // `ChatScreenViewModel.init`, where `activeModel` would still
-        // fall back to first but the picker's UI state could lag.
         let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
         let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
         let resolved = ChatScreenViewModel.resolveInitialModelId(
@@ -109,11 +89,6 @@ struct ChatScreenViewModelTests {
 
     @Test("two rows sharing a modelId are independently selectable by record id")
     func sameModelIdRowsSelectableByRecordId() {
-        // The convergence guarantee: two configured models with the SAME
-        // upstream `modelId` (e.g. two BYOK keys for `gpt-4o`, or the debug
-        // canned/mock-search rows) must each be selectable. Keying on the
-        // record id — not the shared `model.id` — makes `activeModel` follow
-        // the picked row.
         let shared = "gpt-4o"
         let a = SelectableModel(recordId: "rec-a", model: makeModel(id: shared))
         let b = SelectableModel(recordId: "rec-b", model: makeModel(id: shared))
@@ -128,7 +103,6 @@ struct ChatScreenViewModelTests {
             selectedModelId: "rec-b"
         )
         #expect(vm.activeModel?.id == shared)
-        // Selecting the other record id moves the active model to that row.
         vm.selectedModelId = "rec-a"
         #expect(vm.selectedModelId == "rec-a")
         #expect(vm.activeModel?.id == shared)
@@ -150,7 +124,6 @@ struct ChatScreenViewModelTests {
         let vm = makeEmptyViewModel(suggestionsProvider: StaticChatSuggestionsProvider())
         vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "first", message: "first")])
         await vm._waitForPendingSuggestionsTask()
-        // A second call with a different fallback must not re-run.
         vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "second", message: "second")])
         await vm._waitForPendingSuggestionsTask()
         #expect(vm.suggestions.map(\.label) == ["first"])
@@ -303,15 +276,13 @@ struct ChatScreenViewModelTests {
             availableModels: [SelectableModel(model)]
         )
 
-        // After userMessageSaved the repo will be queried again, so seed
-        // the post-write state ahead of time.
+        // Seed post-write rows before broadcasting the event that triggers a repository refresh.
         let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "hi", createdAt: Date())
         let savedAssistant = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello", createdAt: Date().addingTimeInterval(1))
         await messages.set([savedUser, savedAssistant])
 
         viewModel.send("hi")
         try await driver.waitUntilFinished()
-        // Drain the subscription task on its own completion, not a poll.
         await viewModel._waitForPendingStreamTask()
 
         #expect(viewModel.isStreaming == false)
@@ -351,11 +322,6 @@ struct ChatScreenViewModelTests {
 
     @Test("retry routes through driver.retry, not driver.send, so no duplicate user row is written")
     func retryInvokesDriverRetryNotSend() async {
-        // Regression: previously the Retry pill called driver.send(text:) with
-        // the failed message's text, which created a *second* MessageRecord
-        // in the database and rendered as a duplicate user bubble. The fix
-        // routes Retry through a dedicated driver.retry(model:) entry point
-        // that re-runs the LLM loop against the already-persisted transcript.
         let driver = RecordingDriver()
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -366,12 +332,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [SelectableModel(model)]
         )
-        // Prime an error state without going through send — equivalent to
-        // the post-failure state the user taps Retry from. Must include a
-        // user bubble in `items` because `retry()` now guards
-        // synchronously against an empty transcript before invoking the
-        // driver (so a stale tap on a brand-new conversation no-ops
-        // without flashing the streaming UI).
+        // Retry requires an existing user bubble, as a failed production turn would leave.
         viewModel._setSnapshotState(
             items: [
                 .userBubble(id: "u1", text: "test", references: [])
@@ -427,12 +388,7 @@ struct ChatScreenViewModelTests {
 
     @Test("retry while a stream is in flight is a silent no-op")
     func retryWhileStreamingIsANoOp() async {
-        // Defensive: a double-tap on the Retry pill (or a tap during the
-        // brief window where the prior failed turn is still draining
-        // events) must not spawn a second `consume` task — that race
-        // would let two streams mutate `streamingTail`, `error`, and the
-        // transcript concurrently. The guard mirrors `send`'s
-        // `guard !isStreaming else { return }`.
+        // Overlapping consumers would concurrently mutate the same streaming tail.
         let driver = RecordingDriver()
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -443,9 +399,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [SelectableModel(model)]
         )
-        // Pin the VM into a mid-stream state: error set, user bubble in
-        // items, isStreaming true. The view model holds the precondition
-        // `streamingTail != nil ⇔ isStreaming`, so we set both.
+        // The snapshot seam requires streamingTail != nil exactly when isStreaming is true.
         viewModel._setSnapshotState(
             items: [.userBubble(id: "u1", text: "test", references: [])],
             streamingTail: MessageList.StreamingState(
@@ -457,9 +411,6 @@ struct ChatScreenViewModelTests {
 
         viewModel.retry()
 
-        // The guard runs synchronously; no driver call, no observable
-        // state change, no Task spawned. The error banner stays so the
-        // user keeps the signal that the prior turn failed.
         #expect(await driver.retryInvocations == 0)
         #expect(await driver.sendInvocationCount == 0)
         #expect(viewModel.isStreaming == true)
@@ -468,9 +419,6 @@ struct ChatScreenViewModelTests {
 
     @Test("retry after an LLM error does not duplicate the user bubble in the transcript")
     func retryDoesNotDuplicateUserBubble() async throws {
-        // End-to-end regression for the duplicate-message bug: send fails,
-        // user taps Retry, retry succeeds — final transcript must contain
-        // exactly one user bubble (the original), not two.
         let userRow = MessageRecord(
             id: "u1",
             conversationId: conversationId,
@@ -486,8 +434,6 @@ struct ChatScreenViewModelTests {
             createdAt: Date().addingTimeInterval(1)
         )
         let messages = StubMessageRepository(initial: [])
-        // Mirror production: the failed turn persisted the user row before
-        // the LLM errored, so the row exists on disk during the error.
         await messages.set([userRow])
 
         let driver = ScriptedDriver(
@@ -519,8 +465,6 @@ struct ChatScreenViewModelTests {
         #expect(userBubbleCountAfterError == 1)
         #expect(viewModel.error?.message.contains("Authentication failed") == true)
 
-        // Mirror production: by the time retry succeeds, the assistant row
-        // has been persisted by ChatSession on `.messageComplete`.
         await messages.set([userRow, assistantRow])
 
         viewModel.retry()
@@ -532,7 +476,6 @@ struct ChatScreenViewModelTests {
         }.count
         #expect(userBubbleCountAfterRetry == 1)
         #expect(viewModel.error == nil)
-        // Sanity check: the new assistant content landed.
         #expect(viewModel.items.contains(where: {
             if case .assistantText = $0 { return true }
             return false
@@ -607,13 +550,7 @@ struct ChatScreenViewModelTests {
 
     @Test("send preserves composer text for slash commands so a rejection is retryable")
     func sendPreservesComposerTextForSlashCommands() {
-        // Manual `/compact` rejects synchronously when context usage is
-        // below the minimum-ratio gate. The composer must keep the typed
-        // command after a rejection so the user can retry once enough
-        // messages have accumulated — clearing it on submit would erase
-        // the only context the user has for "what I just tried."
-        // Regular submissions still clear because their text becomes a
-        // user bubble below the composer.
+        // Keep a rejected /compact command in the composer because no user bubble records it.
         let driver = ScriptedDriver(events: [])
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -634,9 +571,6 @@ struct ChatScreenViewModelTests {
 
     @Test("send clears composer text for ordinary (non-slash) submissions")
     func sendClearsComposerTextForOrdinarySubmissions() {
-        // Counterpart to the slash-command test above: a regular
-        // submission must still clear the composer because the user's
-        // text gets rendered as its own bubble below.
         let driver = ScriptedDriver(events: [])
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -657,10 +591,6 @@ struct ChatScreenViewModelTests {
 
     @Test("send with a model clears a pre-existing error before streaming")
     func sendWithModelClearsExistingError() {
-        // Regression: the `send` happy path's `error = nil` clearing
-        // shouldn't be confused with the no-model error path. A stale
-        // banner from an earlier failure has to disappear the moment
-        // the user successfully sends with a real model selected.
         let driver = ScriptedDriver(events: [])
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -694,7 +624,6 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: []
         )
-        // Seed a generic error directly (e.g. a prior LLM failure).
         viewModel._setSnapshotState(
             items: [],
             error: MessageList.ErrorState(message: "Authentication failed.")
@@ -708,12 +637,7 @@ struct ChatScreenViewModelTests {
 
     @Test("load attaches to an in-flight turn and hydrates streamingTail from the snapshot")
     func loadAttachesToLiveTurnAndHydratesStreamingTail() async throws {
-        // The session reports a turn in flight via `subscribe()`. The
-        // view model must hydrate `streamingTail` to the snapshot's
-        // accumulated text *before* the stream task starts processing
-        // any subsequent events — so a re-mounted screen never flashes
-        // empty before catching up. Subsequent events from the
-        // subscribed stream must continue to land normally.
+        // Hydrate before consuming events so remounting cannot flash an empty streaming tail.
         let savedAssistant = MessageRecord(
             id: "a1",
             conversationId: conversationId,
@@ -746,19 +670,12 @@ struct ChatScreenViewModelTests {
 
         await viewModel.load()
 
-        // Synchronously after `load()` returns, the spawned streamTask
-        // has been scheduled but the @MainActor hasn't yielded yet to
-        // run it. `streamingTail` therefore reflects the snapshot
-        // exactly — no events have been processed.
+        // No main-actor yield has occurred since load(), so these values still reflect the snapshot.
         #expect(viewModel.streamingTail?.text == "in progress")
         #expect(viewModel.isStreaming == true)
 
-        // Drain the subscribed events deterministically.
         await viewModel._waitForPendingStreamTask()
 
-        // After drain, the assistant row landed via
-        // `.assistantMessageSaved` and the final refresh; the streaming
-        // tail cleared.
         #expect(viewModel.isStreaming == false)
         #expect(viewModel.streamingTail == nil)
         let hasAssistantText = viewModel.items.contains { item in
@@ -772,17 +689,7 @@ struct ChatScreenViewModelTests {
 
     @Test("load is idempotent during a live turn — re-mount must not double-subscribe (regression)")
     func loadIsIdempotentDuringLiveTurn() async throws {
-        // Regression: switching chat presentation states (expanded ↔
-        // semi-expanded ↔ minimized) re-mounts the chat surface, which
-        // re-fires `.task(id: viewModel.conversationId) { await
-        // viewModel.load() }`. Before the guard in
-        // `attachToLiveTurnIfAny()` landed, the second call opened a
-        // parallel `AsyncStream` over the same in-flight turn, and both
-        // subscribers appended every text/thinking event to
-        // `streamingTail.text` — producing visible character duplication
-        // in the live response (every word streamed twice). This test
-        // asserts the second `load()` is a no-op while the first stream
-        // is still consuming events.
+        // Remounts call load() again. A second subscription would append each delta twice.
         let snapshot = ChatSession.LiveTurnSnapshot(
             accumulatedText: "in progress",
             accumulatedThinking: ""
@@ -798,22 +705,17 @@ struct ChatScreenViewModelTests {
             availableModels: [SelectableModel(model)]
         )
 
-        // First load — initial subscribe attaches to the live turn.
         await viewModel.load()
         var subscribeCount = await driver.subscribeCount
         #expect(subscribeCount == 1)
         #expect(viewModel.isStreaming == true)
         #expect(viewModel.streamingTail?.text == "in progress")
 
-        // Second load — must NOT re-subscribe while the first stream is
-        // still consuming the live turn.
         await viewModel.load()
         subscribeCount = await driver.subscribeCount
         #expect(subscribeCount == 1, "remount must not re-subscribe while the first stream is still active")
         #expect(viewModel.streamingTail?.text == "in progress", "snapshot text must not be re-applied on a remount")
 
-        // Close the hanging stream so the streamTask drains cleanly and
-        // the test doesn't leak a suspended `consume(stream:)` task.
         await driver.closeStream()
         await viewModel._waitForPendingStreamTask()
         #expect(viewModel.isStreaming == false)
@@ -821,14 +723,6 @@ struct ChatScreenViewModelTests {
 
     @Test("load propagates snapshot.thinkingStartedAt into the streaming tail so the elapsed-time counter survives detach + reattach")
     func loadPropagatesSnapshotThinkingStartedAt() async throws {
-        // Regression: navigating away from a chat that is still
-        // "Thinking..." and back used to reset the "Thought for Xs"
-        // counter to 0 because the view model substituted `Date()` for
-        // the missing start time. The fix routes the actor's stored
-        // start time through `LiveTurnSnapshot.thinkingStartedAt`; this
-        // test asserts the view model copies that value into
-        // `streamingTail.thinkingStartedAt` byte-for-byte instead of
-        // clobbering it with the current wall clock.
         let originalStart = Date(timeIntervalSince1970: 1_000_000)
         let snapshot = ChatSession.LiveTurnSnapshot(
             accumulatedText: "",
@@ -858,11 +752,7 @@ struct ChatScreenViewModelTests {
 
     @Test("cancelStreaming routes through the driver so the underlying session is cancelled")
     func cancelStreamingInvokesDriverCancel() async throws {
-        // The composer stop button calls `cancelStreaming()`. Now that
-        // dropping the iteration alone no longer cancels the session
-        // (Phase 1 removed `onTermination`), the view model must route
-        // the cancel through `driver.cancel()` — otherwise the LLM
-        // keeps running, charging tokens for output the user can't see.
+        // Stream disposal leaves session work running; Stop must explicitly call driver.cancel().
         let driver = ScriptedDriver(events: [])
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -917,16 +807,11 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("/compact")
         try await driver.waitUntilFinished()
-        // Wait once for the tail update to land.
         for _ in 0..<200 {
             if viewModel.streamingTail?.isCompacting == true { break }
             await Task.yield()
         }
 
-        // After all events drain, the stream finishes and the tail clears.
-        // We just need to confirm the flag was true at some point — easier
-        // is to keep the stream open by not ending it; here we verify the
-        // final state is clean.
         await viewModel._waitForPendingStreamTask()
         #expect(viewModel.isStreaming == false)
     }
@@ -971,15 +856,11 @@ struct ChatScreenViewModelTests {
             conversationRepository: conversations,
             titleGenerator: titleGen
         )
-        // Both fires land on the main actor (the fallback inside the stream
-        // drain, the LLM title inside the title task), so the spy records them
-        // synchronously — no `Task`-hop, nothing to poll for.
         viewModel.onTitleGenerated = { title in firedTitles.append(title) }
 
         viewModel.send("Plan a Lisbon trip")
         try await driver.waitUntilFinished()
-        // Stream task first: its completion means the drain ran (firing the
-        // fallback and spawning the title task); then drain the title task.
+        // Stream completion spawns the title task; drain them in that order before reading titles.
         await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
 
@@ -987,11 +868,7 @@ struct ChatScreenViewModelTests {
         let stored = try await conversations.fetch(id: conversationId)
         #expect(stored?.title == "Lisbon trip plan")
 
-        // Two callbacks fire on a fresh chat: the truncation fallback on
-        // user-send, then the LLM-generated title on assistant-saved.
         let firedSnapshot = firedTitles.values
-        // First user message is 18 chars — under the 20-char threshold —
-        // so the fallback fires *without* an ellipsis.
         #expect(firedSnapshot == ["Plan a Lisbon trip", "Lisbon trip plan"])
     }
 
@@ -1039,8 +916,6 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
 
-        // Exactly one provider call: the second assistant message must not
-        // trigger a re-generation.
         let captured = await titleProvider.capturedRequests()
         #expect(captured.count == 1)
         #expect(viewModel.headerTitle == "Greeting chat")
@@ -1061,8 +936,6 @@ struct ChatScreenViewModelTests {
         ])
 
         let titleProvider = FakeLLMProvider(model: model)
-        // Intentionally enqueue nothing — a generation attempt would
-        // fatalError in FakeLLMProvider, which fails the test loudly.
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)
 
@@ -1123,10 +996,8 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
 
-        // Empty assistant content must not touch the provider.
         let captured = await titleProvider.capturedRequests()
         #expect(captured.isEmpty)
-        // The truncation fallback still ran on user-send.
         #expect(viewModel.headerTitle == "Hi")
     }
 
@@ -1145,7 +1016,6 @@ struct ChatScreenViewModelTests {
         ])
 
         let titleProvider = FakeLLMProvider(model: model)
-        // Empty-text-then-complete → TitleGenerator returns nil.
         await titleProvider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
@@ -1171,9 +1041,6 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingTitleTask()
 
         let stored = try await conversations.fetch(id: conversationId)
-        // The truncation fallback wrote "Hi" on user-send. The
-        // generator returning nil means we leave the fallback in place
-        // rather than reverting to "New chat".
         #expect(stored?.title == "Hi")
         #expect(viewModel.headerTitle == "Hi")
     }
@@ -1203,8 +1070,6 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("How do I reset my password on Linux?")
         try await driver.waitUntilFinished()
-        // The fallback is applied inside the stream drain, so its task
-        // completing is the signal — no header poll needed.
         await viewModel._waitForPendingStreamTask()
 
         #expect(viewModel.headerTitle == "How do I reset my pa…")
@@ -1286,8 +1151,6 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingStreamTask()
 
         let stored = try await conversations.fetch(id: conversationId)
-        // Title locked to the *first* user message's truncation despite
-        // a second user-send going through.
         #expect(stored?.title == "Plan a Lisbon trip w…")
         #expect(viewModel.headerTitle == "Plan a Lisbon trip w…")
     }
@@ -1345,7 +1208,7 @@ struct ChatScreenViewModelTests {
     }
 
 
-    // MARK: - Voice input wiring (M11)
+    // MARK: - Voice input wiring
 
     @Test("empty final after a pause preserves the last recognized words")
     func emptyVoiceFinalPreservesDraftAndSpeech() async {
@@ -1576,9 +1439,7 @@ struct ChatScreenViewModelTests {
 
         #expect(viewModel.error?.message.contains("boom") == true)
         #expect(viewModel.error?.actionLabel == nil)
-        // Voice failures must suppress the Retry pill so tapping it
-        // doesn't re-send the last LLM message — the retry would have
-        // nothing to do with the voice attempt that just failed.
+        // Voice Retry must not resend the unrelated last LLM message.
         #expect(viewModel.error?.showsRetry == false)
     }
 
@@ -1916,10 +1777,7 @@ struct ChatScreenViewModelTests {
 
     @Test("confirmCopy: rapid second tap cancels the prior dismissal task so the pill rides the new timer")
     func confirmCopyRapidSecondTapRestartsTimer() async {
-        // Without the explicit `copyDismissalTask?.cancel()`, the first
-        // tap's dwell timer would fire halfway through the second tap's
-        // dwell and clip the pill early. This pins the cancel-and-replace
-        // shape so a future refactor can't drop it.
+        // Replacing the dwell timer prevents the first tap from dismissing the second tap early.
         let firstEntered = SleepGate()
         let firstRelease = SleepGate()
         let firstFinished = SleepGate()
@@ -1961,8 +1819,6 @@ struct ChatScreenViewModelTests {
 
         secondRelease.release()
         await viewModel._waitForPendingCopyDismissalTask()
-        // Only the second task's dwell window resets the flag; the
-        // first task was cancelled before it could touch state.
         #expect(viewModel.showCopyConfirmation == false)
     }
 
@@ -1995,16 +1851,12 @@ struct ChatScreenViewModelTests {
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
 
         #expect(viewModel.pendingRegenerationTargetID == "a1")
-        // a1, u2, a2 — three rows from the target to the end.
         #expect(viewModel.pendingRegenerationDeleteCount == 3)
     }
 
     @Test("requestRegeneration: compaction banners between target and tail are excluded from the count")
     func requestRegenerationExcludesCompactionBanners() {
-        // Compaction banners project from `CompactionCheckpointRecord`,
-        // not `MessageRecord`, so they aren't actually deleted by the
-        // trim. Excluding them from the dialog count keeps the wording
-        // honest about how many *messages* the user is losing.
+        // Banners are checkpoints, not message rows; exclude them from the deletion count.
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
@@ -2016,7 +1868,6 @@ struct ChatScreenViewModelTests {
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
 
-        // a1, u2, a2 count; cb1 does not.
         #expect(viewModel.pendingRegenerationDeleteCount == 3)
     }
 
@@ -2056,11 +1907,6 @@ struct ChatScreenViewModelTests {
 
     @Test("requestRegeneration: a user-bubble id is a silent no-op")
     func requestRegenerationRejectsUserBubbleID() {
-        // Defensive guard against a future caller passing the wrong id.
-        // The production caller (the Regenerate button under each
-        // assistant bubble) is correct today; this test pins the
-        // assistant-only contract so a regression in the call site can't
-        // trim a user turn and break the LLM history.
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
@@ -2121,8 +1967,6 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [SelectableModel(model)]
         )
-        // Project the persisted rows into items so the synchronous guard
-        // in `retry()` sees a user bubble.
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
@@ -2135,13 +1979,9 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingRegenerationTask()
         await viewModel._waitForPendingStreamTask()
 
-        // The persisted transcript was trimmed to just the first user row.
         let remaining = try? await messages.fetchAll(conversationId: conversationId).map(\.id)
         #expect(remaining == ["u1"])
-        // Pending dialog state cleared synchronously on confirm.
         #expect(viewModel.pendingRegenerationTargetID == nil)
-        // Drove the retry path — not a second `send`, which would
-        // duplicate the user message.
         #expect(viewModel.scrollRequest == .init(messageID: "u1", sequence: 1))
         #expect(await driver.retryInvocations == 1)
         #expect(await driver.sendInvocationCount == 0)
@@ -2160,9 +2000,6 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [SelectableModel(model)]
         )
-        // Stage a pending target, then push the view model into a
-        // streaming state via the snapshot seam. The streaming guard
-        // must drop the confirm without trimming.
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
@@ -2199,10 +2036,6 @@ struct ChatScreenViewModelTests {
 
     @Test("confirmRegeneration: surfaces an error banner when the trim throws")
     func confirmRegenerationSurfacesError() async {
-        // The catch block in `performRegeneration` previously swallowed
-        // every error path silently; the dialog dismissed and the user
-        // saw nothing change. Now a thrown delete must reach the error
-        // banner so the user has a Retry affordance.
         let driver = RecordingDriver()
         let userRow = MessageRecord(
             id: "u1", conversationId: conversationId, role: .user, content: "q", createdAt: Date()
@@ -2233,16 +2066,12 @@ struct ChatScreenViewModelTests {
         await viewModel._waitForPendingRegenerationTask()
 
         #expect(viewModel.error?.message == "Could not regenerate. Try again.")
-        // The trim never landed and retry was never invoked.
         #expect(await driver.retryInvocations == 0)
     }
 
     @Test("confirmRegeneration: when checkpoint delete throws, no messages are trimmed")
     func confirmRegenerationCheckpointDeleteThrowsLeavesMessagesIntact() async {
-        // The regen path deletes checkpoints *before* messages so a
-        // throw on the first write leaves both stores untouched — never
-        // the half-trimmed state where messages are gone but stale
-        // checkpoints survive. Pins that ordering invariant.
+        // Delete checkpoints first so a failed first write leaves messages untouched.
         let driver = RecordingDriver()
         let userRow = MessageRecord(
             id: "u1", conversationId: conversationId, role: .user, content: "q", createdAt: Date()
@@ -2280,7 +2109,6 @@ struct ChatScreenViewModelTests {
         viewModel.confirmRegeneration()
         await viewModel._waitForPendingRegenerationTask()
 
-        // Error banner surfaced; messages untouched; no retry kicked off.
         #expect(viewModel.error?.message == "Could not regenerate. Try again.")
         let remainingMessages = try? await messages.fetchAll(conversationId: conversationId).map(\.id)
         #expect(remainingMessages == ["u1", "a1"])
@@ -2289,11 +2117,7 @@ struct ChatScreenViewModelTests {
 
     @Test("confirmRegeneration: deletes checkpoints whose anchor is in the trim range")
     func confirmRegenerationDeletesStaleCheckpoint() async {
-        // A `CompactionCheckpointRecord` whose `uptoMessageId` is among
-        // the deleted rows leaves `ContextAssembler` prepending a stale
-        // summary that covers messages no longer in the DB. The regen
-        // path must drop those checkpoints so the next retry sees a
-        // consistent prompt.
+        // Removing a checkpoint anchor must also remove its now-stale summary from future prompts.
         let driver = RecordingDriver()
         let messages = StubMessageRepository(initial: [
             MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "q1", createdAt: Date()),
@@ -2304,8 +2128,6 @@ struct ChatScreenViewModelTests {
             MessageRecord(id: "a2", conversationId: conversationId, role: .assistant, content: "second",
                           createdAt: Date().addingTimeInterval(3)),
         ])
-        // Anchored at `a1` (inclusive). Regenerating from `a1` deletes
-        // the anchor; the checkpoint must go with it.
         let stale = CompactionCheckpointRecord(
             id: "cp-stale", conversationId: conversationId, uptoMessageId: "a1",
             summary: "...", tokensBefore: 0, tokensAfter: 0,
@@ -2340,9 +2162,6 @@ struct ChatScreenViewModelTests {
 
     @Test("confirmRegeneration: keeps checkpoints whose anchor survives the trim")
     func confirmRegenerationKeepsSurvivingCheckpoint() async {
-        // Mirror of the stale-checkpoint test but with the anchor before
-        // the trim range. The checkpoint should stay — its summary still
-        // describes pre-anchor messages that haven't been touched.
         let driver = RecordingDriver()
         let messages = StubMessageRepository(initial: [
             MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "q1", createdAt: Date()),
@@ -2353,8 +2172,6 @@ struct ChatScreenViewModelTests {
             MessageRecord(id: "a2", conversationId: conversationId, role: .assistant, content: "second",
                           createdAt: Date().addingTimeInterval(3)),
         ])
-        // Anchored at `a1`. Regenerating from `a2` leaves `a1` in place,
-        // so the checkpoint must stay.
         let surviving = CompactionCheckpointRecord(
             id: "cp-keep", conversationId: conversationId, uptoMessageId: "a1",
             summary: "...", tokensBefore: 0, tokensAfter: 0,
@@ -2387,9 +2204,6 @@ struct ChatScreenViewModelTests {
         #expect(remainingCheckpoints == ["cp-keep"])
     }
 
-    /// Shared scaffold for the Regenerate tests. Wires a recording
-    /// driver and noop repos so the test can focus on the trim/retry
-    /// orchestration without a live LLM or DB.
     private func makeViewModelForRegen(
         driver: RecordingDriver = RecordingDriver(),
         messages: StubMessageRepository = StubMessageRepository()
@@ -2406,11 +2220,6 @@ struct ChatScreenViewModelTests {
     }
 }
 
-/// Covers the haptic fire sites in `ChatScreenViewModel`: `.selection` on a
-/// committed send, `.streamingTick` per visible repaint, and one
-/// `.streamCompleted` at turn end. Lives in this file so it can reuse the
-/// file-private scripted-driver / stub-repository doubles. Drains the stream
-/// task on its own completion signal before asserting.
 @Suite("ChatScreenViewModel haptics")
 @MainActor
 struct ChatScreenHapticsTests {
@@ -2427,8 +2236,7 @@ struct ChatScreenHapticsTests {
     func sendStreamAndCompletionFireHaptics() async throws {
         let driver = ScriptedDriver(events: [
             .userMessageSaved(MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "hi", createdAt: Date())),
-            // Each delta ends in whitespace, so the coalescer flushes it as a
-            // visible chunk → one `.streamingTick` apiece.
+            // Whitespace flushes the coalescer, producing visible streaming ticks.
             .textDelta("Hello "),
             .textDelta("there "),
             .assistantMessageSaved(MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello there", createdAt: Date())),
@@ -2455,12 +2263,9 @@ struct ChatScreenHapticsTests {
         await viewModel._waitForPendingStreamTask()
 
         let played = haptics.played
-        // First haptic is the send selection.
         #expect(played.first == .selection)
-        // Exactly one completion, and it is the last thing played.
         #expect(played.filter { $0 == .streamCompleted }.count == 1)
         #expect(played.last == .streamCompleted)
-        // At least one streaming tick landed between send and completion.
         #expect(played.contains(.streamingTick))
     }
 
@@ -2480,7 +2285,6 @@ struct ChatScreenHapticsTests {
 
         viewModel.send("hi")
 
-        // No model → the send bails before committing; nothing should buzz.
         #expect(haptics.played.isEmpty)
     }
 
@@ -2504,17 +2308,11 @@ struct ChatScreenHapticsTests {
     }
 }
 
-/// Sentinel error for fakes that need to drive a throw path.
 private enum StubError: Error { case boom }
 
 // MARK: - Test doubles
 
-/// `ChatSessionDriver` fake whose `subscribe()` returns a stream that
-/// stays open until the test explicitly calls `closeStream()`. Used to
-/// regression-test that re-mounting the chat surface (via a chat-
-/// presentation-state transition) does **not** double-subscribe to the
-/// in-flight turn — the streaming-duplication bug fixed in
-/// `ChatScreenViewModel.attachToLiveTurnIfAny()`.
+/// Subscription streams remain open until closeStream().
 private actor HangingSubscribeDriver: ChatSessionDriver {
     private let pendingSnapshot: ChatSession.LiveTurnSnapshot?
     private var continuations: [AsyncStream<ChatEvent>.Continuation] = []
@@ -2526,9 +2324,6 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
     }
 
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
-        // The bug-under-test exercises subscribe(), not send(). Return a
-        // stream that finishes immediately for symmetry with the
-        // production driver's contract.
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         continuation.finish()
         return stream
@@ -2552,28 +2347,16 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
     func confirmToolCall(id: String) async {}
     func skipToolCall(id: String) async {}
 
-    /// Test-facing seam: finish all open subscribe streams so the view
-    /// model's `consume(stream:)` task can complete and the test exits
-    /// cleanly without leaking suspended tasks.
     func closeStream() {
         for continuation in continuations { continuation.finish() }
         continuations.removeAll()
     }
 }
 
-/// `ChatSessionDriver` fake that yields a pre-baked event sequence on each
-/// `send(...)`. Once the events drain the stream finishes, mirroring the
-/// always-finishes contract `ChatSession` provides.
+/// Replays scripts into buffered streams; retry and subscribe fill them synchronously.
 private actor ScriptedDriver: ChatSessionDriver {
     private let scripted: [ChatEvent]
-    /// Events the driver yields on `retry(...)`. A separate sequence so a
-    /// single driver can script "first send fails, retry succeeds." When
-    /// empty, `retry` returns an immediately-finished stream.
     private let retryScripted: [ChatEvent]
-    /// Events for a fake "already in flight" turn, replayed by
-    /// `subscribe()`. Tests that exercise the re-attach path enqueue
-    /// these; the default empty list keeps `subscribe()` finishing
-    /// immediately so existing tests stay unchanged.
     private let pendingSubscribeEvents: [ChatEvent]
     private let pendingSnapshot: ChatSession.LiveTurnSnapshot?
     private var finished = false
@@ -2611,11 +2394,6 @@ private actor ScriptedDriver: ChatSessionDriver {
     func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
         retryInvocations += 1
         finished = false
-        // Drive synchronously — yield the full scripted sequence and
-        // finish the continuation before returning, matching the pattern
-        // `subscribe()` uses. Avoids the `Task { ... await Task.yield() }`
-        // "race amplifier" pattern that AGENTS.md §Testing.2 flags. The
-        // consumer drains the pre-filled buffer on its own schedule.
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         for event in retryScripted {
             continuation.yield(event)
@@ -2626,11 +2404,6 @@ private actor ScriptedDriver: ChatSessionDriver {
     }
 
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
-        // Drive the AsyncStream synchronously — yield everything we have
-        // and finish the continuation before returning. Avoids the
-        // `Task { ... await Task.yield() }` "race amplifier" pattern that
-        // AGENTS.md §Testing.2 flags. Consumers reading the stream after
-        // this returns drain a pre-filled buffer in their own time.
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         for event in pendingSubscribeEvents {
             continuation.yield(event)
@@ -2656,13 +2429,8 @@ private actor ScriptedDriver: ChatSessionDriver {
         for waiter in waiters { waiter.resume() }
     }
 
-    /// Await the scripted sequence finishing on a one-shot signal —
-    /// `markFinished()` resumes every waiter — instead of a `Task.sleep`
-    /// poll. `throws` is kept so the existing `try await` call sites stay
-    /// unchanged; the body never actually throws. This is now actor-isolated
-    /// (the old version was `nonisolated`): the `if finished` check and the
-    /// `withCheckedContinuation` append run under the actor, closing the
-    /// TOCTOU window against `markFinished()` — do not re-add `nonisolated`.
+    /// Keep the finished check and waiter registration actor-isolated to avoid
+    /// losing a concurrent markFinished() signal.
     func waitUntilFinished() async throws {
         if finished { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -2671,9 +2439,6 @@ private actor ScriptedDriver: ChatSessionDriver {
     }
 }
 
-/// `ChatSessionDriver` fake that records the `text` and `references` of
-/// every `send(...)` and returns an immediately-finished stream. Exposes
-/// `waitForSend()` so a test can await the first call without polling.
 private actor RecordingDriver: ChatSessionDriver {
     private(set) var sentText: [String] = []
     private(set) var sentReferences: [[RecordReference]] = []
@@ -2727,29 +2492,22 @@ private actor RecordingDriver: ChatSessionDriver {
         searchDecisionWaiter = nil
     }
 
-    /// Await the first `send(...)`; returns immediately if it already ran.
     func waitForSend() async {
         guard sentText.isEmpty else { return }
         await withCheckedContinuation { sendWaiter = $0 }
     }
 
-    /// Await the first `retry(...)`; returns immediately if it already ran.
     func waitForRetry() async {
         guard retryInvocations == 0 else { return }
         await withCheckedContinuation { retryWaiter = $0 }
     }
 
-    /// Await the first confirm/skip decision; returns immediately if one
-    /// already arrived. Lets the confirm/skip routing test drain the view
-    /// model's fire-and-forget `Task` without polling.
     func waitForSearchDecision() async {
         guard confirmedToolCallIDs.isEmpty, skippedToolCallIDs.isEmpty else { return }
         await withCheckedContinuation { searchDecisionWaiter = $0 }
     }
 }
 
-/// Returns a scripted suggestion list regardless of the fallback — stands in
-/// for the AFM generator in view-model tests.
 private struct FakeChatSuggestionsProvider: ChatSuggestionsProvider {
     let scripted: [SuggestedChatAction]
     func suggestions(fallback: [SuggestedChatAction]) async -> [SuggestedChatAction] { scripted }
@@ -2757,9 +2515,6 @@ private struct FakeChatSuggestionsProvider: ChatSuggestionsProvider {
 
 private actor StubMessageRepository: MessageRepository {
     private var rows: [MessageRecord]
-    /// When set, the next `delete(ids:)` call throws this. Used by the
-    /// regenerate error-surfacing test to drive the catch branch in
-    /// `performRegeneration` without a real DB failure.
     private var deleteError: Error?
     private var shouldSuspendFetch = false
     private var shouldFailFetch = false
@@ -2910,12 +2665,6 @@ private actor StubConversationRepository: ConversationRepository {
     }
 }
 
-/// Records titles fired through `onTitleGenerated`. Both fire paths — the
-/// user-send truncation fallback and the LLM-generated title — run on
-/// `@MainActor`, so a `@MainActor` recorder captures them synchronously,
-/// letting the test assert against `values` with no `Task`-hop and nothing
-/// to poll for. `@MainActor` isolation also makes it implicitly `Sendable`
-/// for capture by the `@MainActor` `onTitleGenerated` closure.
 @MainActor
 private final class TitleSpy {
     private(set) var values: [String] = []
@@ -2925,11 +2674,6 @@ private final class TitleSpy {
     }
 }
 
-/// Trivial main-actor-isolated counter used as a spy for synchronous
-/// callbacks fired entirely on the main actor (e.g. the no-model error
-/// banner's `onAddModelRequested` hook). `@MainActor` isolation makes
-/// it implicitly `Sendable` so it can be captured by a
-/// `@MainActor @Sendable` closure without `@unchecked`.
 @MainActor
 private final class MainActorCounter {
     var value: Int = 0
@@ -2937,9 +2681,6 @@ private final class MainActorCounter {
 
 private actor StubCheckpointRepository: CompactionCheckpointRepository {
     private var rows: [CompactionCheckpointRecord] = []
-    /// When set, the next `delete(ids:)` call throws this. Mirrors the
-    /// `StubMessageRepository.setDeleteError` seam — covers the
-    /// regenerate path's first-write-failure branch.
     private var deleteError: Error?
 
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? {
@@ -2971,15 +2712,11 @@ private actor StubCheckpointRepository: CompactionCheckpointRepository {
         self.deleteError = error
     }
 
-    /// Test helper: inspect persisted checkpoint rows.
     func snapshotRows() -> [CompactionCheckpointRecord] { rows }
 
-    /// Test helper: seed rows so a fixture can pin pre-existing checkpoints.
     func seed(_ records: [CompactionCheckpointRecord]) { rows = records }
 }
 
-/// In-memory `SettingRepository` backing the title-summarizer store in the
-/// auto-title fixtures.
 private actor TitleSettingRepository: SettingRepository {
     private var storage: [String: String] = [:]
 

@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleSheetMotion` — that the Reduce Motion setting maps to the
-/// cross-fade presentation and its absence to the default slide.
 @Suite("BibleSheetMotion")
 struct BibleSheetMotionTests {
     @Test("Reduce Motion off resolves to the full slide presentation")

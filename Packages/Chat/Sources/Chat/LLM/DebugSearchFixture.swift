@@ -2,20 +2,12 @@
 import Core
 import Foundation
 
-/// Canned web-search data shared by the two DEBUG search fakes:
-/// `DebugLLMProvider`'s built-in "search" script (which fakes the whole
-/// conversation) and `DebugWebSearchFulfiller` (which fulfills the `"debug"`
-/// mock backend for a real model). One source of truth so both render the
-/// same NASA/space sources + suggestions strip.
 enum DebugSearchFixture {
-    /// Grounded-style answer text. Reads like a real reply so the sources
-    /// pill renders under a realistic message.
     static let findings = """
     Based on the latest reporting, the rover confirmed subsurface water ice \
     in Jezero crater and relayed fresh imagery this week. Sources below.
     """
 
-    /// Three canned citations the sources pill renders + expands.
     static let citations: [SourceCitation] = [
         SourceCitation(
             id: "https://www.nasa.gov/mars-rover#0",
@@ -34,11 +26,7 @@ enum DebugSearchFixture {
         ),
     ]
 
-    /// Sample Google Search-Suggestions HTML, exercising the always-visible
-    /// `GeminiSearchSuggestionsView` strip without a real grounded response.
-    /// A minimal stand-in for Gemini's `searchEntryPoint.renderedContent`
-    /// (the real payload is richer styled HTML); rendered unmodified by the
-    /// strip just like the live one.
+    /// Rendered unmodified, matching Gemini's `searchEntryPoint.renderedContent` contract.
     static let suggestionsHTML = """
     <html><head><meta name="viewport" content="width=device-width,initial-scale=1">\
     <style>html,body{margin:0;padding:0}body{font-family:-apple-system;line-height:1}\

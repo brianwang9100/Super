@@ -1,8 +1,6 @@
 import Core
 import Foundation
 
-/// Test double for `ToolExecutor`. Returns a configured `ToolResult` or
-/// throws a configured error. Records every input it sees.
 final class FakeToolExecutor: ToolExecutor, Sendable {
     let toolID: String
     private let state: FakeToolExecutorState
@@ -33,11 +31,7 @@ final class FakeToolExecutor: ToolExecutor, Sendable {
     }
 }
 
-/// Trivial throwable used by `FakeToolExecutor`. Equatable so tests can
-/// match on the exact case rather than `localizedDescription` strings.
-/// Conforms to `LocalizedError` so the orchestrator's error-message body
-/// surfaces the case payload (instead of Swift's default
-/// `"The operation couldn't be completed."` placeholder).
+/// LocalizedError exposes the scripted payload through the orchestrator error path.
 enum FakeToolError: Error, Equatable, Sendable, LocalizedError {
     case scripted(String)
     case notConfigured

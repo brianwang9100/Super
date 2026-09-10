@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// About pane. Mirrors `AboutPane` from `settings.jsx`: large italic-serif
-/// brand wordmark (`SuperOS` / `SuperBible`, from `SuperAppInfo.bundleName`),
-/// a mono `v… · build …` line, and a centered tagline.
 struct SettingsAboutPane: View {
     let viewModel: SettingsViewModel
 
@@ -12,10 +9,7 @@ struct SettingsAboutPane: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(viewModel.appInfo.bundleName)
-                // Fixed brand wordmark: pinned off the font-scale slider
-                // (tracksFontScale: false) so a 56pt mark doesn't balloon at
-                // max slider. The version/description below it are content and
-                // scale with the slider like the rest of the pane.
+                // The brand wordmark intentionally opts out of app font scaling.
                 .font(typography.display(56, relativeTo: nil, tracksFontScale: false))
                 .italic()
                 .foregroundStyle(theme.ink)

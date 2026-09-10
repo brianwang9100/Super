@@ -7,7 +7,6 @@ public struct BibleAnnotationDraft: Sendable, Equatable {
     /// Whether generation and its persistence write succeeded.
     public var isComplete: Bool
 
-    /// Creates a transient response for a single annotation request.
     public init(requestID: String, text: String = "", isComplete: Bool = false) {
         self.requestID = requestID
         self.text = text

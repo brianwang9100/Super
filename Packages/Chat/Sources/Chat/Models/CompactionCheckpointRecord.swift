@@ -1,15 +1,8 @@
 import Foundation
 import GRDB
 
-/// Summary of older messages produced when a conversation approaches its
-/// model's context window. The "live" checkpoint is the one currently
-/// substituted for the messages it covers; older checkpoints are kept
-/// (`isLive == false`) for audit and potential roll-back.
-///
-/// `uptoMessageId` is the inclusive upper bound: every message at or
-/// before that row is represented by `summary`. `tokensBefore`/`tokensAfter`
-/// are diagnostics — how many tokens the summarized window held vs. the
-/// summary that replaced it.
+/// uptoMessageId is inclusive. Token counts describe the summarized window
+/// before compaction and its replacement summary.
 public struct CompactionCheckpointRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "compactionCheckpoint"
 

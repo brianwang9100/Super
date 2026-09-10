@@ -2,12 +2,6 @@ import Core
 import Foundation
 import GRDB
 
-/// GRDB-backed conformer for Core's `MemoryRepository`. Lives in Chat
-/// because Chat owns the database; Core stays GRDB-free.
-///
-/// Writes enforce ``MemoryLimits`` so a hostile model that loops on
-/// `save` (or a user paste of 50KB of "remember this") can't fill the
-/// prompt indefinitely.
 public struct GRDBMemoryRepository: MemoryRepository {
     private let queue: DatabaseQueue
 
@@ -33,9 +27,7 @@ public struct GRDBMemoryRepository: MemoryRepository {
     public func save(_ entry: MemoryEntry) async throws {
         try validate(text: entry.text)
         try await queue.write { db in
-            // Capacity check runs inside the write transaction so two
-            // racing `save`s can't both observe `count < max` and then
-            // both insert.
+            // Check capacity inside the write transaction so concurrent saves cannot overfill it.
             let count = try MemoryRecord.fetchCount(db)
             if count >= MemoryLimits.maxEntries {
                 throw MemoryRepositoryError.overCapacity(limit: MemoryLimits.maxEntries)
@@ -63,9 +55,7 @@ public struct GRDBMemoryRepository: MemoryRepository {
     }
 
     public func fetchAndDelete(id: String) async throws -> MemoryEntry? {
-        // Both the read and the delete share one write transaction so a
-        // concurrent `update`/`delete` from the Settings pane can't slip
-        // in between and stale the returned entry.
+        // Read and delete atomically so the returned entry matches what was removed.
         try await queue.write { db in
             guard let record = try MemoryRecord.fetchOne(db, key: id) else {
                 return nil
@@ -86,12 +76,6 @@ public struct GRDBMemoryRepository: MemoryRepository {
         if trimmed.isEmpty {
             throw MemoryRepositoryError.emptyText
         }
-        // Measure the trimmed length, not the raw length: a 500-char
-        // memory with a trailing newline (the LLM occasionally appends
-        // one) would otherwise be rejected even though its meaningful
-        // content is at the limit. The two write paths (MemoryTool +
-        // SettingsViewModel) both trim before storing, so trimmed
-        // length is what actually lands in the row.
         if trimmed.count > MemoryLimits.maxTextLength {
             throw MemoryRepositoryError.textTooLong(limit: MemoryLimits.maxTextLength)
         }

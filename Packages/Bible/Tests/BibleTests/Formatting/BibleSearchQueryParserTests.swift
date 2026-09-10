@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleSearchQueryParser` — the progressive picker-search parser
-/// that turns `"1 Peter"`, `"1 Peter 2"`, and `"1 Peter 2:5-6"` into a
-/// book-list filter plus an optional chapter / verse deep-link target.
 @Suite("BibleSearchQueryParser")
 struct BibleSearchQueryParserTests {
     private let catalog = BibleBookCatalog.standard

@@ -2,29 +2,15 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.note` (`create`)
-/// tool call instead of a chat reply, so the Bible note pipeline — tool
-/// execution, repository write, reactive `@Query` render — is exercisable
-/// end-to-end with no API key, network, or on-device model.
-///
-/// Note creation is chat-only (there is no headless note dispatcher), so this
-/// provider drives one path: select it, send a message naming a target (or
-/// not — it falls back to John 3:16), and a fake `.assistant` note lands.
-/// Selected via a seeded `kind == .debug` row whose `modelId` is
-/// `Self.modelID`; the file is gated on `#if DEBUG` and compiles out of
-/// Release entirely. References the tool by its name string (no `Bible`
-/// import).
 public struct DebugNoteLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (note)"
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`, and the
-    /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-note"
     public static let modelDisplayName = "Debug note"
     public static let maxContextTokens = 8_192
 
-    /// Bible note tool id, held as a literal so Chat needn't import Bible.
+    /// Kept as a literal so Chat does not import Bible.
     static let toolName = "bible.note"
 
     public var supportedModels: [LLMModel] {
@@ -93,8 +79,6 @@ public struct DebugNoteLLMProvider: LLMProvider {
 
     // MARK: - Canned payload
 
-    /// Build the `bible.note` `create` `JSONValue` input for `target`,
-    /// matching `NoteBibleTool.descriptor`'s parameter schema.
     static func noteInput(for target: DebugBibleTarget) -> JSONValue {
         var fields: [String: JSONValue] = [
             "action": .string("create"),

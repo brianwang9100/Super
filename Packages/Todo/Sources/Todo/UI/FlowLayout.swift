@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// A `Layout` that arranges subviews left-to-right and wraps to a new line
-/// when the next subview would overflow the proposed width — the SwiftUI
-/// equivalent of CSS `flex-wrap`. Used for the tag-chip rows in the editor
-/// sheet and filter sheet.
+/// Arranges subviews left-to-right, wrapping when the next one would overflow.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 

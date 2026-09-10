@@ -1,11 +1,6 @@
 import Core
 
-/// The five highlight colours a reader can paint onto a verse.
-///
-/// The raw value is the stable identifier persisted in
-/// `BibleHighlightRecord.colorId`; never rename a case without a migration.
-/// Each colour carries two renderings: the vivid `swatch` shown in the action
-/// sheet, and the `verseTint` wash painted behind the highlighted words.
+/// Raw values are persisted colorId identifiers; renaming requires a migration.
 public enum BibleHighlightColor: String, Codable, Sendable, CaseIterable, Identifiable {
     case yellow
     case green
@@ -15,8 +10,6 @@ public enum BibleHighlightColor: String, Codable, Sendable, CaseIterable, Identi
 
     public var id: String { rawValue }
 
-    /// Human-readable colour name — used for the action sheet's VoiceOver
-    /// labels (e.g. `"Highlight yellow"`).
     public var displayName: String {
         switch self {
         case .yellow: "Yellow"
@@ -27,7 +20,6 @@ public enum BibleHighlightColor: String, Codable, Sendable, CaseIterable, Identi
         }
     }
 
-    /// The vivid pastel circle shown as the action sheet's selectable swatch.
     public var swatch: OKLCH {
         switch self {
         case .yellow: OKLCH(0.92, 0.10, 95)
@@ -38,13 +30,7 @@ public enum BibleHighlightColor: String, Codable, Sendable, CaseIterable, Identi
         }
     }
 
-    /// The wash painted behind a highlighted verse's words.
-    ///
-    /// Light and sepia pages reuse the pale `swatch` directly — it sits behind
-    /// dark ink with ample contrast, the look of a physical highlighter. The
-    /// dark page needs a deepened, lower-chroma, semi-transparent variant so
-    /// the highlight reads as a tint without washing the light ink out.
-    /// - Parameter isDark: whether the reader is on the dark theme.
+    /// Dark pages use a translucent, lower-chroma tint to preserve contrast with light ink.
     public func verseTint(forDarkPage isDark: Bool) -> OKLCH {
         guard isDark else { return swatch }
         return OKLCH(0.42, swatch.c * 0.85, swatch.h, alpha: 0.65)

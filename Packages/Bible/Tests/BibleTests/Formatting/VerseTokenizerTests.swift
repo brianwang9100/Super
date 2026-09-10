@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `VerseTokenizer` — specifically that every rendered verse keeps
-/// exactly one `isVerseStart` word, the anchor VoiceOver focuses and the spot
-/// the raised number is drawn.
 @Suite("VerseTokenizer")
 struct VerseTokenizerTests {
     @Test("each prose verse flags exactly its first word as the verse start")
@@ -27,16 +24,13 @@ struct VerseTokenizerTests {
             endsHere: [1, 2]
         )
         let ends = tokens.filter(\.isVerseEnd)
-        // Verse 1 ends at "beginning"; verse 2 ends at "formless".
         #expect(ends.map(\.verseNumber) == [1, 2])
         #expect(ends.map(\.word) == ["beginning", "formless"])
     }
 
     @Test("a verse omitted from endsHere carries no verse-end flag in prose")
     func proseStraddlingVerseDoesNotEndHere() {
-        // Verse 1 has only its opening fragment in this paragraph — a
-        // later paragraph holds the trailing fragment — so endsHere is
-        // empty and no token is flagged.
+        // The trailing fragment belongs to a later paragraph, so this one has no verse end.
         let tokens = VerseTokenizer.proseTokens(
             [BibleVerse(number: 1, text: "Continuing the prior thought")],
             endsHere: []
@@ -70,8 +64,6 @@ struct VerseTokenizerTests {
             ]),
         ]
         let result = VerseTokenizer.verseEndsByParagraph(paragraphs)
-        // Verse 1 ends in paragraph 0; verses 2 and 3 end in paragraph 2.
-        // The heading paragraph carries no verses.
         #expect(result[0] == [1])
         #expect(result[1].isEmpty)
         #expect(result[2] == [2, 3])

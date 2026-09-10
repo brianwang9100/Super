@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Protects the explicit jump's lifetime from later streaming and user navigation.
 struct MessageListBottomScrollRequestTests {
     @Test("native motion starting after completion suppresses fallback geometry")
     func delayedNativeMotionRearmsSuppression() {
@@ -38,7 +37,7 @@ struct MessageListBottomScrollRequestTests {
             distanceToBottom: 0, isRendered: false, content: "tap", measurementID: 1
         )
         #expect(!estimatedArrival)
-        // The other producer can still deliver an old rendered sample.
+        // A rendered sample from before the animation can still arrive here.
         expectRefinement(false, request: &request, distance: 0, isRendered: true)
         let correction = request.shouldRefine(
             distanceToBottom: 200, isRendered: true, content: "tap", measurementID: 1

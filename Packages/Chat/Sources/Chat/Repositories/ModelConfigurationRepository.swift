@@ -2,33 +2,22 @@ import Core
 import Foundation
 import GRDB
 
-/// Errors thrown by `ModelConfigurationRepository` operations.
 public enum ModelConfigurationRepositoryError: Error, Sendable, Equatable {
-    /// `setSelected(id:)` referenced a row that doesn't exist.
     case unknownModel(id: String)
     /// An update's original credential reference no longer matches, or its row was deleted.
     case staleModel(id: String)
     /// Unused keys remain durably tracked for cleanup on a subsequent launch.
     case stagedKeyCleanupFailed
-    /// `setSelected(id:)` referenced a row whose `kind` the running binary
-    /// can't build a provider for (a native-search kind with no shipped
-    /// adapter). Selecting it would demote every other row and then make
-    /// `selected()` return nil — leaving no active model. The repository
-    /// refuses instead of wedging the app.
+    /// Reject before demoting the current selection if the kind has no compiled adapter.
     case unselectableKind(id: String, kind: String)
 }
 
-/// Persistence boundary for `ModelConfigurationRecord` plus the matching
-/// Keychain entry that holds the row's API (Application Programming
-/// Interface) key. The repository owns both halves so callers don't have
-/// to wire `KeychainClient` separately at every call site.
+/// Owns model rows and their Keychain references.
 public protocol ModelConfigurationRepository: Sendable {
-    /// Every configured model, ordered by `createdAt` ascending so the UI
-    /// shows them in setup order.
+    /// Known kinds only, ordered by createdAt ascending.
     func all() async throws -> [ModelConfigurationRecord]
-    /// One row by id, ignoring selection state.
     func fetch(id: String) async throws -> ModelConfigurationRecord?
-    /// The currently selected model, if any.
+    /// Selected row whose kind has a compiled provider adapter; runtime availability is separate.
     func selected() async throws -> ModelConfigurationRecord?
     /// Insert or update, atomically releasing the committed key's staging marker.
     /// Does not touch Keychain; register a fresh reference before writing its secret.
@@ -36,35 +25,17 @@ public protocol ModelConfigurationRepository: Sendable {
     /// Update an existing row only if its credential reference still matches the caller's snapshot.
     /// Comparison and persistence are atomic; a stale edit cannot restore a retired reference or deleted row.
     func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws
-    /// Build and insert a record atomically, but only if the table has
-    /// no other rows at the moment of the write. The `make` closure is
-    /// called *inside* the write transaction — only when the table is
-    /// confirmed empty — so callers using a `DeterministicIDGenerator`
-    /// don't burn an id on a no-op call. Returns the inserted record,
-    /// or `nil` when the table already had rows.
-    ///
-    /// Used by first-launch seeding so the empty-check and the insert
-    /// run in the same write transaction — a concurrent insert from
-    /// another writer between them would otherwise pass the check, then
-    /// land a second row that violates the seed's "only on empty"
-    /// contract.
+    /// Inside one write transaction, call make only when no buildable model exists.
+    /// Return nil otherwise, without consuming a new ID.
     func insertIfEmpty(
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord?
-    /// Delete the row and the matching Keychain entry referenced by its
-    /// `apiKeyRef`. The Keychain delete runs first: a Keychain failure
-    /// leaves the DB row in place so the caller can retry, instead of
-    /// orphaning a secret that no row points at. Safe to call when no
-    /// Keychain entry exists.
+    /// Delete the secret before the row so a Keychain failure leaves a retryable reference.
+    /// Safe when the secret is already absent.
     func delete(id: String) async throws
-    /// Mark `id` as the unique selected row, clearing any prior selection
-    /// in the same write transaction.
-    /// - Throws: `ModelConfigurationRepositoryError.unknownModel` when no
-    ///   row matches `id`.
+    /// Atomically select after validating existence and buildability, preserving the prior selection on rejection.
     func setSelected(id: String) async throws
-    /// Persist the plaintext key under `ref` in the Keychain.
     func storeAPIKey(_ key: String, ref: String) async throws
-    /// Read the plaintext key back out, or nil if no entry exists.
     func loadAPIKey(ref: String) async throws -> String?
     /// Remove only the referenced secret, preserving the model row during a failed edit rollback.
     func deleteAPIKey(ref: String) async throws
@@ -76,31 +47,12 @@ public protocol ModelConfigurationRepository: Sendable {
     func discardStagedAPIKey(ref: String) async throws
 }
 
-/// GRDB-backed `ModelConfigurationRepository`. The selected-exclusive
-/// invariant is enforced at the schema level by a partial unique index on
-/// `modelConfiguration(isSelected) WHERE isSelected = 1`, so any caller
-/// (including `save(_:)`) that tries to land a second selected row hits a
-/// SQLite (Structured Query Language) UNIQUE violation. `setSelected(id:)`
-/// is the safe path: it demotes the prior selected row in the same write
-/// transaction so the index never sees the conflict.
 public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     private let queue: DatabaseQueue
     private let keychain: any KeychainClient
-    /// Predicate deciding which kinds this binary can build a provider for —
-    /// the repository's notion of "buildable" (it can't consult the runtime
-    /// HTTP-client/AFM availability the factory does; for persistence purposes
-    /// "buildable" means the binary has an adapter for the kind). Defaults to
-    /// `LLMProviderKind.hasProviderAdapter`.
-    ///
-    /// Injectable so the known-but-unbuildable-kind guards stay testable: as of
-    /// web-search PR3c every shipping kind is buildable, so that scenario is
-    /// otherwise unreachable until a future native kind is added ahead of its
-    /// adapter. Tests inject a predicate that marks one real kind unbuildable to
-    /// drive the `selected()`/seed/`setSelected` filters.
+    /// Buildability means a compiled adapter, independent of runtime availability.
+    /// Injectable to exercise known but unbuildable kinds.
     private let isKindBuildable: @Sendable (LLMProviderKind) -> Bool
-    /// Raw values of the buildable subset, derived once from `isKindBuildable`
-    /// (fixed for the repository's lifetime — `selected()` runs on every launch
-    /// and selection change, so it's computed here rather than per request).
     private let buildableKindRawValues: [String]
 
     public init(
@@ -138,19 +90,8 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         }
     }
 
-    /// Base request that filters to rows whose `kind` matches a case the
-    /// running binary actually has. In DEBUG builds that includes
-    /// `LLMProviderKind.debug`; in Release it doesn't. The filter exists
-    /// so a `kind = "debug"` row seeded by a DEBUG build doesn't crash a
-    /// Release launch — GRDB would otherwise call
-    /// `LLMProviderKind(rawValue: "debug")` during decode, get `nil`, and
-    /// throw `DecodingError.dataCorrupted`, propagating up through
-    /// the host bootstrap. Rows with an unknown `kind` value are silently
-    /// excluded from every read; the unreferenced row stays on disk
-    /// unless a future migration cleans it up.
-    /// Raw values of every known kind (the buildable subset is the instance
-    /// `buildableKindRawValues`, derived from the injected predicate). Fixed at
-    /// compile time, so computed once.
+    /// Exclude unknown kinds before decoding, including DEBUG rows opened by a Release build.
+    /// Keep their stored rows intact for binaries that recognize them.
     private static let knownKindRawValues: [String] =
         LLMProviderKind.allCases.map(\.rawValue)
 
@@ -158,16 +99,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         ModelConfigurationRecord.filter(knownKindRawValues.contains(Column("kind")))
     }
 
-    /// Like `knownKindRequest`, but further restricted to kinds the running
-    /// binary can actually build a provider for (`hasProviderAdapter`). The
-    /// native-search kinds (`.anthropicNative` etc.) decode fine but have no
-    /// adapter yet, so a row carrying one must not be returned as the
-    /// `selected()` model: hydration would skip it, `setActive` would throw
-    /// `unknownProvider`, the throw would be swallowed, and the registry
-    /// would be left with no active provider. Filtering them out of
-    /// `selected()` instead lets the first-registered fallback fire cleanly.
-    /// `all()`/`fetch(id:)` keep using `knownKindRequest` so such a row is
-    /// still visible/editable in the Models list — it just can't be active.
+    /// Keep known but unbuildable rows editable through all/fetch, excluding them from selection and seeding.
     private var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
         ModelConfigurationRecord.filter(buildableKindRawValues.contains(Column("kind")))
     }
@@ -201,27 +133,9 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
         try await queue.write { db in
-            // Empty-check must match what `selected()` can actually surface
-            // as the active model — otherwise a row the binary can't build a
-            // provider for makes the table look non-empty, the AFM seed
-            // silently no-ops, and `hydrateProviders` ends up with an empty
-            // registry. Counting through `buildableKindRequest` (the same
-            // filter `selected()` uses) excludes both unrecognised `kind`
-            // values (e.g. a leftover DEBUG `kind = "debug"` row in a Release
-            // build) and known-but-unbuildable native-search kinds — so a DB
-            // carrying only a native-kind row still seeds AFM and the user
-            // keeps a recoverable model.
             let count = try buildableKindRequest.fetchCount(db)
             guard count == 0 else { return nil }
             let record = make()
-            // Before inserting a row with `isSelected = 1`, demote any
-            // unselectable row holding the selection slot (unknown-kind or
-            // native-kind). The schema's partial unique index
-            // (`WHERE isSelected = 1`) doesn't know about `kind`, so without
-            // the demote the insert would UNIQUE-violate when a newer binary
-            // left a selected row this build can't surface. Demoting is
-            // safe — `selected()` filters those rows out, so the user can't
-            // reach them as the active model anyway.
             if record.isSelected {
                 try demoteUnselectableSelections(db: db)
             }
@@ -230,16 +144,8 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         }
     }
 
-    /// Clear `isSelected` on any selected row the running binary can't
-    /// surface as the active model — i.e. any row whose `kind` is *not*
-    /// buildable (`buildableKindRawValues`). That covers two cases: a
-    /// truly-unknown `kind` from a newer binary, and a known-but-not-yet-
-    /// buildable native-search kind (`.anthropicNative` etc.). The partial
-    /// unique index on `isSelected = 1` ignores `kind`, so before inserting
-    /// a new selected row we have to free up the slot or risk a UNIQUE
-    /// violation. Demoting is benign because `selected()` filters these
-    /// rows out anyway (it also runs through `buildableKindRequest`), so the
-    /// user has no path to reach them as the active model from this binary.
+    /// The unique index covers unknown and unbuildable kinds too; release their
+    /// selection slot before inserting a selected row this binary can use.
     private func demoteUnselectableSelections(db: Database) throws {
         try ModelConfigurationRecord
             .filter(!buildableKindRawValues.contains(Column("kind")))
@@ -248,13 +154,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     }
 
     public func delete(id: String) async throws {
-        // Probe via raw SQL — *not* `fetch(id:)` — so the delete path
-        // works for rows whose `kind` value the binary doesn't recognise
-        // (e.g. a leftover DEBUG `kind = "debug"` row in a Release
-        // build). `fetch(id:)` runs through `knownKindRequest` and would
-        // return nil for such a row, leaving it permanently orphaned.
-        // Inner optional: `apiKeyRef` column value (NULL for AFM-style
-        // rows). Outer optional: row existence.
+        // Raw SQL bypasses the known-kind read filter so hidden legacy rows remain deletable.
         let probe: (exists: Bool, apiKeyRef: String?) = try await queue.read { db in
             let row = try Row.fetchOne(
                 db,
@@ -264,10 +164,6 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             return row.map { (true, $0["apiKeyRef"] as String?) } ?? (false, nil)
         }
         guard probe.exists else { return }
-        // Keychain first: if it throws, the DB row remains and the user
-        // can retry instead of orphaning the secret. Skip when the row
-        // has no `apiKeyRef` (on-device kinds like `.appleFoundation`
-        // never write to the Keychain).
         if let ref = probe.apiKeyRef {
             try await keychain.delete(ref: ref)
         }
@@ -281,13 +177,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             guard let record = try ModelConfigurationRecord.fetchOne(db, key: id) else {
                 throw ModelConfigurationRepositoryError.unknownModel(id: id)
             }
-            // Refuse to select a row this binary can't surface as the active
-            // model. `selected()` filters non-buildable kinds (the native-
-            // search kinds) through `buildableKindRequest`, so selecting one
-            // here would demote every other row and then yield nil from
-            // `selected()` — no active model, no error. Guard before the
-            // demote so the prior selection is left intact. Consistent with
-            // the seed paths' buildable-kind checks.
+            // Validate before demoting, or a rejected selection erases the active model.
             guard isKindBuildable(record.kind) else {
                 throw ModelConfigurationRepositoryError.unselectableKind(
                     id: id, kind: record.kind.rawValue
@@ -327,12 +217,10 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         try await keychain.delete(ref: ref)
     }
 
-    /// Registers a fresh reference before writing to Keychain, without exposing it through a model.
     public func registerStagedAPIKey(ref: String) async throws {
         try await queue.write { db in try ModelStagedKeyRecord(id: ref).insert(db) }
     }
 
-    /// Removes one unused key and its ledger row; raw SQL protects references held by unknown model kinds.
     public func discardStagedAPIKey(ref: String) async throws {
         try await deleteAPIKeyIfUnreferenced(ref: ref)
         // A failed metadata deletion remains retryable even when its secret is already absent.
@@ -353,23 +241,9 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     }
 
     #if DEBUG
-    /// DEBUG-only first-launch seed for a debug provider row. Inserts the row
-    /// atomically iff no row with `id` already exists, so each of the several
-    /// debug rows (canned stream, annotate, note) is seeded independently and
-    /// idempotently.
-    ///
-    /// When `selectable`, `make` receives `shouldSelect = true` only if the
-    /// table currently has no buildable selected row — so a fresh install
-    /// lands on the canned-stream debug model by default, but a developer who
-    /// has already wired a real provider keeps that one active. The
-    /// annotate/note rows pass `selectable: false`: they're alternatives in
-    /// the picker, never the auto-selected default, and `make` always
-    /// receives `false`. Returns the inserted record on success, nil when a
-    /// row with `id` was already present.
-    ///
-    /// Lives on the concrete type (not the protocol) so the in-tree
-    /// `Stub`/`NoopModelRepository` test doubles don't have to grow a
-    /// DEBUG-only stub.
+    /// Insert each debug row once, checking its ID and calling make inside the transaction.
+    /// Pass true to make only when selectable is true and no buildable row is selected; pass false otherwise.
+    /// Return nil if the ID already exists.
     public func insertDebugRowIfMissing(
         id: String,
         selectable: Bool,
@@ -380,22 +254,10 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
                 .filter(Column("id") == id)
                 .fetchCount(db) > 0
             guard !alreadyPresent else { return nil }
-            // `shouldSelect` matches what `selected()` would report — only a
-            // row this binary can build a provider for counts as "the active
-            // model" from the user's perspective. A row the binary can't
-            // surface (an unknown `kind`, or a known-but-unbuildable
-            // native-search kind) is unusable here and shouldn't keep the
-            // seed from claiming selection. Filter through `buildableKindRequest`
-            // so this stays consistent with `selected()`. Non-selectable rows
-            // never claim selection regardless.
             let hasBuildableSelected = try buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchCount(db) > 0
             let shouldSelect = selectable && !hasBuildableSelected
-            // Demote any unselectable selected row before inserting our own —
-            // the schema's partial unique index spans every row regardless of
-            // `kind`, so without this an unknown- or native-kind selected row
-            // from a newer binary would UNIQUE-violate the debug row's insert.
             if shouldSelect {
                 try demoteUnselectableSelections(db: db)
             }

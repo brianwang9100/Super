@@ -3,59 +3,23 @@ import Foundation
 import GRDBQuery
 import SwiftUI
 
-/// Root view of the Chats mini-applet — a searchable list of every
-/// active conversation, newest-update-first. Mirrors the design in
-/// `super/project/chats/app.jsx`.
-///
-/// Reactive: binds the conversation list via GRDBQuery `@Query` so
-/// edits from other surfaces (the Chat overlay creating a chat, a
-/// message send bumping `updatedAt`) repaint without a manual reload.
-/// Search filtering runs client-side over the @Query result — the
-/// only viable pattern until GRDBQuery's parameterized-request
-/// threading lands; same approach `TodoScreen` uses for its filter.
 public struct ChatsScreen: View {
     @Query(ActiveConversationsRequest()) private var conversations: [ConversationRecord]
 
     @State private var searchText: String
-    /// Reference time for relative-time bucketing in each row. A
-    /// `@State` so the `.task` modifier below can refresh it every
-    /// minute — a `let` captured at init time would freeze the
-    /// subtitles ("12 min ago") for the whole session even as the
-    /// `@Query` re-renders. Snapshot tests inject a fixed `now`; the
-    /// refresh task can't fire inside a sub-millisecond test render.
     @State private var now: Date
 
     @Environment(\.superEventBus) private var environmentEventBus
-    /// Test-only override of the event bus. Production callers leave
-    /// this `nil` and the screen reads `@Environment(\.superEventBus)`
-    /// from the shell; the unit-test suite injects a real
-    /// `SuperEventBus` here to assert published payloads without
-    /// constructing a SwiftUI host.
     private let injectedEventBus: SuperEventBus?
     private var eventBus: SuperEventBus? { injectedEventBus ?? environmentEventBus }
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Search-field base size, declared via `@ScaledMetric` so the
-    /// system-font input composes OS Dynamic Type on top of the app
-    /// font-scale that `SuperTypography` folds in. The "Chats" title and
-    /// the result-count line are brand serif / mono roles that carry
-    /// Dynamic Type through their own `relativeTo`.
+    /// System faces need ScaledMetric; brand roles carry Dynamic Type through relativeTo.
     @ScaledMetric(relativeTo: .subheadline) private var searchInputSize: CGFloat = 14
 
-    /// Bottom inset that clears the shell's minimized "Chat with Super"
-    /// dock. Mirrors `TodoScreen.chatDockClearance`.
     private static let chatDockClearance: CGFloat = 96
 
-    /// - Parameters:
-    ///   - initialSearchText: Snapshot-only test seam — seeds the
-    ///     search field so a recorded baseline can render the
-    ///     filter-active states without simulating typing.
-    ///   - now: Snapshot-only test seam — fixes the reference time
-    ///     for `RelativeTimeFormatter` bucketing.
-    ///   - eventBus: Unit-test-only test seam — overrides the
-    ///     `@Environment(\.superEventBus)` lookup so a test can
-    ///     observe published events without spinning up a SwiftUI
-    ///     host. Production always leaves this `nil`.
+    /// Initial search and time pin snapshots; eventBus lets tests observe actions without hosting SwiftUI.
     public init(
         initialSearchText: String = "",
         now: Date = Date(),
@@ -72,9 +36,7 @@ public struct ChatsScreen: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 header
-                    // 48pt clears the shell's 36pt hamburger (top: 4 +
-                    // 36 + 8 gap), matching `TodoScreen`'s vertical
-                    // baseline.
+                    // Clear the shell hamburger: 4pt top + 36pt button + 8pt gap.
                     .padding(.top, 48)
                     .padding(.horizontal, 18)
                 searchField
@@ -93,10 +55,7 @@ public struct ChatsScreen: View {
             addButton
         }
         .task {
-            // Keep the relative-time subtitles ("12 min ago") fresh
-            // while the screen stays mounted. A row that read "5 min
-            // ago" on open would otherwise still read "5 min ago"
-            // hours later, since the @Query only fires on DB writes.
+            // @Query refreshes on writes, so relative timestamps need their own timer.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 if Task.isCancelled { return }
@@ -105,8 +64,6 @@ public struct ChatsScreen: View {
         }
     }
 
-    // MARK: - Subviews
-
     private var header: some View {
         Text("Chats")
             .font(typography.display(36))
@@ -114,10 +71,6 @@ public struct ChatsScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The bare `TextField`, with platform-conditional modifiers
-    /// applied — `textInputAutocapitalization` only exists on UIKit
-    /// platforms, so the macOS build (where `swift test` runs the
-    /// non-UI suites) can't see it.
     @ViewBuilder private var searchTextField: some View {
         let field = TextField("Search chats", text: $searchText)
             .font(typography.font(size: searchInputSize))
@@ -172,9 +125,7 @@ public struct ChatsScreen: View {
     }
 
     @ViewBuilder private var listSurface: some View {
-        // Zero-history takes precedence over no-search-match: a query
-        // typed against an empty list is moot, so the more useful
-        // "tap + to start" guidance wins.
+        // Prefer first-run guidance over a failed search when history is empty.
         if conversations.isEmpty {
             emptyStateContainer(.noChats)
         } else if filteredConversations.isEmpty {
@@ -197,11 +148,6 @@ public struct ChatsScreen: View {
         }
     }
 
-    /// Centers an empty-state view vertically in the space between the
-    /// search bar and the chat dock — `Spacer` above and below so the
-    /// content sits in the middle of the visible area, not tucked under
-    /// the search field. Same composition for both modes so the two
-    /// empty states share their vertical baseline.
     @ViewBuilder private func emptyStateContainer(_ mode: ChatsEmptyState.Mode) -> some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
@@ -217,11 +163,6 @@ public struct ChatsScreen: View {
             Image(systemName: "plus")
                 .font(typography.font(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
-                // 44×44 mirrors the shell's hamburger button so the two share a
-                // baseline. Accent-tinted call-to-action glass: "new chat" is a
-                // primary create action, so it rides the accent (an `accentInk`
-                // glyph on `theme.accent`-biased glass) like the narration
-                // sheet's play button — a soft tint, not the old hard filled disc.
                 .frame(width: 44, height: 44)
                 .superGlassCTAButton(in: Circle())
         }
@@ -230,8 +171,6 @@ public struct ChatsScreen: View {
         .padding(.trailing, 12)
         .accessibilityLabel("New chat")
     }
-
-    // MARK: - Derived state
 
     private var trimmedQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -250,28 +189,14 @@ public struct ChatsScreen: View {
         return "New chat"
     }
 
-    // MARK: - Actions
-
-    /// Publish an "open this conversation" request on the shared
-    /// event bus. Internal (not private) so the unit-test suite can
-    /// drive it directly; production fires it from the row's tap
-    /// closure.
-    ///
-    /// Returns the spawned publish `Task` so tests can `await` it before
-    /// draining the bus — without that handle the publish is a
-    /// fire-and-forget race the test could only guess at with a timeout.
-    /// Production discards the handle.
+    /// Return the publish task so tests can await delivery without timeout races.
     @discardableResult
     func _openConversation(id: String) -> Task<Void, Never>? {
         guard let eventBus else { return nil }
         return Task { await eventBus.publish(.openConversationRequested(id: id)) }
     }
 
-    /// Publish a "start a new conversation" request on the shared
-    /// event bus. Internal (not private) so the unit-test suite can
-    /// drive it directly; production fires it from the `+` button.
-    ///
-    /// Returns the spawned publish `Task` (see `_openConversation`).
+    /// Returns the publish task, as with _openConversation.
     @discardableResult
     func _startNewChat() -> Task<Void, Never>? {
         guard let eventBus else { return nil }

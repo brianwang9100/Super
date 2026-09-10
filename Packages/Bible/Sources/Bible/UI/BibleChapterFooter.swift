@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// The prev / next chapter cards shown at the foot of the reading column.
-///
-/// Either card is dropped when there is no chapter that way — at Genesis 1
-/// the previous card is absent, at Revelation's final chapter the next one.
 struct BibleChapterFooter: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -15,9 +11,7 @@ struct BibleChapterFooter: View {
     let onNext: () -> Void
 
     var body: some View {
-        // One shared glass sampling region for the two adjacent cards so their
-        // edges and elevation read as one field — `spacing: 0` shares the
-        // region without ever merging the shapes (they keep the 8pt gap).
+        // Share glass sampling while preserving the gap and separate card shapes.
         SuperGlassContainer(spacing: 0) {
             HStack(spacing: 8) {
                 if let previousLabel {
@@ -62,8 +56,6 @@ struct BibleChapterFooter: View {
             .foregroundStyle(theme.inkSoft)
             .padding(14)
             .frame(maxWidth: .infinity)
-            // Interactive Liquid Glass replaces the old raised fill + border —
-            // glass supplies its own frosted edge and elevation.
             .superGlassButton(in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))

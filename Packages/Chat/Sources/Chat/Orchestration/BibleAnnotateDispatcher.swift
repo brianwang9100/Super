@@ -3,25 +3,13 @@ import Foundation
 import Observation
 import os
 
-/// Production diagnostics for `BibleAnnotateDispatcher`. File-scope so
-/// every method shares one Logger instance, under the same
-/// `chat-session` category the turn driver uses.
 private let bibleAnnotateLog = Logger(
     subsystem: "com.brianwang.Super",
     category: "chat-session"
 )
 
-/// Headless `bible.annotate` dispatcher — the Chat-side counterpart of
-/// the Bible UI's spark button, Annotate action tile, and empty
-/// book-picker bubbles.
-///
-/// Shell-owned and observable,
-/// attaches to the `SuperEventBus` once at app bootstrap, drains
-/// `SuperEvent.bibleAnnotateRequested` envelopes off the bus, and
-/// publishes one `SuperEvent.bibleAnnotateCompleted` per request.
-///
-/// Foreground requests stream Markdown without a conversation. The bulk
-/// `generate(reference:)` API retains its transient tool-loop conversation.
+/// Foreground requests stream Markdown without chat rows and publish a correlated completion.
+/// Bulk generate(reference:) retains its transient tool-loop conversation.
 @MainActor
 @Observable
 public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
@@ -35,21 +23,10 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     private let clock: any Clock
     private let idGenerator: any IDGenerator
 
-    /// In-flight request ids. Observed by tests to await dispatcher
-    /// drain — production code consumes `bibleAnnotateCompleted` events
-    /// off the bus instead.
     public private(set) var inFlightRequestIDs: Set<String> = []
 
     private var subscriptionTask: Task<Void, Never>?
-    /// One-shot callbacks fired after the dispatcher's subscription
-    /// processes a `bibleAnnotateRequested` envelope — test seam,
-    /// never observed in production. Scoped to request envelopes only
-    /// (rather than "next event") so unrelated bus traffic — a
-    /// concurrent `bibleAnnotateCompleted` from another dispatch, an
-    /// `openRecord` from a Chat-side citation tap — doesn't race the
-    /// callback ahead of the actual request handling and mislead a
-    /// test assertion. Mirrors `BibleScreenViewModel`'s same-shape
-    /// `_onNextDispatchCompletion`.
+    /// Request-specific callbacks prevent unrelated bus traffic from prematurely satisfying tests.
     private var requestCallbacks: [@MainActor () -> Void] = []
 
     public init(
@@ -74,9 +51,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         self.idGenerator = idGenerator
     }
 
-    /// Subscribe to the bus and start draining
-    /// `bibleAnnotateRequested` events. Idempotent — a second call is a
-    /// no-op so the shell can call it unconditionally after bootstrap.
+    /// Attaches once; repeated calls are a no-op.
     public func attach(to bus: SuperEventBus) async {
         guard subscriptionTask == nil else { return }
         let stream = await bus.events()
@@ -91,11 +66,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     private func handle(_ event: SuperEvent, bus: SuperEventBus) {
         guard case .bibleAnnotateRequested(let reference) = event else { return }
         guard inFlightRequestIDs.insert(reference.id).inserted else { return }
-        // Inherits @MainActor from the dispatcher so updates to
-        // `inFlightRequestIDs` after the await happen on the main
-        // actor without a nested `MainActor.run`. The Task isn't
-        // awaited here — multiple dispatches can fan out and run
-        // their LLM turns concurrently.
+        // Dispatch concurrently; inherited MainActor isolation owns the in-flight request set.
         Task { [weak self] in
             guard let self else { return }
             let generator = BibleAnnotationStreamGenerator(
@@ -108,25 +79,16 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             self.inFlightRequestIDs.remove(reference.id)
             await bus.publish(.bibleAnnotateCompleted(
                 requestId: reference.id,
-                // The bus / Bible UI only needs the message; flatten away the
-                // classification (used by the bulk runner) so the event payload
-                // is unchanged.
                 result: outcome.asResult
             ))
         }
-        // Fire after the in-flight insert + dispatch spawn so a test
-        // awaiting the callback observes both. Unlike a `defer`, this
-        // sits *inside* the request-filtered branch so unrelated
-        // events don't drain the queue prematurely.
+        // Signal only after insertion and task creation so tests observe the request as in flight.
         let callbacks = requestCallbacks
         requestCallbacks.removeAll()
         for callback in callbacks { callback() }
     }
 
-    /// Run one headless generation end-to-end (the `BibleAnnotateGenerating`
-    /// requirement). Always awaits the transient-conversation hard-delete before
-    /// returning so the chat DB is back to its prior state by the time the
-    /// caller (the bus handler, or the bulk runner) sees the outcome.
+    /// Await transient-conversation cleanup before returning; cleanup failures are logged.
     public func generate(reference: RecordReference) async -> BibleAnnotateOutcome {
         let model: LLMModel
         do {
@@ -166,9 +128,6 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return result
     }
 
-    /// Drive one `ChatSession.send(...)` turn and reduce its event
-    /// stream to a `BibleAnnotateOutcome`. Extracted so `generate` keeps
-    /// a flat narrative: prep, turn, cleanup.
     private func runTurn(
         conversationId: String,
         model: LLMModel,
@@ -195,10 +154,6 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
 
         var annotationCount = 0
         var toolWasCalled = false
-        // A tool error / failed call is transient (retry the unit); an LLM
-        // stream error is classified by kind so the bulk runner can halt on
-        // fatal auth/quota. The message stays exactly what it was before so the
-        // flattened bus payload is unchanged.
         var failure: (message: String, classification: BibleAnnotateFailure)?
 
         for await event in stream {
@@ -223,18 +178,8 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             }
         }
 
-        // A successful `bible.annotate` call wins over a trailing error.
-        // Once the tool ran cleanly the summary is already written to the
-        // DB — the user sees the card — so a later stream `.error` or a
-        // malformed *second* tool call must not flip the turn to `.failure`.
-        // Doing so would surface a spurious "couldn't regenerate" toast over
-        // a freshly-written card and, via the bulk generator seam, record a
-        // succeeded unit as a retryable failure. Only when no successful call
-        // happened do we report the captured failure (or the no-tool case).
-        // (For the single-shot paths the count is always 1 per call under the
-        // single-summary contract; for the bulk `chapterVerses` mode the model
-        // calls the tool once per notable verse, so the reduce accumulates the
-        // real verse count into `producedCount` — there the count is information.)
+        // A successful tool call already persisted the annotation; a trailing stream error
+        // must not turn it into a retryable failure. Count all artifacts for notable-verse bulk mode.
         if toolWasCalled {
             return .success(annotationCount: annotationCount)
         }
@@ -247,18 +192,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         )
     }
 
-    /// Resolve the model the active provider serves — the same model
-    /// normal chat sessions run against. Bootstrap seeds the active
-    /// provider from the selected row (falling back to first-registered
-    /// when that row's provider didn't register), and the shell then
-    /// keeps it in sync with the chat composer's selection (the picked
-    /// record id is promoted via `registry.setActive(id:)`). Every provider maps 1:1
-    /// to a single model, so the active provider's sole model *is* the
-    /// chat model. Deriving the model from the active provider
-    /// (rather than cross-checking the persisted selection row) also
-    /// guarantees membership in `supportedModels`, which is all
-    /// `provider.stream(...)` validates. Throws only when no provider is
-    /// registered/active so the caller can surface a clear reason.
+    /// Resolve from the active provider so the chosen model belongs to supportedModels.
     private func resolveActiveModel() async throws -> LLMModel {
         guard let provider = await llmProviderRegistry.active(),
               let model = provider.supportedModels.first else {
@@ -267,8 +201,6 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return model
     }
 
-    /// Map a thrown error from any prep or save step to the
-    /// human-readable string Bible shows next to its retry button.
     private func failureMessage(for error: any Error) -> String {
         switch error {
         case DispatchPrepError.noActiveProvider:
@@ -278,9 +210,6 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         }
     }
 
-    /// Wrap a thrown prep/save error as a classified failure outcome. No active
-    /// provider is a fatal config error (`.fatalAuth`); a thrown `LLMError` is
-    /// classified by kind; anything else is treated as transient.
     private func failureOutcome(for error: any Error) -> BibleAnnotateOutcome {
         let classification: BibleAnnotateFailure
         switch error {
@@ -294,12 +223,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return .failure(message: failureMessage(for: error), classification: classification)
     }
 
-    /// Classify an `LLMError` for the bulk runner's circuit breaker. Only
-    /// invalid-credentials and rate-limit/quota errors are fatal (retrying
-    /// can't fix them and they risk the wallet); everything else — transient
-    /// network/decoding failures, an unsupported model, a generic provider
-    /// error — is retryable, and a persistent retryable trips the run's
-    /// consecutive-failure breaker instead.
+    /// Credentials and rate limits stop the bulk run; other failures feed its consecutive-failure breaker.
     nonisolated static func classify(_ error: LLMError) -> BibleAnnotateFailure {
         switch error {
         case .unauthorized:
@@ -315,29 +239,14 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         case noActiveProvider
     }
 
-    /// Tool id we filter `ChatEvent.toolCallCompleted` /
-    /// `.toolCallFailed` on. Held as a string literal here so Chat
-    /// doesn't need to import Bible to read `AnnotateBibleTool.toolID`
-    /// — Chat already references `bible.annotate` by name in the
-    /// AppletBriefing aggregation path.
+    /// Keep the tool ID literal so Chat does not import Bible.
     nonisolated static let bibleAnnotateToolID = "bible.annotate"
 
-    /// Test seam: register a one-shot callback fired after the
-    /// dispatcher processes a `bibleAnnotateRequested` envelope
-    /// (in-flight insert recorded, dispatch task spawned). Scoped to
-    /// request envelopes only so unrelated bus traffic doesn't drain
-    /// the queue prematurely. Symmetric with `BibleScreenViewModel`'s
-    /// `_onNextDispatchCompletion`. Underscored because it's a
-    /// test-only surface, not stable API.
+    /// Fires once after a request is recorded and its dispatch task starts.
     func _onNextAnnotateRequest(_ callback: @escaping @MainActor () -> Void) {
         requestCallbacks.append(callback)
     }
 
-    // MARK: - Prompts
-
-    /// `chatBriefing` for the transient session. Replaces the real chat
-    /// system prompt so the LLM treats this turn purely as a tool
-    /// dispatcher, not a chatbot reply.
     static let dispatcherBriefing = """
     You are running as a one-off Bible annotation dispatcher inside the \
     Super app's headless tool pipeline.
@@ -369,12 +278,6 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     thematically similar verse.
     """
 
-    /// `chatBriefing` for the notable-verses bulk mode (`kind == "chapterVerses"`).
-    /// Unlike `dispatcherBriefing`, this one asks the model to call
-    /// `bible.annotate` *multiple* times in the turn — once per notable verse
-    /// range it picks from the chapter — rather than exactly once. The dispatcher
-    /// already counts artifacts across every call, so each verse annotation lands
-    /// and is tallied into the unit's `producedCount`.
     static let notableVersesBriefing = """
     You are running as a one-off Bible annotation dispatcher inside the \
     Super app's headless tool pipeline.
@@ -403,23 +306,11 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     similar verse.
     """
 
-    /// The `chatBriefing` to drive a dispatch turn for a given `reference.kind`.
-    /// The notable-verses bulk mode (`"chapterVerses"`) gets the multi-call
-    /// rank-and-generate briefing; every other kind (the single-shot book /
-    /// chapter / verse-range paths) gets the one-call `dispatcherBriefing`.
     static func briefing(forKind kind: String) -> String {
         kind == "chapterVerses" ? notableVersesBriefing : dispatcherBriefing
     }
 
-    /// `send(text:)` payload — names the target structurally so even
-    /// weaker models can produce the right `bible.annotate` arguments,
-    /// and names the per-scope sections to cover so generated summaries
-    /// stay consistent across calls.
     static func prompt(for reference: RecordReference) -> String {
-        // Assemble as blank-line-separated paragraphs so the optional
-        // per-scope steer reads as its own block — and so dropping it
-        // (unknown kind) still leaves clean spacing around the closing
-        // instruction rather than a stray blank line.
         var paragraphs = [
             """
             Annotate this scripture target.
@@ -433,11 +324,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         if let sections = sectionGuidance(forKind: reference.kind) {
             paragraphs.append(sections)
         }
-        // The exact verse text, when the Bible side captured it (chapter and
-        // verse-range targets). Grounding the model in the actual translation
-        // here is what stops annotations that reference words the passage
-        // doesn't use. A whole-book target carries no snapshot (too large), so
-        // the block is omitted and the prompt falls back to citation-only.
+        // Exact passage text prevents annotations from citing wording absent from this translation.
         if !reference.snapshot.isEmpty {
             paragraphs.append("""
                 Exact text of the target — base the summary on this, and \
@@ -462,16 +349,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return paragraphs.joined(separator: "\n\n")
     }
 
-    /// "Sections to cover" steer for an annotation `kind` — the `###`
-    /// headings the one summary should carry per scope, mirroring
-    /// `docs/SuperBible/ANNOTATIONS.md` §1 (keep the two in sync).
-    /// `reference.kind` is the structural discriminator the Bible UI
-    /// stamps onto the request — `"book"`, `"chapter"`, `"verseRange"`
-    /// (note: *not* `"verse"`), or the bulk-only `"chapterVerses"`
-    /// rank-and-generate mode (whose steer applies per verse range the
-    /// model picks). Returns `nil` for an unrecognised kind so the prompt
-    /// falls back to the generic briefing rather than asserting a wrong
-    /// structure.
+    /// Keep scope headings aligned with docs/SuperBible/ANNOTATIONS.md. Unknown kinds fall back to generic guidance.
     nonisolated static func sectionGuidance(forKind kind: String) -> String? {
         switch kind {
         case "book":

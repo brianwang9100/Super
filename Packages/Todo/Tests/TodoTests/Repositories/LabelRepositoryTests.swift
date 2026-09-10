@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for `GRDBLabelRepository`: active-row filtering, case-insensitive
-/// lookup, and soft-delete semantics, all against an in-memory database.
 @Suite("GRDBLabelRepository")
 struct LabelRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

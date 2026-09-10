@@ -1,33 +1,11 @@
 import Core
 import SwiftUI
 
-/// The create / edit modal for a single note.
-///
-/// Anatomy, per `notes/sheet.jsx`:
-///
-/// - **Drag handle**, then a three-slot toolbar: a circular **✕ Cancel**
-///   (sunken), the centered title ("New note" / "Edit note"), and a
-///   circular **✓ Save** (accent; disabled + dimmed while the body is
-///   blank).
-/// - A mono **"ON {citation}"** caption.
-/// - A large free-text entry area with a placeholder on create.
-/// - **Edit mode only**: an error-tinted **Delete note** button that
-///   raises a destructive `.confirmationDialog` (the same idiomatic
-///   confirmation `AnnotationBlock` uses — system chrome, not a bespoke
-///   sheet).
-///
-/// The editor owns the in-progress `text` as local `@State` until Save,
-/// then hands it back through `onSave`. Cancel and Delete route through
-/// their own callbacks. The presenter (PR3) supplies the range citation,
-/// the initial text (empty on create, the note body on edit), and wires
-/// the callbacks to the repository + sheet dismissal.
+/// Keeps unsaved text locally; the presenter owns persistence and dismissal.
 struct NoteEditor: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Whether the editor is composing a new note or revising an existing
-    /// one. `edit` adds the Delete affordance; `create` shows the
-    /// placeholder.
     enum Mode: Sendable, Equatable {
         case create
         case edit
@@ -42,8 +20,6 @@ struct NoteEditor: View {
     @State private var text: String
     @State private var showDeleteConfirmation: Bool = false
 
-    // Text content scaled to Dynamic Type (the `BibleBookSheet` convention);
-    // the toolbar's circular control glyphs stay fixed in their 34pt circles.
     @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 15
     @ScaledMetric(relativeTo: .caption2) private var captionSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var entrySize: CGFloat = 16
@@ -70,10 +46,7 @@ struct NoteEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // `.fitsContent` pins the nav-bar top inset to 0 — correct here
-            // because the editor presents with its drag indicator hidden (a
-            // commit/cancel surface), so there's no grabber to clear. The
-            // leading ✕ is Cancel; Save rides the trailing slot.
+            // No drag indicator, so use the zero-top-inset nav-bar sizing.
             SheetNavBar(
                 title: mode == .edit ? "Edit note" : "New note",
                 sizing: .fitsContent,
@@ -90,10 +63,7 @@ struct NoteEditor: View {
                 deleteSection
             }
         }
-        // The editor always presents at `.large` (full height) with no drag
-        // indicator, so its nav bar would otherwise hug the top safe-area edge.
-        // This margin gives the ✕ / ✓ buttons room to breathe below the sheet's
-        // rounded top corner — the `.fitsContent` nav-bar inset stays 0.
+        // Add margin below the large sheet's top edge because fitsContent has no nav-bar inset.
         .padding(.top, 14)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
@@ -112,14 +82,8 @@ struct NoteEditor: View {
         }
     }
 
-    /// **✓** that commits the note, hosted in the nav bar's trailing slot;
-    /// disabled + dimmed until the body has non-whitespace content. Theme-tinted
-    /// glass to match the leading close button.
     private var saveButton: some View {
         Button {
-            // `canSave` gates on the trimmed value; forward the trimmed text
-            // too so a body of only whitespace can't be saved past the guard
-            // and leading/trailing space isn't persisted.
             onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
         } label: {
             Image(systemName: "checkmark")
@@ -153,8 +117,7 @@ struct NoteEditor: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
                     .allowsHitTesting(false)
-                    // The TextEditor below owns the spoken label; hide the
-                    // placeholder so VoiceOver doesn't announce both.
+                    // The editor owns the spoken label; hide the duplicate placeholder.
                     .accessibilityHidden(true)
             }
             TextEditor(text: $text)

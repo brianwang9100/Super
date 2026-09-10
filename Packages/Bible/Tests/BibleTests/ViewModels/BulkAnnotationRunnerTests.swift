@@ -5,10 +5,6 @@ import Testing
 
 @testable import Bible
 
-/// Engine tests for the LLM-backed `BulkAnnotationRunner`, driven against an
-/// in-memory ledger and a scripted/gated `BibleAnnotateGenerating`. The runner's
-/// `_waitUntilIdle()` test seam awaits the work loop + all issued ledger writes,
-/// so every assertion is deterministic with no sleeps.
 @MainActor
 @Suite struct BulkAnnotationRunnerTests {
 
@@ -22,8 +18,7 @@ import Testing
         seedAnnotatedBook: Bool = false,
         seedVerseAnnotatedChapters: [Int] = []
     ) throws -> (BulkAnnotationRunner, GRDBBulkAnnotationLedger) {
-        // One in-memory DB backs both the ledger and the annotation repository so
-        // a seeded slot the runner reads is the one the ledger persists against.
+        // Share a database so preserve checks see the same annotation state as the run.
         let database = try BibleDatabase.makeInMemory()
         let ledger = GRDBBulkAnnotationLedger(database: database)
         try seedAnnotations(
@@ -45,15 +40,10 @@ import Testing
         return (runner, ledger)
     }
 
-    /// A repository over a throwaway empty DB — for lifecycle tests that never
-    /// touch annotation content, so preserve mode's skip check always reads
-    /// "slot empty" and never skips.
     private func emptyAnnotationRepository() throws -> GRDBBibleAnnotationRepository {
         GRDBBibleAnnotationRepository(database: try BibleDatabase.makeInMemory())
     }
 
-    /// Pre-seed Romans chapter- and/or book-level annotations directly so a
-    /// preserve-mode run finds those slots occupied and skips them.
     private func seedAnnotations(
         into database: BibleDatabase, chapters: [Int], book: Bool, verseChapters: [Int] = []
     ) throws {
@@ -66,8 +56,7 @@ import Testing
                 createdAt: Date(timeIntervalSince1970: 0)
             )
         }
-        // A single verse-range row in the chapter — enough for `hasVerseAnnotations`
-        // to read the chapter as already verse-annotated.
+        // Any verse annotation satisfies the chapter-wide preserve check.
         func verseRecord(chapter: Int) -> BibleAnnotationRecord {
             BibleAnnotationRecord(
                 id: "seed-ROM-\(chapter)-v1", target: .verse, bookId: "ROM",
@@ -104,8 +93,6 @@ import Testing
         )
     }
 
-    /// The single run's units in ordinal order (fails the test if there isn't
-    /// exactly one run).
     private func loadUnits(_ ledger: GRDBBulkAnnotationLedger) async throws -> [BulkAnnotationRunUnitRecord] {
         let run = try #require(try await ledger.run(id: "id-1"))
         return try await ledger.units(runId: run.id)
@@ -137,8 +124,6 @@ import Testing
         #expect(units[0].producedCount == 5)
         #expect(units[1].producedCount == 7)
         #expect(units[2].producedCount == 9)
-        // The completed run clears the active slot so the hub returns to idle
-        // (the Generate CTA comes back); it now surfaces in the finished list.
         #expect(runner.snapshot == nil)
     }
 
@@ -157,7 +142,6 @@ import Testing
 
         let units = try await loadUnits(ledger)
         #expect(units.count == 3)
-        // The book-level unit sorts first (ordinal 0) and carries no chapter.
         #expect(units[0].kind == .bookPrologue)
         #expect(units[0].chapterNumber == nil)
         #expect(units[1].kind == .chapter)
@@ -166,8 +150,6 @@ import Testing
         #expect(units[2].chapterNumber == 2)
         for unit in units { #expect(unit.state == .done) }
 
-        // The first generation targets the whole book, matching the single-shot
-        // book reference convention the dispatcher prompt expects.
         let first = try #require(generator.receivedReferences.first)
         #expect(first.kind == "book")
         #expect(first.sourceID == "book:ROM")
@@ -180,12 +162,7 @@ import Testing
 
     // MARK: - Preserve vs overwrite (skip already-annotated slots)
 
-    /// Preserve mode (the default): a chapter whose slot is already annotated is
-    /// skipped before generating — no LLM call — while a fresh chapter generates.
     @Test func preserveSkipsAlreadyAnnotatedChapterWithoutGenerating() async throws {
-        // Only chapter 2 should reach the generator; scripting exactly one
-        // success means a stray call on the skipped chapter would trap (strict
-        // double) rather than silently pass.
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 7)])
         let (runner, ledger) = try makeRunner(generator: generator, seedAnnotatedChapters: [1])
 
@@ -200,7 +177,6 @@ import Testing
         #expect(units[1].state == .done)
         #expect(units[1].producedCount == 7)
 
-        // The model saw only the un-annotated chapter.
         #expect(generator.receivedReferences.count == 1)
         #expect(generator.receivedReferences.first?.sourceID == "chapter:ROM:2")
 
@@ -208,8 +184,6 @@ import Testing
         #expect(run.status == .completed)
     }
 
-    /// Overwrite mode regenerates an already-annotated chapter — both chapters
-    /// reach the generator, none are skipped.
     @Test func overwriteRegeneratesAlreadyAnnotatedChapter() async throws {
         let generator = ScriptedBibleAnnotateGenerator([
             .success(annotationCount: 4),
@@ -225,9 +199,6 @@ import Testing
         #expect(generator.receivedReferences.count == 2)
     }
 
-    /// A run whose every slot is already annotated completes with all units
-    /// skipped, never calling the generator and never tripping the circuit
-    /// breaker (a skip is not a failure).
     @Test func allSkippedRunCompletesWithoutTrippingBreaker() async throws {
         let generator = ScriptedBibleAnnotateGenerator()  // must never be called
         let (runner, ledger) = try makeRunner(
@@ -246,8 +217,6 @@ import Testing
         #expect(run.haltReason == nil)
     }
 
-    /// The book-prologue unit is skipped too when a book-level annotation already
-    /// exists, while the book's chapters still generate.
     @Test func preserveSkipsAlreadyAnnotatedBookPrologue() async throws {
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 6)])  // chapter 1 only
         let (runner, ledger) = try makeRunner(generator: generator, seedAnnotatedBook: true)
@@ -266,9 +235,6 @@ import Testing
 
     // MARK: - Notable verses (chapterVerses units)
 
-    /// With `includesNotableVerses`, each chapter enqueues a `chapterVerses` unit
-    /// right after its chapter-summary unit, carrying the chapterVerses kind /
-    /// sourceID the dispatcher recognises and the chapter's number.
     @Test func notableVersesEnqueuesAChapterVersesUnitAfterEachChapter() async throws {
         let generator = ScriptedBibleAnnotateGenerator([
             .success(annotationCount: 1),  // chapter 1 summary
@@ -292,20 +258,15 @@ import Testing
         #expect(units[3].kind == .chapterVerses)
         #expect(units[3].chapterNumber == 2)
         for unit in units { #expect(unit.state == .done) }
-        // The verse turn's annotation count flows into producedCount.
         #expect(units[1].producedCount == 5)
         #expect(units[3].producedCount == 4)
 
-        // The chapterVerses unit dispatches under the distinct kind + sourceID and
-        // carries the chapter's verse-numbered snapshot for the model to pick from.
         let versesRef = try #require(generator.receivedReferences.first { $0.kind == "chapterVerses" })
         #expect(versesRef.sourceID == "chapterVerses:ROM:1")
         #expect(versesRef.displayLabel == "Romans 1")
         #expect(!versesRef.snapshot.isEmpty)
     }
 
-    /// Without the toggle, no `chapterVerses` units are enqueued — the run stays at
-    /// book + chapter granularity.
     @Test func noNotableVersesUnitsWhenToggleOff() async throws {
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
         let (runner, ledger) = try makeRunner(generator: generator)
@@ -318,12 +279,7 @@ import Testing
         #expect(units.allSatisfy { $0.kind == .chapter })
     }
 
-    /// Preserve mode skips a `chapterVerses` unit when the chapter already carries
-    /// any verse annotation — while the chapter summary (a different slot) still
-    /// generates.
     @Test func preserveSkipsChapterVersesWhenChapterAlreadyVerseAnnotated() async throws {
-        // One success only — the chapter summary. A stray call on the skipped
-        // chapterVerses unit would trap the strict scripted double.
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
         let (runner, ledger) = try makeRunner(generator: generator, seedVerseAnnotatedChapters: [1])
 
@@ -344,8 +300,6 @@ import Testing
         #expect(run.status == .completed)
     }
 
-    /// An indeterminate existence read in preserve mode must fail the unit
-    /// rather than silently overwriting — the generator is never called.
     @Test func readFailureInPreserveModeFailsTheUnitWithoutOverwriting() async throws {
         let generator = ScriptedBibleAnnotateGenerator()  // must never be called
         let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
@@ -368,8 +322,6 @@ import Testing
         #expect(generator.receivedReferences.isEmpty)  // never regenerated/overwrote
     }
 
-    /// The per-run flag is persisted on the run record so a relaunch/resume
-    /// honors the choice made at kickoff.
     @Test func overwriteFlagIsPersistedOnTheRunRecord() async throws {
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
         let (runner, ledger) = try makeRunner(generator: generator)
@@ -393,11 +345,10 @@ import Testing
         await runner._waitUntilIdle()
 
         let book = try #require(generator.receivedReferences.first { $0.kind == "book" })
-        // Whole-book target stays text-light — the full book would be enormous.
+        // Full-book text would make grounding unbounded.
         #expect(book.snapshot.isEmpty)
 
         let chapter = try #require(generator.receivedReferences.first { $0.kind == "chapter" })
-        // The chapter reference grounds the model in the real WEB text, numbered.
         #expect(!chapter.snapshot.isEmpty)
         #expect(chapter.snapshot.hasPrefix("1. "))
         #expect(chapter.snapshot.contains("\n2. "))
@@ -420,10 +371,7 @@ import Testing
     }
 
     @Test func failedBookLevelUnitIsRevivedByResume() async throws {
-        // The book-level unit (ordinal 0) fails terminally; its chapter succeeds.
-        // The book unit isn't shown in the live progress grid, so its recovery
-        // path runs through the finished-run list — `resume` must revive it
-        // kind-agnostically, not just chapter units.
+        // Book units have no live progress row; finished-run retry must revive every kind.
         let generator = ScriptedBibleAnnotateGenerator([
             .failure(message: "boom", classification: .retryable),  // book-level
             .success(annotationCount: 5),                           // chapter 1
@@ -435,7 +383,6 @@ import Testing
 
         var units = try await loadUnits(ledger)
         #expect(units.count == 2)
-        // The run completed with one failed (book) and one done (chapter) unit.
         #expect(units[0].kind == .bookPrologue)
         #expect(units[0].state == .failed)
         #expect(units[1].kind == .chapter)
@@ -443,8 +390,6 @@ import Testing
         var run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
 
-        // Retry from the finished list revives the failed book unit and re-runs
-        // it to a clean completion.
         generator.enqueue(.success(annotationCount: 3))
         runner.resume(runID: "id-1")
         await runner._waitUntilIdle()
@@ -495,7 +440,7 @@ import Testing
         #expect(units[0].attemptCount == 2)
         #expect(units[0].errorMessage == "down")
 
-        // A failed unit is terminal, so the run still completes.
+        // A failed unit is terminal, so a run can complete with failures.
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
         #expect(run.haltReason == nil)
@@ -544,7 +489,6 @@ import Testing
             .failure(message: "x", classification: .retryable),
             .failure(message: "x", classification: .retryable),
         ])
-        // One attempt per unit, breaker at 3 → the 3rd failed unit trips it.
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1, breaker: 3)
 
         runner.start(oneBookPlan(chapters: [1, 2, 3, 4]))
@@ -561,26 +505,19 @@ import Testing
 
     // MARK: - Manual retry (while the run is still active)
 
-    /// `retryAllFailed()` revives every `.failed` unit on a *still-running* run —
-    /// the per-chapter Retry the progress screen offers while a later unit holds
-    /// the run open. (Reviving a finished run instead goes through `resume`.)
     @Test func retryAllFailedRevivesFailedUnitsOnAnActiveRun() async throws {
         let generator = GatedBibleAnnotateGenerator()
-        // One attempt per unit so a retryable fails the unit immediately; a high
-        // breaker so two failures in a row don't halt the run.
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1, breaker: 99)
 
         runner.start(oneBookPlan(chapters: [1, 2, 3]))
 
-        // Chapters 1 and 2 fail; chapter 3 is held in flight, keeping the run
-        // active with two `.failed` units present.
+        // Hold chapter 3 in flight so the failed earlier units remain retryable on an active run.
         await generator.awaitCall()
         generator.releaseNext(.failure(message: "a", classification: .retryable))
         await generator.awaitCall()
         generator.releaseNext(.failure(message: "b", classification: .retryable))
         await generator.awaitCall()  // chapter 3 now generating (held)
 
-        // Revive both failed units while the run is still going.
         runner.retryAllFailed()
 
         generator.releaseNext(.success(annotationCount: 9))  // chapter 3 done
@@ -597,24 +534,18 @@ import Testing
         #expect(runner.snapshot == nil)  // completed → active slot cleared
     }
 
-    /// Retrying a failed unit while another unit is still generating must NOT
-    /// spawn a second concurrent work loop (which would double-generate and
-    /// corrupt the breaker) — the live loop picks the revived unit up instead.
+    /// Retry must reuse the live loop; another loop would double-generate and corrupt breaker accounting.
     @Test func retryWhileGeneratingDoesNotStartSecondLoop() async throws {
         let generator = GatedBibleAnnotateGenerator()
-        // One attempt per unit so chapter 1 fails immediately on a retryable.
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
 
         runner.start(oneBookPlan(chapters: [1, 2, 3]))
 
-        // Chapter 1 fails; the loop advances to chapter 2 and holds it in flight.
         await generator.awaitCall()
         generator.releaseNext(.failure(message: "down", classification: .retryable))
         await generator.awaitCall()  // chapter 2 now generating
 
-        // Revive chapter 1 while chapter 2 is mid-flight, then drain one unit at
-        // a time. A second (buggy) work loop would drive a concurrent generate
-        // for the revived unit while chapter 2 is still in flight.
+        // Retry while chapter 2 is suspended exposes any second concurrent generation loop.
         runner.retry(ChapterRef(bookID: "ROM", number: 1))
         generator.releaseNext(.success(annotationCount: 2))  // chapter 2 done
         await generator.awaitCall()                          // revived chapter 1
@@ -623,9 +554,6 @@ import Testing
         generator.releaseNext(.success(annotationCount: 3))  // chapter 3 done
         await runner._waitUntilIdle()
 
-        // The single-flight guard held: a generation was never in flight more
-        // than once at a time (the passive high-water mark proves it without
-        // polling), and no chapter was generated twice.
         #expect(generator.maxInFlight == 1)
         #expect(generator.receivedReferences.count == 4)
         let run = try #require(try await ledger.run(id: "id-1"))
@@ -655,9 +583,7 @@ import Testing
         #expect(completed.first?.completedAt != nil)
     }
 
-    /// Cancelling while the engine is suspended resolving the active model (at
-    /// run kickoff, before the run row is written) must leave the ledger empty —
-    /// no phantom `.cancelled` row and no resurrected run.
+    /// Cancellation before persistence must leave no phantom run or cancelled ledger row.
     @Test func cancelDuringModelIDResolutionLeavesNoLedgerRow() async throws {
         let modelGate = GatedModelID()
         let generator = ScriptedBibleAnnotateGenerator()  // must never be called
@@ -702,7 +628,6 @@ import Testing
         let unitsWhilePaused = try await ledger.units(runId: parked.id)
         #expect(unitsWhilePaused[0].state == .queued)  // returned to the queue
 
-        // Resume — re-generates unit 0, then unit 1.
         runner.togglePause()
         await generator.awaitCall()
         generator.releaseNext(.success(annotationCount: 5))
@@ -793,7 +718,6 @@ import Testing
             currentModelID: { "model-x" }
         )
 
-        // A fresh runner with nothing in memory loads + drains the active run.
         await runner.runInBackground()
         await runner._waitUntilIdle()
 
@@ -848,16 +772,12 @@ import Testing
         #expect(reference.sourceID == "chapter:ROM:8")
         #expect(reference.displayLabel == "Romans 8")
         #expect(reference.citation == "Romans 8 (WEB)")
-        // A chapter reference now grounds the generator in the exact verse text
-        // (see `referencesCarryGroundingText`), so the snapshot is populated.
         #expect(reference.snapshot.hasPrefix("1. "))
         #expect(reference.appletID == "bible")
     }
 
     // MARK: - Finished-run lifecycle
 
-    /// Retrying a finished run that left a failed unit revives it and drives the
-    /// run back to completion — and clears the active slot again when done.
     @Test func resumeRevivesFailedRunAndCompletes() async throws {
         let generator = ScriptedBibleAnnotateGenerator([
             .failure(message: "boom", classification: .retryable),
@@ -867,8 +787,6 @@ import Testing
         runner.start(oneBookPlan(chapters: [1]))
         await runner._waitUntilIdle()
 
-        // The unit failed but the run completed (a failed unit is terminal), and
-        // the active slot cleared — the run is now in the finished list.
         var units = try await loadUnits(ledger)
         #expect(units[0].state == .failed)
         #expect(runner.snapshot == nil)
@@ -876,7 +794,6 @@ import Testing
         #expect(run.status == .completed)
         #expect(run.completedAt != nil)
 
-        // Retry from the finished list → revive + re-run to a clean completion.
         generator.enqueue(.success(annotationCount: 4))
         runner.resume(runID: "id-1")
         await runner._waitUntilIdle()
@@ -892,8 +809,6 @@ import Testing
         #expect(runner.snapshot == nil)
     }
 
-    /// Resuming a cleanly-completed run (no failed/queued work) is a no-op — it
-    /// stays terminal and the generator is never called again.
     @Test func resumeOnCleanCompletionIsNoOp() async throws {
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 3)])
         let (runner, ledger) = try makeRunner(generator: generator)
@@ -911,7 +826,6 @@ import Testing
         #expect(run.status == .completed)
     }
 
-    /// Dismissing a finished run deletes its ledger row (and cascades its units).
     @Test func dismissFinishedRunDeletesTheRow() async throws {
         let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 2)])
         let (runner, ledger) = try makeRunner(generator: generator)
@@ -927,8 +841,6 @@ import Testing
         #expect(try await ledger.units(runId: "id-1").isEmpty)
     }
 
-    /// `restore()` sweeps terminal runs older than the retention window and keeps
-    /// recent ones, regardless of whether there's an active run to resume.
     @Test func restoreSweepsRunsOlderThanRetention() async throws {
         let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
         let now = Date(timeIntervalSince1970: 1_000_000)
@@ -966,17 +878,11 @@ import Testing
         #expect(try await ledger.run(id: "fresh") != nil)   // kept
     }
 
-    /// A launch `restore()` must cede to a user-initiated `resume()` already in
-    /// flight rather than half-adopting a crash-orphaned active run: `resume`
-    /// claims the engine (`isDriving`) synchronously before its async setup, so a
-    /// `restore` that doesn't honour that claim would adopt the orphan and call
-    /// `startDriver()` — which no-ops against the claim, wedging the run with no
-    /// loop. Here `restore` must leave the orphaned `.running` run untouched and
-    /// let the resumed run drive to completion as the single active job.
+    /// Resume claims isDriving before async setup. Restore must cede or it can adopt
+    /// an orphan whose startDriver then no-ops, leaving the run without a loop.
     @Test func restoreCedesToAnInFlightResume() async throws {
         let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
         let now = Date(timeIntervalSince1970: 1_000)
-        // A crash-orphaned active run (its unit stuck `.generating`).
         try await ledger.createRun(
             BulkAnnotationRunRecord(id: "orphan", status: .running, modelId: "m", createdAt: now, updatedAt: now),
             units: [
@@ -985,7 +891,6 @@ import Testing
                                             state: .generating, updatedAt: now)
             ]
         )
-        // A finished run with a failed unit (the one the user taps Retry on).
         try await ledger.createRun(
             BulkAnnotationRunRecord(id: "fin", status: .completed, modelId: "m",
                                     createdAt: now, updatedAt: now,
@@ -1007,25 +912,19 @@ import Testing
             currentModelID: { "m" }
         )
 
-        // Retry claims the engine synchronously; the racing launch restore must
-        // cede instead of adopting "orphan".
         runner.resume(runID: "fin")
         await runner.restore()
 
-        // The resumed run drives its single revived unit to completion.
         await generator.awaitCall()
         generator.releaseNext(.success(annotationCount: 4))
         await runner._waitUntilIdle()
 
-        // Only "fin"'s unit was ever generated — "orphan" was never driven.
         #expect(generator.maxInFlight == 1)
         #expect(generator.receivedReferences.count == 1)
 
         let fin = try #require(try await ledger.run(id: "fin"))
         #expect(fin.status == .completed)
 
-        // "orphan" is untouched: restore ceded, so its unit was never reset and
-        // its run never resumed (a later launch will restore it cleanly).
         let orphan = try #require(try await ledger.run(id: "orphan"))
         #expect(orphan.status == .running)
         let orphanUnits = try await ledger.units(runId: "orphan")
@@ -1033,8 +932,6 @@ import Testing
     }
 }
 
-/// A repository whose every operation throws — drives the runner's preserve-mode
-/// read-failure branch (the existence check can't be resolved).
 private struct ThrowingAnnotationRepository: BibleAnnotationRepository {
     struct Boom: Error {}
     func list(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?) async throws -> [BibleAnnotationRecord] { throw Boom() }

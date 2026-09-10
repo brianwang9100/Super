@@ -1,13 +1,7 @@
 import Foundation
 import GRDB
 
-/// Owns the Bible applet's `DatabaseQueue` (`bible.sqlite`) and the schema
-/// migrator.
-///
-/// Construct one at applet activation and pass it to repositories. Tests use
-/// `BibleDatabase.makeInMemory()` for a fully-migrated queue with no on-disk
-/// footprint. A single-writer `DatabaseQueue` is enough — the applet has no
-/// concurrent-write workload.
+/// One queue owns mutable user state; bundled scripture uses BibleTextDatabase.
 public struct BibleDatabase: Sendable {
     public let queue: DatabaseQueue
 
@@ -15,13 +9,8 @@ public struct BibleDatabase: Sendable {
         self.queue = queue
     }
 
-    /// Open the on-disk database at `bible.sqlite` under `directory`,
-    /// applying all pending migrations before returning.
-    ///
-    /// The bundled scripture is public-domain text, but the reader's
-    /// position is mildly personal, so the SQLite file inherits the
-    /// `.complete` file-protection class per `docs/SECURITY.md`. The
-    /// attribute is iOS-enforced; macOS test runs silently no-op it.
+    /// Opens bible.sqlite and applies pending migrations. File protection is enforced
+    /// on iOS; macOS ignores it.
     public static func open(
         in directory: URL,
         fileProtection: FileProtectionType = .complete
@@ -36,19 +25,14 @@ public struct BibleDatabase: Sendable {
         return BibleDatabase(queue: queue)
     }
 
-    /// Build a fresh in-memory queue with the migrator applied. Intended
-    /// for tests, previews, and headless tooling.
+    /// Returns a fresh, fully migrated in-memory database.
     public static func makeInMemory() throws -> BibleDatabase {
         let queue = try DatabaseQueue()
         try migrator().migrate(queue)
         return BibleDatabase(queue: queue)
     }
 
-    /// The migrator used by both factories.
-    ///
-    /// In DEBUG builds `eraseDatabaseOnSchemaChange` is set so in-progress
-    /// schema edits land without a separate migration. Release builds never
-    /// erase — once a schema ships, every change must be a new migration.
+    /// DEBUG may erase after schema changes. Shipped release migrations must remain append-only.
     public static func migrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
         #if DEBUG
@@ -59,9 +43,6 @@ public struct BibleDatabase: Sendable {
     }
 }
 
-/// Register every Bible schema migration in order. Appending new migrations
-/// is safe; reordering or removing one already applied to a user's database
-/// is not.
 public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
 
     migrator.registerMigration("v1_createReadingPosition") { db in
@@ -85,13 +66,8 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("updatedAt", .datetime).notNull()
             t.column("deletedAt", .datetime)
         }
-        // One row per (book, chapter, verse) — active or cleared — is a hard
-        // invariant the repository's read-then-upsert relies on; a UNIQUE
-        // index enforces it at the database so a future concurrent writer
-        // fails loudly instead of silently duplicating a verse. Its leading
-        // (bookId, chapterNumber) columns also serve the chapter renderer's
-        // `@Query`. The soft-delete index keeps the active-only filter off a
-        // table scan.
+        // Active and cleared highlights share one unique verse slot; read-then-upsert relies on it.
+        // Leading book/chapter columns also serve chapter decoration queries.
         try db.create(
             index: "bibleHighlight_on_bookId_chapterNumber_verseNumber",
             on: "bibleHighlight",
@@ -106,15 +82,8 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v3_createAnnotation") { db in
-        // Polymorphic single table — `target` discriminates the three
-        // scopes (book / chapter / verse). Position columns are nullable
-        // because lower-precision targets don't carry them: `.book` rows
-        // have only `bookId` set, `.chapter` rows add `chapterNumber`,
-        // `.verse` rows fill all three position columns (`verseEnd` equals
-        // `verseStart` for single-verse annotations). Multi-row per target
-        // group is deliberate — each row is one card in the popover. No
-        // UNIQUE constraint on the position tuple; uniqueness is by row id
-        // only.
+        // Targets control nullable position fields. Multiple cards per target are intentional;
+        // uniqueness is by row ID, not the position tuple.
         try db.create(table: "bibleAnnotation") { t in
             t.primaryKey("id", .text)
             t.column("target", .text).notNull()
@@ -129,23 +98,12 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("modelId", .text).notNull()
             t.column("createdAt", .datetime).notNull()
         }
-        // Chapter renderer's `@Query` slice — `verseEnd` is the lead axis
-        // for grouping bubbles after the last verse of each annotation
-        // range. The leading `(bookId, chapterNumber)` also satisfies
-        // chapter-scope lookups, so a single index covers both per-chapter
-        // listing and per-verse positioning.
+        // verseEnd anchors each range's bubble; leading book/chapter columns also serve chapter lookup.
         try db.create(
             index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
             on: "bibleAnnotation",
             columns: ["bookId", "chapterNumber", "verseEnd"]
         )
-        // Book-picker bubble visibility — "does this book have any
-        // annotations at any level?" boils down to "is there a row whose
-        // bookId == X?"; restricting on `target` is not necessary because
-        // any annotation (book, chapter, or verse) makes the book "carry
-        // notes." Keeping `target` in the index leaves room to switch the
-        // book bubble's semantics later (e.g. light book bubble only when
-        // a book-target row exists) without a second index.
         try db.create(
             index: "bibleAnnotation_on_target_bookId",
             on: "bibleAnnotation",
@@ -154,15 +112,7 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v4_createNote") { db in
-        // Polymorphic single table mirroring `bibleAnnotation` — `target`
-        // discriminates the three scopes (book / chapter / verse), and the
-        // position columns are nullable because lower-precision targets don't
-        // carry them. Notes differ from annotations in two ways: there is no
-        // `kind`/`title` (a note is just free-text `body`), and rows carry an
-        // `updatedAt` because notes are edited in place rather than
-        // regenerated wholesale. `source` is 'user' or 'assistant'; `modelId`
-        // is nullable (set only for assistant-written notes). Multi-row per
-        // target group is deliberate — each row is one card in the list sheet.
+        // Targets share the annotation position encoding. Multiple notes per target are intentional.
         try db.create(table: "bibleNote") { t in
             t.primaryKey("id", .text)
             t.column("target", .text).notNull()
@@ -176,18 +126,12 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("createdAt", .datetime).notNull()
             t.column("updatedAt", .datetime).notNull()
         }
-        // Reader's `@Query` slice — `verseEnd` is the lead axis for grouping
-        // note glyphs after the last verse of each note's range. The leading
-        // `(bookId, chapterNumber)` also satisfies chapter-scope lookups, so a
-        // single index covers both per-chapter listing and per-verse
-        // positioning. Mirrors `bibleAnnotation_on_bookId_chapterNumber_verseEnd`.
+        // verseEnd anchors each range's glyph; leading book/chapter columns also serve chapter lookup.
         try db.create(
             index: "bibleNote_on_bookId_chapterNumber_verseEnd",
             on: "bibleNote",
             columns: ["bookId", "chapterNumber", "verseEnd"]
         )
-        // Book-picker glyph visibility — "does this book carry any note at any
-        // level?" resolves to a DISTINCT bookId over this index.
         try db.create(
             index: "bibleNote_on_target_bookId",
             on: "bibleNote",
@@ -196,15 +140,8 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v5_annotationCategory") { db in
-        // Replace the free-form `kind` (text/reference) flag with a semantic
-        // `category` (Int-backed `BibleAnnotationCategory`) that is the single
-        // source of truth for both card ordering and rendering.
-        //
-        // Destructive by design: pre-existing annotation rows were generated
-        // before the category distinction existed, so there is no recoverable
-        // semantic category to backfill. Annotations are cheap, local-only,
-        // and regenerated on next view, so we drop and rebuild the table
-        // rather than invent a sentinel "uncategorized" bucket.
+        // Existing cards have no recoverable semantic category. This migration intentionally
+        // drops regenerable annotation content instead of inventing an uncategorized value.
         try db.execute(sql: "DROP TABLE bibleAnnotation")
         try db.create(table: "bibleAnnotation") { t in
             t.primaryKey("id", .text)
@@ -213,12 +150,8 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("chapterNumber", .integer)
             t.column("verseStart", .integer)
             t.column("verseEnd", .integer)
-            // CHECK guards the `BibleAnnotationCategory` raw-value range:
-            // an out-of-range integer (a corrupt write, a direct DB edit, a
-            // future sync payload from a newer build) is rejected at insert
-            // time rather than throwing in GRDB's row decoder on read — where
-            // `@Query` would swallow it as `defaultValue: []` and blank every
-            // card. Widen this bound in lockstep when a category is added.
+            // Reject invalid categories on write: a row-decoding failure would blank the query result.
+            // Widen this bound when adding a category.
             t.column("category", .integer).notNull().check { $0 >= 1 && $0 <= 5 }
             t.column("title", .text).notNull()
             t.column("body", .text).notNull()
@@ -226,8 +159,6 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("modelId", .text).notNull()
             t.column("createdAt", .datetime).notNull()
         }
-        // Recreate the two indexes dropped with the table — see v3 for the
-        // access patterns each one serves.
         try db.create(
             index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
             on: "bibleAnnotation",
@@ -241,44 +172,25 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v6_createBulkAnnotationLedger") { db in
-        // Durable ledger for the bulk-annotation runner. `bulkAnnotationRun`
-        // is one row per kicked-off job; `bulkAnnotationRunUnit` is one row per
-        // unit (a chapter, or a book prologue) with a cascading FK so deleting
-        // a run clears its units. Annotation *content* still lives in
-        // `bibleAnnotation` (stamped `source: .userBulk`) — this ledger only
-        // tracks run/unit progress so a run can resume, retry, and report.
+        // This ledger tracks resumable progress; annotation content remains in bibleAnnotation.
         try db.create(table: "bulkAnnotationRun") { t in
             t.primaryKey("id", .text)
-            // BulkRunStatus: running | paused | completed | failed | cancelled.
             t.column("status", .text).notNull()
-            // Model active at kickoff — stamped onto the rows the run produces.
+            // Kickoff metadata; per-annotation provenance comes from the dispatcher.
             t.column("modelId", .text).notNull()
-            // BulkRunHaltReason — set only when status == failed (circuit breaker).
             t.column("haltReason", .text)
             t.column("createdAt", .datetime).notNull()
             t.column("updatedAt", .datetime).notNull()
-            // Set only on a terminal status — drives the Completed section and
-            // the 24 h sweep cutoff.
             t.column("completedAt", .datetime)
-            // Invariant: completedAt is non-null exactly when the run is
-            // terminal (completed / failed / cancelled) and null while it's
-            // active (running / paused). Enforced at the schema so an engine
-            // bug — marking a run done without stamping completedAt, or vice
-            // versa — fails loudly at write rather than silently breaking the
-            // Completed section / 24 h sweep. SQLite can't ADD CONSTRAINT after
-            // the table ships, so it's declared up front; widen the status list
-            // in lockstep if a terminal status is added (cf. the category CHECK
-            // on bibleAnnotation).
+            // completedAt exists exactly for terminal runs. Keep this check aligned with new
+            // terminal statuses so history and the 24-hour sweep cannot miss finished runs.
             t.check(sql: "(status IN ('completed', 'failed', 'cancelled')) = (completedAt IS NOT NULL)")
         }
-        // "Is there an active run?" (status IN running|paused) and the
-        // Completed-section filter both restrict on status.
         try db.create(
             index: "bulkAnnotationRun_on_status",
             on: "bulkAnnotationRun",
             columns: ["status"]
         )
-        // The 24 h sweep ranges on completedAt.
         try db.create(
             index: "bulkAnnotationRun_on_completedAt",
             on: "bulkAnnotationRun",
@@ -290,9 +202,7 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("runId", .text)
                 .notNull()
                 .references("bulkAnnotationRun", onDelete: .cascade)
-            // Stable run / queue order within the run.
             t.column("ordinal", .integer).notNull()
-            // BulkRunUnitKind: chapter | bookPrologue.
             t.column("kind", .text).notNull()
             t.column("bookId", .text).notNull()
             // Denormalized so a run renders its title without a catalog lookup.
@@ -306,8 +216,6 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("errorMessage", .text)
             t.column("updatedAt", .datetime).notNull()
         }
-        // Ordered per-run fetch — the engine and the snapshot read units by
-        // run in ordinal order.
         try db.create(
             index: "bulkAnnotationRunUnit_on_runId_ordinal",
             on: "bulkAnnotationRunUnit",
@@ -316,30 +224,17 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v7_bulkRunOverwriteFlag") { db in
-        // Per-run preserve/overwrite toggle from the Generate sheet. Default 0
-        // (PRESERVE) so existing rows and resumed runs keep the new default of
-        // skipping a unit whose target slot is already annotated. A constant
-        // default leaves v6's `(status…) = (completedAt IS NOT NULL)` CHECK
-        // untouched (ADD COLUMN doesn't rebuild the table).
+        // Existing and resumed runs default to preserving annotations. ADD COLUMN leaves
+        // the terminal-status/completedAt constraint intact.
         try db.alter(table: "bulkAnnotationRun") { t in
             t.add(column: "overwriteExisting", .boolean).notNull().defaults(to: false)
         }
     }
 
     migrator.registerMigration("v8_createBookmark") { db in
-        // Six fixed colour slots, each marking at most one chapter, each
-        // chapter holding at most one colour. Rows are hard-deleted — a
-        // deliberate divergence from `bibleHighlight`'s soft-delete: a
-        // bookmark slot is *state* (one of six ribbons), not history, and
-        // a tombstoned row would keep occupying its colour's UNIQUE slot,
-        // blocking the colour from ever being re-assigned. (A future sync
-        // engine therefore can't lean on row tombstones here and must
-        // carry deletes in its own change-set, keyed by colorId.)
-        // No `updatedAt`: every assignment — including moving a ribbon —
-        // is a fresh row, so rows are never updated in place.
-        // Translation-agnostic by design: no `translationId` — the
-        // (bookId, chapterNumber) pair addresses the chapter across all
-        // bundled translations.
+        // Hard-delete bookmarks: tombstones would occupy unique color slots and block reuse.
+        // Each assignment is a fresh row; future sync must carry deletions separately by colorId.
+        // Book/chapter identity is shared across translations.
         try db.create(table: "bibleBookmark") { t in
             t.primaryKey("id", .text)
             t.column("colorId", .text).notNull()
@@ -347,9 +242,7 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("chapterNumber", .integer).notNull()
             t.column("createdAt", .datetime).notNull()
         }
-        // The two UNIQUE indexes *are* the 1:1 invariant, enforced at the
-        // database so any writer that skips the repository's atomic toggle
-        // fails loudly instead of silently duplicating a slot.
+        // Enforce one color per chapter and one chapter per color even outside repository toggles.
         try db.create(
             index: "bibleBookmark_on_colorId",
             on: "bibleBookmark",
@@ -365,27 +258,10 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
     }
 
     migrator.registerMigration("v9_annotationSummary") { db in
-        // The annotation redesign: one long-form markdown `summary` per
-        // target replaces the multi-card `(category, title, body)` entries
-        // model — the category taxonomy (and its CHECK) goes away entirely.
-        //
-        // Destructive by design, like v5 before it: the entries model has
-        // no mapping onto the single-summary model (stitching five short
-        // cards together produces neither a coherent summary nor the new
-        // generation contract's structure). Annotations are cheap,
-        // local-only, and regenerated on demand, so we drop and rebuild
-        // rather than migrate content.
-        //
-        // The bulk ledger is cleared for the same reason: its `done`
-        // units assert "this chapter's annotations exist", which the
-        // table rebuild just falsified — a run resumed across this
-        // upgrade would otherwise complete while the hub's coverage
-        // shows those chapters bare, with no path to regenerate them
-        // short of a fresh run. Units are deleted explicitly (NOT via
-        // the v6 cascade: DatabaseMigrator runs with foreign keys off,
-        // so ON DELETE CASCADE doesn't fire inside a migration and
-        // orphaned units would fail the end-of-migration FK check).
-        // The hub simply shows no history post-upgrade.
+        // Multi-card annotations cannot be mapped faithfully to the new single-summary contract,
+        // so regenerate them. Clear the ledger too: its done units would otherwise claim
+        // annotations still exist. Delete units explicitly because migrations disable foreign
+        // keys, preventing ON DELETE CASCADE and leaving orphans for the final FK check.
         try db.execute(sql: "DELETE FROM bulkAnnotationRunUnit")
         try db.execute(sql: "DELETE FROM bulkAnnotationRun")
         try db.execute(sql: "DROP TABLE bibleAnnotation")
@@ -401,8 +277,6 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("modelId", .text).notNull()
             t.column("createdAt", .datetime).notNull()
         }
-        // Recreate the two indexes dropped with the table — see v3 for the
-        // access patterns each one serves.
         try db.create(
             index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
             on: "bibleAnnotation",

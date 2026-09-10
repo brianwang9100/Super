@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Verifies that refresh tokens participate in query equality and returned snapshots.
 @Suite("Annotation sheet request")
 struct AnnotationSheetRequestTests {
     @Test("unloaded is distinct from an authoritative empty read")

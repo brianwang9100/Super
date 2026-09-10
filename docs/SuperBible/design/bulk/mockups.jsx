@@ -1,7 +1,4 @@
-// bulk/mockups.jsx — design canvas for the SuperBible *Bulk Annotations*
-// MVP (slimmed). Bulk generation is centralized in the Settings →
-// Annotations pane. Same glyph vocabulary, three themes, and settings-row
-// grammar as the live app.
+// Bulk-annotation design canvas, grouped by settings flow and component.
 
 applyThemeVars(THEMES.light);
 
@@ -22,7 +19,6 @@ function BSwatch({ t, label, sub, children }) {
   );
 }
 
-// ── Components ────────────────────────────────────────────
 function CoverageBitsCard() {
   const t = ANNO_THEMES.light;
   return (
@@ -89,7 +85,6 @@ function ProgressBitsCard() {
   );
 }
 
-// ──────────────────────────────────────────────────────────
 function App() {
   return (
     <DesignCanvas>

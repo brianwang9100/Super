@@ -6,19 +6,10 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// The single place all eight theme variants (four families × light/dark) are
-/// pixel-locked on a representative chat surface. The per-screen suites render
-/// only Vellum light/dark (the default) to keep CI cost flat; this gallery is
-/// where Lapis / Scriptorium / Slate — and Vellum again — get their palette
-/// coverage, so a regression in any family's tokens fails here. The fixture
-/// exercises the user bubble (Geist), assistant prose (EB Garamond, with
-/// strong/emphasis), inline code (mono), and a tool-call card so accent / ink /
-/// border / code tokens are all on screen.
+// Centralize palette coverage here; per-screen suites use the default Vellum pair.
 @Suite("Theme gallery — chat", .serialized)
 @MainActor
 struct ThemeGallerySnapshotTests {
-    /// Register Core's bundled brand fonts before any render so the suite is
-    /// order-independent in the shared test process (see SnapshotFontRegistration).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private let items: [MessageList.Item] = [

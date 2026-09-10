@@ -7,11 +7,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Top-level screen snapshots. Each scenario constructs the view model
-/// with a no-op driver and stub repositories so the view renders entirely
-/// from in-memory state — no GRDB, no network. The empty state renders the
-/// `ChatEmptyState` brand glyph (default `.spark` here), so these baselines
-/// no longer depend on a pinned clock.
 @Suite("ChatScreen snapshots", .serialized)
 @MainActor
 struct ChatScreenSnapshotTests {
@@ -47,8 +42,6 @@ struct ChatScreenSnapshotTests {
 
     @Test("empty state with suggested actions at dynamic type XXL")
     func emptyWithActionsXXL() {
-        // The starter buttons grow with the label text at XXL; this catches the
-        // stack overflowing or colliding with the composer (§Testing.3 reflow).
         verifyEmptyWithActions(theme: .vellumLight, name: "screen_empty_actions_xxl", dynamicType: .xxLarge)
     }
 
@@ -62,8 +55,7 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .vellumDark, name: "screen_populated_dark")
     }
 
-    /// Existing screen captures fit the viewport. These cover floating glass
-    /// contrast over text and centering/gap above the real composer inset.
+    /// Covers floating glass over text and spacing above the actual composer inset.
     @Test("copy confirmation above the scroll-to-bottom control in light theme")
     func scrollToBottomLight() throws {
         try verifyScrollToBottom(theme: .vellumLight, name: "screen_scroll_to_bottom_light", showCopyConfirmation: true)
@@ -96,8 +88,7 @@ struct ChatScreenSnapshotTests {
         )
         let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
-            // Capture settled chrome; the spring's sub-pixel opacity tail is
-            // timing-dependent, while its shared motion token is covered in code.
+            // Disable the timing-dependent spring tail so the capture compares settled chrome.
             .transaction { $0.disablesAnimations = true }
         let controller = UIHostingController(rootView: view)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
@@ -139,10 +130,7 @@ struct ChatScreenSnapshotTests {
 
     @Test("no-model error banner over empty state at dynamic type XXL")
     func noModelErrorEmptyXXL() {
-        // Banner layout on an empty transcript at XXL exercises a
-        // different `MessageList` height path than the populated XXL
-        // variant: with zero rows the banner is the only content, so
-        // its wrap/clip behavior is what's under test here.
+        // With no transcript rows, the banner alone exercises wrapping and clipping.
         let function = #function
         let viewModel = ChatScreenViewModel(
             conversationId: "c",
@@ -173,29 +161,14 @@ struct ChatScreenSnapshotTests {
         verifyNoModelErrorPopulated(theme: .vellumDark, name: "screen_no_model_error_populated_dark")
     }
 
-    // The populated-transcript + no-model-error state at Dynamic Type
-    // XXL is intentionally not snapshotted. Per AGENTS.md §Testing
-    // rule 5, "Dynamic Type XXL and other accessibility-large variants
-    // are the ones most likely to fail and are the candidates for
-    // deferral." Empirically this fixture exhibits sub-pixel anti-
-    // aliasing drift across every text glyph between the local Mac
-    // and the macos-26 CI runner (>1% pixels diff at perceptual
-    // delta) — beyond what the `verifyEmpty`-style tolerance allows.
-    // XXL coverage for the new state is provided by
-    // `noModelErrorEmptyXXL`; the populated/XXL combination's
-    // layout invariants are already covered by `populatedXXL`.
+    // The combined populated/error/XXL fixture exceeds cross-runner font tolerance.
+    // noModelErrorEmptyXXL covers the banner; populatedXXL covers transcript reflow.
 
     private func verifyNoModelErrorPopulated(
         theme: SuperTheme.Identifier,
         name: String,
         function: String = #function
     ) {
-        // Reachable in production when the user previously chatted, then
-        // deleted every model endpoint in Settings, then tried to send
-        // again — the persisted transcript stays on screen while the
-        // banner overlays the latest exchange. `availableModels` is
-        // empty so the composer's model pill correctly reads
-        // "No model", consistent with the banner state.
         let viewModel = makeNoModelErrorPopulatedViewModel()
         let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
@@ -231,10 +204,6 @@ struct ChatScreenSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        // Fresh build: zero models configured, user typed something and
-        // tapped send. `ChatScreenViewModel.send` sets the no-model error;
-        // `ChatScreen.content` switches from the empty-state glyph to
-        // `MessageList` so the banner renders above the composer.
         let viewModel = ChatScreenViewModel(
             conversationId: "c",
             conversationTitle: "New chat",
@@ -284,12 +253,7 @@ struct ChatScreenSnapshotTests {
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
-        // The empty state's full chrome (system-font header + composer
-        // placeholder) drifts by a sub-pixel amount between the local
-        // recording Mac and the macos-26 CI runner — same anti-aliasing
-        // fringe the `noModelError*` fixtures hit. Allow a small fraction
-        // of pixels to differ within a small perceptual delta. Scoped to
-        // `verifyEmpty` so the rest of the suite stays pixel-exact.
+        // Scope tolerance to system-font chrome antialiasing across runners.
         let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
@@ -301,10 +265,6 @@ struct ChatScreenSnapshotTests {
         }
     }
 
-    /// Empty state with the applet-contributed starter buttons injected via the
-    /// environment (the shell does this from the registry in production). Uses
-    /// the same font tolerance as `verifyEmpty` — the surface includes the
-    /// system-font header/composer chrome.
     private func verifyEmptyWithActions(
         theme: SuperTheme.Identifier,
         name: String,
@@ -317,8 +277,7 @@ struct ChatScreenSnapshotTests {
             SuggestedChatAction(label: "Write a prayer", message: "Write a short prayer for me."),
         ]
         let viewModel = makeViewModel(initialMessages: [])
-        // Drive the resolved set directly (ChatScreen renders `viewModel.suggestions`);
-        // mirror it in the env fallback so any async load resolves to the same list.
+        // Set resolved suggestions and the async fallback to the same list.
         viewModel._setSnapshotSuggestions(actions)
         let view = ChatScreen(viewModel: viewModel)
             .environment(\.appletSuggestedChatActions, actions)
@@ -391,16 +350,7 @@ struct ChatScreenSnapshotTests {
         }
     }
 
-    /// Snapshot comparison with the same precision tolerance used by
-    /// `verifyEmpty` — accepts a small fraction of pixels differing
-    /// within a small perceptual delta. Empirically required for the
-    /// `noModelError*` family because the chat header (system font at
-    /// small size) and the composer placeholder ("Chat with Super" / "Ask
-    /// anything") drift by a sub-pixel amount between the local-recording
-    /// Mac and the macos-26 CI runner. The rest of the suite (existing
-    /// `populated`/`empty` baselines) renders byte-equal — only the
-    /// error-banner fixtures expose this drift. Scoped narrowly so the
-    /// rest of the suite stays pixel-exact.
+    /// Tolerate cross-runner system-font antialiasing in error-banner fixtures.
     private func recordOrCompareWithFontTolerance<V: View>(
         view: V,
         name: String,

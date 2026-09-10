@@ -45,10 +45,8 @@ NEW_TESTAMENT = (
 ).split()
 TESTAMENT = {b: "OT" for b in OLD_TESTAMENT} | {b: "NT" for b in NEW_TESTAMENT}
 
-# Canonical display names per book ID, matching `BibleBookCatalog.standard`.
-# Used in preference to the source USFM's `\h` field so a translation that
-# spells a book differently (BSB uses `\h Psalm` rather than `Psalms`) still
-# lines up with the catalog that the picker and tests are keyed against.
+# Match BibleBookCatalog.standard even when a source uses a different name,
+# such as BSB's "Psalm" instead of "Psalms".
 CANONICAL_NAMES = {
     "GEN": "Genesis", "EXO": "Exodus", "LEV": "Leviticus", "NUM": "Numbers",
     "DEU": "Deuteronomy", "JOS": "Joshua", "JDG": "Judges", "RUT": "Ruth",
@@ -85,14 +83,8 @@ _CLOSING_MARKER = re.compile(r"\\\+?[a-z]+\d?\*")
 _OPENING_MARKER = re.compile(r"\\\+?[a-z]+\d? ?")
 _SPACES = re.compile(r"[ \t]+")
 _LINE = re.compile(r"\\(\+?[a-z]+\d?) ?(.*)")
-# BSB-style USFM packs many verse markers per source line, e.g.
-# `\p \v 1 text \v 2 text \v 3 text`, and the chapter+psalm-superscription
-# pattern `\d \v 1 A Psalm of David.`. Inserting a newline before every
-# `\v <digit>` token normalises the input so each verse marker starts its
-# own logical line — the main loop then handles them one at a time via the
-# existing `\v` branch, without any marker-by-marker inline-verse special
-# case. The lookahead requires `\s+\d` so unrelated markers that begin with
-# `v` (e.g. `\vp ... \vp*` for verse publication info) are not split.
+# BSB can put several verses on one line. Split only numbered verse markers,
+# leaving related markers such as \vp intact.
 _INLINE_VERSE = re.compile(r"\\v(?=\s+\d)")
 
 
@@ -114,8 +106,6 @@ def clean(text: str) -> str:
 
 
 def parse_book(usfm: str) -> dict:
-    # Normalise BSB-style multi-verse lines so every `\v N` starts its own
-    # logical line. A no-op for sources that already put one verse per line.
     usfm = _INLINE_VERSE.sub(r"\n\\v", usfm)
     book = {"id": None, "name": None, "testament": None, "chapters": []}
     chapter = None
@@ -177,10 +167,7 @@ def parse_book(usfm: str) -> dict:
         elif marker in HEADING_MARKERS:
             flush_para()
             kind = None
-            # A heading marker whose verse marker was split off (e.g. BSB's
-            # `\d \v 1 A Psalm of David.` becomes a bare `\d` line plus a
-            # `\v 1 ...` line) leaves an empty heading — suppress those so
-            # the reader doesn't render a blank section break.
+            # Splitting \d \v 1 can leave a bare heading marker; do not render a blank break.
             heading_text = clean(rest)
             if heading_text:
                 chapter["paragraphs"].append({"type": "heading", "text": heading_text})
@@ -196,9 +183,6 @@ def parse_book(usfm: str) -> dict:
 
     flush_para()
     book["testament"] = TESTAMENT.get(book["id"])
-    # Override the source USFM's `\h` with the canonical display name when the
-    # book is in the standard 66-book canon — keeps every bundled translation
-    # lined up with `BibleBookCatalog.standard`.
     if book["id"] in CANONICAL_NAMES:
         book["name"] = CANONICAL_NAMES[book["id"]]
     return book

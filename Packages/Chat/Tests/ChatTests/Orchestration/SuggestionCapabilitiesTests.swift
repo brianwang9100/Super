@@ -2,9 +2,6 @@ import Core
 import Testing
 @testable import Chat
 
-/// Tests that `SuggestionCapabilities.compact` produces small, schema-free
-/// capability lines — never the large LLM-facing `description` or the parameter
-/// schema, which would blow AFM's tiny context window.
 @Suite("SuggestionCapabilities")
 struct SuggestionCapabilitiesTests {
     @Test("uses displayName + summary, never the LLM description or parameter schema")

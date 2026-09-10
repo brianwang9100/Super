@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Exercises recognition lifecycle and the append-only subscription without a mic.
 @Suite("VoiceInputController")
 @MainActor
 struct VoiceInputControllerTests {

@@ -3,8 +3,6 @@ import SwiftUI
 import Testing
 @testable import Core
 
-/// Tests for `AppletRegistry.resolvedBriefings()` — applet-prompt fan-in
-/// for the Chat leading-system-message stack.
 @Suite("AppletRegistry")
 @MainActor
 struct AppletRegistryTests {

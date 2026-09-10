@@ -6,15 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoTaskEditorSheet`. The create-mode fixture renders an
-/// empty draft (placeholder text, no state row or delete button); the
-/// edit-mode fixture renders a fully-populated draft so the state row,
-/// selected priority, selected due pill, and delete button are exercised.
-///
-/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
-/// read/write the shared on-disk `__Snapshots__/` directory and touch
-/// process-global font registration, so the suites run serially to keep that
-/// setup deterministic — not to paper over a race in the code under test.
 @Suite("TodoTaskEditorSheet snapshots", .serialized)
 @MainActor
 struct TodoTaskEditorSheetSnapshotTests {

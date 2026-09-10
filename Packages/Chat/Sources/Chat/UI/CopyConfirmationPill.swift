@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Transient HUD pill rendered above the composer for ~1.2 s after the
-/// user taps Copy on an assistant message. Presence-driven only — the
-/// dwell timer and the visibility flag live on ``ChatScreenViewModel``
-/// (`showCopyConfirmation`, `confirmCopy()`), so this view has no state
-/// of its own and is safe to re-mount on every show.
 struct CopyConfirmationPill: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

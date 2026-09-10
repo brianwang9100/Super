@@ -3,11 +3,9 @@ import SwiftUI
 internal import cmark_gfm
 internal import cmark_gfm_extensions
 
-/// Controls whether shared Markdown prose can navigate through Bible citations.
 public enum MarkdownBibleCitationPolicy: Sendable, Equatable {
-    /// Automatically link citations and retain explicit internal links.
     case enabled
-    /// Retain citation labels and formatting without internal-link navigation or accessibility traits.
+    /// Removes internal-link navigation and accessibility traits while preserving labels and formatting.
     case plainText
 
     func resolve(_ markdown: String) -> String {
@@ -25,7 +23,6 @@ private struct MarkdownBibleCitationPolicyKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Citation behavior inherited by every `MarkdownText` in a presentation.
     public var markdownBibleCitationPolicy: MarkdownBibleCitationPolicy {
         get { self[MarkdownBibleCitationPolicyKey.self] }
         set { self[MarkdownBibleCitationPolicyKey.self] = newValue }

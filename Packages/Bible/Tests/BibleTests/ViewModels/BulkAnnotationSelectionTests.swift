@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BulkSelection` (the Generate-sheet picking model) and
-/// `BulkRunEstimate` (the footer estimate) — pure value logic, no view.
 @Suite("BulkAnnotationSelection")
 struct BulkAnnotationSelectionTests {
     @Test("toggling a chapter adds then removes it")

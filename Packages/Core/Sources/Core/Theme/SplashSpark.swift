@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// 12-ray spark glyph used by `SplashView` and the brand wordmark lockup.
-///
-/// Coordinates are lifted from the handoff `spark.svg` (24×24 viewBox) and
-/// normalized to `[0, 1]` so the shape scales cleanly to any frame. Each ray
-/// is one stroked line with round caps; the alternating long/short pattern
-/// gives the mark its sun/star reading without filling a path. Render with
-/// `.stroke(..., lineWidth: ..., lineCap: .round)` — the path itself has no
-/// fill.
+/// Normalized from spark.svg's 24×24 coordinates. Render with a round-capped stroke; the path has no fill.
 public struct SplashSpark: Shape {
     public init() {}
 
@@ -25,9 +18,6 @@ public struct SplashSpark: Shape {
         return path
     }
 
-    /// The 12 line endpoints, expressed as fractions of the glyph's bounding
-    /// box (the SVG's 24-unit viewBox divided by 24). Order is clockwise
-    /// starting from the top ray.
     private struct Ray { let x1, y1, x2, y2: CGFloat }
     private static let rays: [Ray] = [
         Ray(x1: 12.000 / 24, y1:  6.720 / 24, x2: 12.000 / 24, y2:  0.960 / 24),

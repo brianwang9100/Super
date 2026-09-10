@@ -2,16 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for ``MarkdownAutocloser``'s passes over a partial markdown
-/// string — closing dangling fenced code blocks, stripping incomplete
-/// links/images, and trimming unmatched trailing emphasis markers so
-/// the in-flight streaming text renders without flipping the rest of
-/// the message into a code block or a bold run when the closer hasn't
-/// arrived yet.
-///
-/// The closer is a pure `String -> String` helper; tests assert the
-/// exact returned string for each input shape and rely on no SwiftUI
-/// or MarkdownUI state.
 @Suite("MarkdownAutocloser")
 struct MarkdownAutocloserTests {
     // MARK: - Passthrough
@@ -89,10 +79,7 @@ struct MarkdownAutocloserTests {
 
     @Test("quadruple-backtick fence is closed with a matching-length closer")
     func unclosedQuadrupleBacktickFence() {
-        // CommonMark requires the closing fence to have at least as
-        // many marker characters as the opener — a 3-backtick closer
-        // wouldn't close a 4-backtick fence and the rest of the
-        // message would still render inside the code block.
+        // A shorter closer would leave the outer fence open.
         let input = """
         ````swift
         let backticks = "```"
@@ -118,14 +105,8 @@ struct MarkdownAutocloserTests {
 
     @Test("line with an info string inside a fence is not treated as a closer")
     func infoStringLineIsNotACloser() {
-        // CommonMark §4.5: a closing fence carries only whitespace after
-        // the marker run — `\`\`\`swift` is an opener, never a closer.
-        // Regression for the markdown-about-markdown body shape where
-        // the LLM streams an outer fence whose body documents how to
-        // open inner fences. The input below is already balanced (outer
-        // opens at line 0, closes at line 4); a buggy closer would treat
-        // line 2's `\`\`\`swift` as the closer, leaving the bare `\`\`\``
-        // on line 4 as a fresh opener and appending a spurious closer.
+        // A language-tagged fence inside code must not close the outer block and trigger
+        // a spurious synthetic closer at its real end.
         let input = """
         ```markdown
         example:
@@ -156,7 +137,6 @@ struct MarkdownAutocloserTests {
 
     @Test("dangling link label drops back to literal text")
     func danglingLinkLabel() {
-        // No closing `]` — render the `[` as a literal.
         let input = "see [link label without a close"
         let expected = "see link label without a close"
         #expect(MarkdownAutocloser.close(input) == expected)
@@ -183,16 +163,7 @@ struct MarkdownAutocloserTests {
         #expect(MarkdownAutocloser.close(input) == expected)
     }
 
-    // MARK: - Trailing emphasis markers — preserve at EOF, trim only when followed by whitespace
-    //
-    // At EOF the marker is ambiguous: it could be an emphasis opener
-    // (`**bold…` mid-typing) or a word-internal character that just
-    // happens to be last in the flush frame (`Hello snake_` before
-    // `_case` arrives). The conservative choice is to leave it as a
-    // literal so MarkdownUI renders the character verbatim until more
-    // input disambiguates. Only when the user explicitly typed
-    // whitespace *after* the marker do we treat it as abandoned and
-    // trim.
+    // MARK: - Trailing emphasis
 
     @Test("trailing double-asterisk at EOF is preserved as a literal")
     func trailingDoubleAsteriskAtEOFPreserved() {
@@ -206,10 +177,7 @@ struct MarkdownAutocloserTests {
 
     @Test("trailing underscore at EOF is preserved (avoids mid-stream snake_case corruption)")
     func trailingUnderscoreAtEOFPreserved() {
-        // The deciding case the per-flush UX rides on: `Hello snake_`
-        // must not lose its `_` for the one frame between this flush
-        // and the next, when `_case` will turn it into an intraword
-        // underscore.
+        // Preserve a partial intraword underscore until the next streaming chunk arrives.
         #expect(MarkdownAutocloser.close("Hello snake_") == "Hello snake_")
     }
 
@@ -220,23 +188,12 @@ struct MarkdownAutocloserTests {
 
     @Test("trailing marker followed by explicit whitespace is trimmed")
     func trailingMarkerWithWhitespaceIsTrimmed() {
-        // Whitespace after the marker is a stronger signal that the
-        // user is done with it — at that point trimming is safer than
-        // leaving a stray glyph. (Trailing whitespace from the trim
-        // itself is collapsed.)
         #expect(MarkdownAutocloser.close("this is ** ") == "this is")
         #expect(MarkdownAutocloser.close("emphasis __\n") == "emphasis")
     }
 
     @Test("unmatched emphasis with body content after the marker is left alone")
     func unmatchedEmphasisWithBodyIsPreserved() {
-        // The `**` opened a bold run that has body characters but no
-        // closer yet. CommonMark renders the unclosed marker as a
-        // literal `**` (no bold styling), so leaving the input alone
-        // matches what the persisted row will render once a closer
-        // arrives. Trimming mid-string here would also corrupt
-        // intraword markers like `snake_case` — see the dedicated
-        // regression tests below.
         #expect(MarkdownAutocloser.close("this is **partial") == "this is **partial")
     }
 
@@ -273,9 +230,6 @@ struct MarkdownAutocloserTests {
 
     @Test("dangling emphasis inside an unclosed fence does not get trimmed")
     func emphasisInsideUnclosedFence() {
-        // The `**` lives inside what will be a code block once closed.
-        // The autocloser must close the fence and leave the code body
-        // (asterisks included) verbatim.
         let input = """
         ```swift
         let s = "this has **

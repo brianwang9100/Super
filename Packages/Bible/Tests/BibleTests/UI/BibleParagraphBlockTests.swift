@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Unit tests for `BibleParagraphBlock` static helpers — the bits that
-/// don't need a SwiftUI host. Visual placement of words + trailing
-/// annotation bubbles lives in the chapter-reader snapshot suite.
 @Suite("BibleParagraphBlock.trailingBubbleLabel")
 @MainActor
 struct BibleParagraphBlockTrailingBubbleLabelTests {

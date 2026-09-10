@@ -1,9 +1,6 @@
 import Core
 import SwiftUI
 
-/// Honest three-level synopsis at the top of the Annotations hub: how much of
-/// the Bible carries annotations, counted in **books · chapters · verses**. No
-/// invented "fullness", no note counts — each column is `annotated / total`.
 struct AnnotationCoverageCard: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -53,9 +50,7 @@ struct AnnotationCoverageCard: View {
                         .font(typography.mono(11))
                         .foregroundStyle(theme.inkMute)
                 }
-                // Keep "value /total" on one line — at high coverage the verses
-                // column ("1,204 /31,102") would otherwise wrap; shrink to fit
-                // the third-of-width column instead.
+                // Keep value/total on one line as counts grow.
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 Text(label)
@@ -69,8 +64,6 @@ struct AnnotationCoverageCard: View {
     }
 }
 
-/// Plain coverage snapshot the card renders — distinct annotated counts over
-/// the canonical totals (66 books · 1,189 chapters · 31,102 verses).
 public struct AnnotationCoverage: Sendable, Equatable {
     public var books: Int
     public var chapters: Int
@@ -95,6 +88,5 @@ public struct AnnotationCoverage: Sendable, Equatable {
         self.totalVerses = totalVerses
     }
 
-    /// Empty coverage — the `@Query` default and the fresh-install state.
     public static let none = AnnotationCoverage(books: 0, chapters: 0, verses: 0)
 }

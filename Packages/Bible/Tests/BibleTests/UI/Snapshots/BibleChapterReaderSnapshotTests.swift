@@ -7,35 +7,11 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleChapterReader` driven directly:
-///
-/// - The **generating** annotation-bubble state — the dotted bubble beside the
-///   title while a `bible.annotate` dispatch is in flight.
-///   `BibleScreenSnapshotTests` covers the empty (no status) and filled
-///   (seeded rows) title states, but its screens all pass `nil` for
-///   `chapterDispatchStatus`, so the generating branch needs its own driver.
-/// - The **co-trailing** cluster — a verse carrying both an annotation bubble
-///   and a note glyph, plus the chapter title carrying a filled annotation
-///   bubble and a filled note glyph. This locks PR3's stable
-///   annotation-then-note order in the live reader flow, the contract
-///   `VerseTrailersSnapshotTests` exercises in isolation.
-/// - The **bookmarked title** — the chapter's bookmark slot holding a ribbon,
-///   so the title cluster leads with the filled (tinted) bookmark glyph.
-///   `BibleScreenSnapshotTests` covers the outline (unbookmarked) state.
-/// - The **chapter end** — inline navigation stays above the space reserved
-///   for floating controls, including with larger reading text.
-///
-/// Rendered across the Vellum light / dark pair because the outlined glyph
-/// strokes in `theme.inkFaint`; the other six theme variants are pixel-locked
-/// once in `ThemeGallerySnapshotTests`.
+/// Covers generating/title, co-trailing, bookmarked, and chapter-end layouts missing
+/// from the full-screen captures. ThemeGallerySnapshotTests owns the wider palette.
 @Suite("BibleChapterReader snapshots", .serialized)
 @MainActor
 struct BibleChapterReaderSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts before any render so the chapter
-    /// title's brand serif resolves instead of baking the system fallback —
-    /// and so this suite is order-independent (font registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the chapter title shows the generating bubble in the light theme")
@@ -121,10 +97,6 @@ struct BibleChapterReaderSnapshotTests {
         if let failure { Issue.record("\(name): \(failure)") }
     }
 
-    /// Render 1 Peter 2 with an empty annotation database (so the chapter
-    /// bubble isn't filled) and a `.running` dispatch status, which flips the
-    /// title bubble to its generating glyph. The empty in-memory
-    /// `DatabaseContext` satisfies the reader's `@Query` requests.
     private func verify(
         theme themeID: SuperTheme.Identifier,
         name: String,
@@ -170,12 +142,7 @@ struct BibleChapterReaderSnapshotTests {
         }
     }
 
-    /// Render 1 Peter 2 with verse 1 (visible at the top of the fixed frame)
-    /// carrying both an annotation and a note, and the chapter carrying a
-    /// chapter-level annotation and note, so both the title and the verse show
-    /// the annotation-then-note cluster within the snapshot. Seeds the
-    /// in-memory DB directly via `PersistableRecord` so both `@Query`s
-    /// (annotations + notes) surface their rows.
+    // Put annotation/note pairs on visible verse 1 and the chapter title to cover both clusters.
     private func verifyCoTrailing(
         theme themeID: SuperTheme.Identifier,
         name: String,
@@ -242,12 +209,6 @@ struct BibleChapterReaderSnapshotTests {
         }
     }
 
-    /// Render 1 Peter 2 with its bookmark slot holding the clay ribbon and a
-    /// bookmark host wired, so the chapter title leads its glyph cluster with
-    /// the filled (tinted) bookmark glyph — the bookmark-then-annotation-
-    /// then-note cluster order in the live reader flow.
-    /// `BibleScreenSnapshotTests` covers the outline (unbookmarked) state on
-    /// every screen render.
     private func verifyBookmarked(
         theme themeID: SuperTheme.Identifier,
         name: String,

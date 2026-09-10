@@ -6,9 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoStateBox` — the three states (open / done /
-/// cancelled) rendered side-by-side — across Vellum light and dark plus a
-/// larger Dynamic Type size.
 @Suite("TodoStateBox snapshots", .serialized)
 @MainActor
 struct TodoStateBoxSnapshotTests {

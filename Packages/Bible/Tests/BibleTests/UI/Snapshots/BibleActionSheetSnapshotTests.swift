@@ -6,16 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleActionSheet` — the selection action sheet across the
-/// three themes and for both a single-verse and a multi-range citation. The
-/// sheet stacks the AI action row over the plain-text (Copy/Share) row, split
-/// by a hairline divider. The sheet's own type sizes are fixed, but a Dynamic
-/// Type XXL variant is captured for Argos — it guards
-/// against a future font change reflowing the swatch / action rows.
 @Suite("BibleActionSheet snapshots", .serialized)
 @MainActor
 struct BibleActionSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the action sheet renders in the light theme")

@@ -1,26 +1,11 @@
 import Foundation
 
-/// A fully-specified annotation target: which book, which chapter (when
-/// relevant), which verse range (when relevant).
-///
-/// Pairs the polymorphic `BibleAnnotationTarget` discriminator with the
-/// IDs needed to address one specific row group. Used by the annotation
-/// sheet (as its identity for `.sheet(item:)`), by the chapter reader
-/// when grouping rows for trailing bubbles, by the book picker when a
-/// bubble is tapped, and by `BibleScreenViewModel` when it queues a
-/// generation intent behind the first-run disclaimer.
-///
-/// The `book` form addresses every annotation on a book regardless of
-/// chapter; `chapter` addresses chapter-level annotations only (rows with
-/// `verseEnd == nil`); `verseRange` addresses one contiguous selection.
+/// Identifies one exact target group: book-level, chapter-level, or a contiguous verse range.
 public enum BibleAnnotationTargetSpec: Sendable, Equatable, Hashable, Identifiable {
     case book(bookId: String)
     case chapter(bookId: String, chapterNumber: Int)
     case verseRange(bookId: String, chapterNumber: Int, verseStart: Int, verseEnd: Int)
 
-    /// Stable string identity for `.sheet(item:)` and `ForEach` diffing.
-    /// Encodes the case discriminator plus its associated values so two
-    /// adjacent verse ranges in the same chapter don't collapse.
     public var id: String {
         switch self {
         case .book(let bookId):
@@ -32,7 +17,6 @@ public enum BibleAnnotationTargetSpec: Sendable, Equatable, Hashable, Identifiab
         }
     }
 
-    /// The corresponding polymorphic-table discriminator.
     public var target: BibleAnnotationTarget {
         switch self {
         case .book: return .book

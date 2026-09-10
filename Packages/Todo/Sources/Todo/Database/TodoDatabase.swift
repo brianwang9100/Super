@@ -1,10 +1,6 @@
 import Foundation
 import GRDB
 
-/// Owns the Todo applet's `DatabaseQueue` (`todo.sqlite`) and the schema
-/// migrator. Construct one at applet activation and pass it to
-/// repositories; tests use `makeInMemory()` for a fully-migrated queue
-/// with no on-disk footprint.
 public struct TodoDatabase: Sendable {
     public let queue: DatabaseQueue
 
@@ -31,8 +27,6 @@ public struct TodoDatabase: Sendable {
         return TodoDatabase(queue: queue)
     }
 
-    /// Build a fresh in-memory queue with the migrator applied. Intended
-    /// for tests, previews, and headless tooling.
     public static func makeInMemory() throws -> TodoDatabase {
         let queue = try DatabaseQueue()
         try migrator().migrate(queue)

@@ -3,9 +3,6 @@ import Foundation
 import GRDBQuery
 import SwiftUI
 
-/// The Todo mini-applet. Backed by `todo.sqlite` and three repositories
-/// constructed at app boot. Conforms to `MiniApplet` so the shell can
-/// register, sidebar, and render it like any other backdrop applet.
 public struct TodoApplet: MiniApplet {
     public static let appletID: String = TodoModule.appletID
     public var appletID: String { Self.appletID }
@@ -13,8 +10,6 @@ public struct TodoApplet: MiniApplet {
     public var accentColor: Color { Color(red: 0.30, green: 0.45, blue: 0.78) }
     public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
 
-    /// Todo-flavored empty-state prompts, surfaced by the shell (SuperOS only —
-    /// SuperBible doesn't register Todo) as tappable chat-starter buttons.
     public var suggestedChatActions: [SuggestedChatAction] {
         [
             SuggestedChatAction(label: "Add a task", message: "Add a task to my to-do list."),
@@ -76,7 +71,6 @@ public struct TodoApplet: MiniApplet {
     }
 }
 
-/// Dependency bundle handed to `TodoApplet`, constructed once at app boot.
 public struct TodoDependencies: Sendable {
     public let database: TodoDatabase
     public let taskRepository: any TaskRepository
@@ -104,8 +98,6 @@ public struct TodoDependencies: Sendable {
         self.calendar = calendar
     }
 
-    /// Convenience: open `todo.sqlite` under `directory` and build the
-    /// repositories. Used by the app's composition root.
     public static func live(in directory: URL) throws -> TodoDependencies {
         let database = try TodoDatabase.open(in: directory)
         return TodoDependencies(

@@ -1,29 +1,15 @@
 import Core
 import SwiftUI
 
-/// One-time liability sheet shown the first time the user fires any
-/// annotation tool call.
-///
-/// Anatomy: drag handle, an accent-soft icon panel with a filled
-/// `AnnotationBubble` glyph, a serif title, two short body paragraphs,
-/// and a prominent accent-filled "Got it" button. Acknowledgement is
-/// persisted by the caller in PR 3 (`UserDefaults` key
-/// `"bible.annotations.disclaimerAcknowledged"`) — this view itself
-/// only fires `onGotIt()`.
-///
-/// Body copy is fixed by the spec (`docs/SuperBible/ANNOTATIONS.md` §8)
-/// so it lives inline here rather than as an inputable string.
+/// The caller persists acknowledgement; body copy is specified in docs/SuperBible/ANNOTATIONS.md.
 struct AnnotationDisclaimerSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Extra bottom padding so the button clears the shell's minimized
-    /// chat pill; `0` in standalone (snapshot) contexts.
+    /// Reserve for the minimized chat pill; zero in standalone contexts.
     let bottomInset: CGFloat
     let onGotIt: () -> Void
 
-    /// Required `onGotIt` first, optional `bottomInset` last, per the
-    /// root AGENTS.md "Default parameter values" rule.
     init(onGotIt: @escaping () -> Void, bottomInset: CGFloat = 0) {
         self.bottomInset = bottomInset
         self.onGotIt = onGotIt

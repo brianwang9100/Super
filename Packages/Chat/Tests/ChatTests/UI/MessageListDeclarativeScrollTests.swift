@@ -6,10 +6,7 @@ import Testing
 import UIKit
 @testable import Chat
 
-/// Real SwiftUI/UIScrollView integration coverage for explicit turn focus
-/// and stationary responses. The bounded runloop pump settles UI layout;
-/// async repository/event behavior is tested with deterministic drain seams.
-// Window ownership and runloop-driven layout are shared UIKit state.
+// Serialize shared UIKit window ownership and runloop-driven layout.
 @Suite("MessageList stationary responses", .serialized)
 @MainActor
 struct MessageListDeclarativeScrollTests {
@@ -219,19 +216,14 @@ struct MessageListDeclarativeScrollTests {
 
     private func expectMessageAtTop(_ id: String, controller: UIViewController) throws {
         let scroll = try requireScrollView(in: controller)
-        // A short focused turn occupies a viewport, so its beginning is
-        // the content's trailing viewport. This also checks that the blank
-        // response reserve survives completion, independently of text layout.
+        // A short focused turn fills the trailing viewport, including its blank response reserve.
         #expect(distanceFromBottom(scroll) < 2,
                 "requested turn \(id) should occupy the trailing viewport")
     }
 
     // MARK: - Helpers
 
-    /// Standard host scaffolding: hosting controller, key window, frame
-    /// set to window bounds. The window must be `makeKeyAndVisible()` so
-    /// SwiftUI's scroll layout proceeds (mirrors the load-bearing detail
-    /// in `ChatScreenFocusBindingTests`).
+    /// Use a key window so SwiftUI performs scroll layout.
     @MainActor
     private func makeHost(
         driver: MessageListDriver,
@@ -253,12 +245,7 @@ struct MessageListDeclarativeScrollTests {
         window.rootViewController = nil
     }
 
-    /// Rapidly toggle the host's frame size `iterations` times,
-    /// pumping the runloop briefly after each toggle. Returns the
-    /// elapsed wall time so the caller can assert no hang occurred.
-    /// Lives as a synchronous `@MainActor` helper because
-    /// `RunLoop.main.run(until:)` is unavailable from async contexts
-    /// in Swift 6.
+    /// Synchronous because Swift 6 disallows RunLoop.run from async contexts.
     @MainActor
     private func rapidResizeStorm(
         controller: UIViewController,
@@ -278,13 +265,7 @@ struct MessageListDeclarativeScrollTests {
         return Date().timeIntervalSince(start)
     }
 
-    /// Settle the SwiftUI layout: alternate `setNeedsLayout` /
-    /// `layoutIfNeeded` calls with brief runloop pumps so size-change
-    /// anchors and any pending `scrollPosition.scrollTo(y:)` calls
-    /// converge across multiple ticks (LazyVStack lazy materialization
-    /// fires several geometry ticks per resize). `RunLoop.main.run(until:)`
-    /// is a synchronous pump — preferable to `Task.sleep` per
-    /// AGENTS.md §Testing.2.
+    /// Pump across layout ticks so lazy materialization and pending scroll commands settle.
     @MainActor
     private func settle(controller: UIViewController, iterations: Int = 6) {
         for _ in 0..<iterations {
@@ -324,11 +305,6 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
-    /// Alternates user/assistant items like `makeItems(count:)`, but
-    /// every assistant message carries a multi-line thinking trace so
-    /// flipping `verbosity` from `.simple` to `.thinking` expands a
-    /// visible block on each row and meaningfully grows content
-    /// height. Used by the verbosity-driven scroll tests.
     private func makeItemsWithThinking(count: Int) -> [MessageList.Item] {
         let thinking = String(repeating: "Considering the question. ", count: 16)
         return (0..<count).map { idx in
@@ -352,8 +328,6 @@ struct MessageListDeclarativeScrollTests {
         return scrollView
     }
 
-    /// Points between the bottom of the visible viewport and the bottom
-    /// of the content. Zero means pinned to the latest message.
     private func distanceFromBottom(_ scrollView: UIScrollView) -> CGFloat {
         max(0, scrollView.contentSize.height - scrollView.contentOffset.y - scrollView.bounds.height)
     }
@@ -363,8 +337,6 @@ private enum MessageListScrollTestError: Error {
     case scrollViewNotFound
 }
 
-/// Observable container the host reads from. Mutating its properties
-/// triggers a SwiftUI re-render of the embedded `MessageList`.
 @MainActor
 @Observable
 private final class MessageListDriver {
@@ -386,19 +358,8 @@ private final class MessageListDriver {
     }
 }
 
-/// Thin SwiftUI host that reads from the observable driver so test bodies
-/// can mutate inputs and watch the layout converge. `.ignoresSafeArea()`
-/// pulls the scroll view out from under the simulator window's
-/// status-bar / home-indicator insets so `contentOffset` arithmetic is
-/// straight (no hidden `adjustedContentInset` to subtract from every
-/// assertion). The production architecture wraps `MessageList` in a
-/// `safeAreaInset(edge: .bottom)` (`ChatScreen`); we don't replicate that
-/// here because the synthetic keyboard simulation
-/// (`additionalSafeAreaInsets.bottom`) doesn't propagate to a
-/// `ScrollView` through SwiftUI's `safeAreaInset` modifier the same way
-/// a real `UIResponder.keyboardWillShowNotification` does. The
-/// keyboard-show/dismiss behavior is therefore verified on-device,
-/// not in this synthetic harness.
+// Ignore safe areas to isolate scroll offsets. This harness does not reproduce
+// real keyboard propagation through the production safeAreaInset wrapper.
 private struct MessageListHost: View {
     let driver: MessageListDriver
 
@@ -411,19 +372,13 @@ private struct MessageListHost: View {
             interruptedResponse: driver.interruptedResponse,
             verbosity: driver.verbosity
         )
-        // Hostless XCTest does not advance native scroll animations. Keep
-        // these final-geometry regressions deterministic with Reduce Motion;
-        // focus sequencing is unit-tested and the glide is recorded in-app.
+        // Hostless tests do not advance native scroll animations; isolate final geometry.
         .environment(\.messageListReduceMotionOverride, true)
         .ignoresSafeArea()
     }
 }
 
 private extension UIView {
-    /// Depth-first search for the first descendant `UIScrollView`. The
-    /// SwiftUI `ScrollView` inside `MessageList` is backed by a UIKit
-    /// `UIScrollView`; this helper locates it so tests can read offset
-    /// and size without bridging through `ScrollPosition`.
     func findFirstScrollView() -> UIScrollView? {
         if let scroll = self as? UIScrollView { return scroll }
         for sub in subviews {

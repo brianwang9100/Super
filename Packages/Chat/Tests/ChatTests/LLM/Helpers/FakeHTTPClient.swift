@@ -1,11 +1,7 @@
 import Core
 import Foundation
 
-/// In-memory `HTTPClient` for replaying recorded SSE (Server-Sent Events)
-/// fixtures into provider tests. Records the issued `URLRequest` for
-/// header/body assertions and yields the configured chunks in order.
-/// Pass `error` to simulate transport failure or a non-2xx response
-/// (the provider treats `HTTPError`s identically regardless of source).
+/// Replays chunks, records requests, and optionally throws after the chunks.
 struct FakeHTTPClient: HTTPClient {
     let chunks: [Data]
     let error: Error?
@@ -17,10 +13,7 @@ struct FakeHTTPClient: HTTPClient {
         self.observed = ObservedRequests()
     }
 
-    /// Convenience that splits a full fixture string into a configurable
-    /// number of byte chunks, exercising the SSE parser's partial-frame
-    /// handling. `chunkCount = 1` mirrors a single-shot delivery; higher
-    /// counts simulate an upstream that flushes frequently.
+    /// Splits fixture bytes to exercise partial SSE frames.
     static func fromFixture(_ text: String, chunkCount: Int = 1) -> FakeHTTPClient {
         let bytes = Data(text.utf8)
         guard chunkCount > 1, bytes.count >= chunkCount else {
@@ -54,9 +47,6 @@ struct FakeHTTPClient: HTTPClient {
     }
 }
 
-/// Thread-safe ledger of every `URLRequest` the fake client has been
-/// asked to stream. Tests pull it after the stream completes to inspect
-/// method, headers, and body without racing the producer.
 final class ObservedRequests: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [URLRequest] = []

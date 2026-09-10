@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Default Verbosity pane. Mirrors `VerbosityPane` from `settings.jsx`: a
-/// grouped card with three rows (Simple / Thinking / Verbose), each
-/// showing a 15pt label + 12.5pt faint-ink description, with a trailing
-/// accent check on the selected row.
 struct SettingsVerbosityPane: View {
     @Bindable var viewModel: SettingsViewModel
 

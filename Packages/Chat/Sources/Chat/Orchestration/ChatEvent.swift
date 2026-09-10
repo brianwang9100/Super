@@ -1,84 +1,35 @@
 import Core
 import Foundation
 
-/// View-facing stream event emitted by `ChatSession`. Translates the
-/// transport-level `LLMStreamEvent` into a coarser surface that view models
-/// consume directly: text/thinking deltas during streaming, persisted record
-/// values once they hit the database, and a single `.error` for any failure
-/// path.
-///
-/// Stream contract: a `ChatSession.send(...)` `AsyncStream<ChatEvent>` always
-/// finishes (it never throws). Failures arrive as `.error(...)` immediately
-/// before the stream closes, so consumers always get a clean signal that
-/// the turn is done and can persist whatever did make it through.
+/// Send streams never throw; terminal failures arrive as error before closure.
+/// Already-persisted messages and tool calls are not rolled back.
 public enum ChatEvent: Sendable, Equatable {
-    /// User's outgoing message has been written to the database. Fires once
-    /// per `send(...)` call, before any LLM (Large Language Model) round
-    /// trip. View models use this to confirm the user's bubble is now
-    /// authoritative in GRDB-backed reactive lists.
     case userMessageSaved(MessageRecord)
 
-    /// Streaming text fragment. Accumulate in the view model; the persisted
-    /// `MessageRecord` arrives via `.assistantMessageSaved` once the message
-    /// completes (per ADR-BB-003 we never write per-delta).
+    /// Accumulate deltas in memory; assistantMessageSaved supplies the persisted row.
     case textDelta(String)
 
-    /// Streaming reasoning fragment from a thinking-capable model. Same
-    /// accumulate-in-view-model pattern as `.textDelta`.
     case thinkingDelta(String)
 
-    /// LLM requested a tool call. Record is already persisted with status
-    /// `.pending`. Fires before execution starts so the UI can show a
-    /// pending action card immediately.
+    /// The call is persisted as pending before execution begins.
     case toolCallStarted(ToolCallRecord)
 
-    /// A tool call is paused awaiting the user's approval. Record is
-    /// persisted with status `.awaitingConfirmation`. The session suspends
-    /// the turn until the view model calls `confirmToolCall(id:)` or
-    /// `skipToolCall(id:)`. Used by the native web-search cost gate: the
-    /// model's `request_web_search` proposal parks here so the user can
-    /// approve (run the search) or skip (answer without it) before any
-    /// billable search runs.
+    /// Persisted as awaitingConfirmation; the turn suspends until confirmToolCall or skipToolCall.
     case toolCallAwaitingConfirmation(ToolCallRecord)
 
-    /// Tool finished successfully. Record is already updated to `.success`
-    /// in the database, and a `MessageRecord` with the result has also been
-    /// persisted (role `.tool`) so the LLM's next turn sees it in history.
+    /// The successful call and its tool-result message are already persisted.
     case toolCallCompleted(ToolCallRecord, ToolResult)
 
-    /// Tool execution failed. Record is `.failed`; an error-content
-    /// `MessageRecord` has been written so the LLM can apologize/retry on
-    /// the next turn. The string carries the human-readable failure for
-    /// the UI's failed-action card.
+    /// The failed call and an error-content tool message are already persisted.
     case toolCallFailed(ToolCallRecord, String)
 
-    /// Assistant `MessageRecord` (text + token count, no tool blocks) has
-    /// been written. Fires once per assistant turn, after `.messageComplete`
-    /// from the provider. The view model can clear its streaming buffer at
-    /// this point since the canonical row is now in GRDB.
+    /// Fires after `.messageComplete` writes the canonical assistant row.
     case assistantMessageSaved(MessageRecord)
 
-    /// Compaction is starting for this conversation. The UI typically
-    /// shows a transient "Compacting…" row above the composer until the
-    /// matching `.compactionCompleted` arrives. May fire automatically
-    /// before a turn (when the prompt budget exceeds the configured
-    /// auto-compact threshold) or explicitly via `ChatSession.compact()`.
-    ///
-    /// **Termination**: a `.compactionStarted` is always followed by
-    /// either a `.compactionCompleted(...)` (success) or a terminal
-    /// `.error(...)` (failure). UI affordances should clear on **either**
-    /// — not only on `.compactionCompleted`.
+    /// Clear compaction UI on either compactionCompleted or terminal error.
     case compactionStarted
 
-    /// Compaction finished. Carries the persisted checkpoint so the UI
-    /// can render the post-compaction banner with the new summary
-    /// inline. The next turn's prompt assembly will see this checkpoint
-    /// as the live one.
     case compactionCompleted(CompactionCheckpointRecord)
 
-    /// Terminal error for the turn. The next thing the consumer's
-    /// `for await` loop sees is the stream closing — no further events
-    /// will be yielded. Persisted partial state (already-saved messages
-    /// and tool calls) is kept; nothing is rolled back.
     case error(LLMError)
 }

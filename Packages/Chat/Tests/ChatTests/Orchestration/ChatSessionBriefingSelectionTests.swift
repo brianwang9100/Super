@@ -4,10 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Verifies `ChatSession`'s per-tier briefing selection: small-window
-/// (`ModelContextTier.compact`) models receive the lean persona + the active
-/// applet's compact briefing only, while full-tier models receive the
-/// constructor-time stack unchanged.
 @Suite("ChatSession briefing selection")
 struct ChatSessionBriefingSelectionTests {
 
@@ -80,9 +76,7 @@ struct ChatSessionBriefingSelectionTests {
             compactor: compactor,
             clock: clock,
             idGenerator: idGen,
-            // The compact tier's fixed budget allowance alone would trip
-            // auto-compaction on a small window with the default threshold;
-            // this suite is about briefing text, not compaction.
+            // The compact allowance can trigger compaction; disable it to isolate briefing selection.
             autoCompactEnabled: false,
             chatBriefing: "FULL-PERSONA",
             compactChatBriefing: compactChatBriefing,
@@ -92,7 +86,6 @@ struct ChatSessionBriefingSelectionTests {
         return Setup(provider: provider, session: session, model: model)
     }
 
-    /// The leading `.system` block of the first captured request.
     private func leadingSystemText(of setup: Setup) async -> String {
         let captured = await setup.provider.capturedRequests()
         guard let first = captured.first?.messages.first, first.role == .system,
@@ -115,8 +108,6 @@ struct ChatSessionBriefingSelectionTests {
         #expect(leading.contains("LEAN-BIBLE-RULES"))
         #expect(!leading.contains("FULL-PERSONA"))
         #expect(!leading.contains("FULL-BIBLE-RULES"))
-        // Active-applet-only: the inactive applet contributes nothing in
-        // either variant.
         #expect(!leading.contains("FULL-TODO-RULES"))
         #expect(!leading.contains("LEAN-TODO-RULES"))
     }
@@ -143,9 +134,7 @@ struct ChatSessionBriefingSelectionTests {
     }
 
     @Test func compactTierKeepsAllBriefingsWhenActiveAppletUnknown() async throws {
-        // An active id that matches no briefing (or a nil accessor) fails
-        // open: better to spend window on extra rules than to drop the one
-        // briefing the user actually needed.
+        // Fail open when the active applet is unknown rather than dropping needed instructions.
         let setup = try await makeSetup(
             model: makeModel(maxContextTokens: 4_096),
             activeAppletID: { "ghost" }

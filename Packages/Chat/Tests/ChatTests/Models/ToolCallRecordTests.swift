@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `ToolCallRecord`'s `JSONValue` codec helpers.
 @Suite("ToolCallRecord JSON helpers")
 struct ToolCallRecordTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -51,9 +50,7 @@ struct ToolCallRecordTests {
         }
     }
 
-    /// The locally-minted-id marker round-trips and is distinguishable from
-    /// every provider's wire-id shape — the property the Gemini adapter relies
-    /// on to keep a synthetic id off the wire (audit P1-6).
+    /// The synthetic prefix lets Gemini keep local persistence IDs off the wire.
     @Test func locallyMintedIDIsPrefixedAndRecognized() {
         let minted = ToolCallRecord.locallyMintedID("id-7")
         #expect(minted == "localtoolu_id-7")

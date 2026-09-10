@@ -2,9 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `URLSessionHTTPClient` driven by the per-test `URLProtocolStub`.
-/// Covers chunked success, status-code failure, transport-error propagation,
-/// and request observation.
 @Suite("URLSessionHTTPClient")
 struct URLSessionHTTPClientTests {
     private func makeClient(stubID: String) -> URLSessionHTTPClient {

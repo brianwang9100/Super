@@ -1,17 +1,8 @@
 import Core
 import SwiftUI
 
-// Buttons for the bulk-annotation surfaces.
-//
-// Interactive Liquid Glass goes on the round **icon controls** (back / close /
-// pause / cancel) via `superGlassButton`, matching how the rest of the app's
-// nav chrome adopts glass — and that helper carries the deterministic solid
-// fallback under snapshot tests. The accent **Generate** and red **Delete all**
-// buttons stay solid semantic fills: glass would frost away the accent/danger
-// colour that *is* their identity, and the only snapshot-safe glass helper is
-// the frosting one. So "controls → glass, colour CTAs → solid".
+// Keep Generate/Delete semantic fills solid; glass frosting would dilute their accent/danger meaning.
 
-/// A round, glass icon control (32pt) — back / close / pause / cancel.
 struct BulkRoundIconButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -46,8 +37,6 @@ struct BulkRoundIconButton: View {
     }
 }
 
-/// Full-width accent primary action — the **Generate** CTA. Solid accent fill
-/// (see file note on why this isn't glass).
 struct BulkPrimaryButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -81,7 +70,6 @@ struct BulkPrimaryButton: View {
     }
 }
 
-/// Full-width destructive action — **Delete all annotations**. Solid red.
 struct BulkDangerButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -115,8 +103,6 @@ struct BulkDangerButton: View {
     }
 }
 
-/// Small soft-tile **Retry** pill in the failure hue — per-row and the
-/// failure-banner "Retry all".
 struct BulkRetryButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

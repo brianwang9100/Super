@@ -4,11 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `ContextAssembler` — projects rows + checkpoint into the
-/// `[LLMMessage]` shipped to the provider, builds the leading
-/// concatenated `.system` block (Chat briefing + applet briefings +
-/// user personalization), and reports whether the resulting prompt is
-/// over a configurable threshold of the model's context window.
 @Suite("ContextAssembler")
 struct ContextAssemblerTests {
 
@@ -31,9 +26,7 @@ struct ContextAssemblerTests {
         )
     }
 
-    /// Defaults to a full-tier window so shape/budget tests read the raw
-    /// heuristic estimate; tests of the compact-tier calibration pass an
-    /// explicit small window.
+    /// Default to full tier to isolate raw estimates from compact-tier calibration.
     private func makeModel(maxContextTokens: Int = 100_000) -> LLMModel {
         LLMModel(
             id: "test-model",
@@ -67,18 +60,11 @@ struct ContextAssemblerTests {
             messages: messages, toolCalls: [], checkpoint: nil, model: makeModel(),
             tools: [makeTool(name: "search", description: "Search the corpus for a phrase.")]
         )
-        // The same prompt with tools advertised must cost more — the schema
-        // weight is folded into the budget the compaction gates read.
         #expect(withTools.totalTokens > withoutTools.totalTokens)
     }
 
     @Test func toolSchemasCanTipOverThreshold() throws {
-        // Regression for the AFM silent-overflow: a prompt comfortably under
-        // the window with no tool counting must be pushed over once the
-        // verbose tool schemas it actually ships are counted. Run on a
-        // full-tier window so the raw schema weight is the only variable —
-        // on the compact tier the calibration allowance would tip the
-        // no-tools arm by itself (covered separately below).
+        // Use full tier so only schema weight changes; compact calibration adds a fixed allowance.
         let assembler = ContextAssembler()
         let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
         let model = makeModel(maxContextTokens: 10_000)
@@ -98,10 +84,7 @@ struct ContextAssemblerTests {
     }
 
     @Test func compactTierInflatesToolSchemasAndAddsFixedAllowance() throws {
-        // The compact tier models the on-device provider: tool schemas cost
-        // ~1.8× the raw heuristic (JSON-schema scaffolding + real tokenizer)
-        // and the provider injects base instructions we can't read (flat
-        // allowance). Full tier is the uncalibrated baseline.
+        // Compact calibration accounts for schema scaffolding and hidden provider instructions.
         let assembler = ContextAssembler()
         let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
         let tools = [makeTool(name: "search", description: "Search the corpus for a phrase.")]
@@ -136,8 +119,6 @@ struct ContextAssemblerTests {
                 == fullNoTools.totalTokens + inflatedToolTokens
                     + ContextAssembler.compactTierFixedOverheadTokens
         )
-        // The whole calibrated tool + allowance weight is fixed; only the
-        // projected history is compressible.
         #expect(
             compactWithTools.fixedTokens
                 == inflatedToolTokens + ContextAssembler.compactTierFixedOverheadTokens
@@ -147,9 +128,7 @@ struct ContextAssemblerTests {
     }
 
     @Test func fixedTokensIncludeAssemblerInjectedSystemBlocks() throws {
-        // Briefings (and the other assembler-injected blocks) survive every
-        // compaction checkpoint, so they count as fixed: the compressible
-        // remainder must be just the projected history.
+        // Injected instructions survive checkpoints and belong in the fixed floor.
         let assembler = ContextAssembler()
         let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
         let assembly = try assembler.assemble(
@@ -159,8 +138,6 @@ struct ContextAssemblerTests {
             model: makeModel(maxContextTokens: 4_096),
             chatBriefing: String(repeating: "Be concise. ", count: 50)
         )
-        // "Hi" estimates to 1 token; everything else (leading block +
-        // compact-tier allowance) is floor.
         #expect(assembly.compressibleTokens == 1)
         #expect(assembly.fixedTokens == assembly.totalTokens - 1)
     }
@@ -185,8 +162,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func webSearchBlockPresentOnlyForNativeSearchModels() {
-        // Native-search model gets the guidance block; non-native gets nil so
-        // its prompt is byte-identical to before this feature.
         let native = LLMModel(id: "n", displayName: "N", searchBackend: "native")
         let plain = LLMModel(id: "p", displayName: "P", searchBackend: nil)
         let block = ContextAssembler.formatWebSearchBlock(model: native)
@@ -206,8 +181,6 @@ struct ContextAssemblerTests {
             checkpoint: nil,
             model: native
         )
-        // A leading `.system` row carries the web-search guidance; a
-        // non-native model never adds one.
         func mentionsWebSearch(_ message: LLMMessage) -> Bool {
             message.content.contains {
                 if case .text(let body) = $0 { return body.contains("## Web search") }
@@ -225,10 +198,7 @@ struct ContextAssemblerTests {
     }
 
     @Test func assistantSourcesWithProviderEchoProjectAsLeadingSearchResultBlock() throws {
-        // The encrypted round-trip: a prior assistant turn's stored citations
-        // (carrying an Anthropic `providerEcho`) reattach as a `.searchResult`
-        // block placed before the text, so the Anthropic adapter can replay the
-        // encrypted echo on the next turn.
+        // Anthropic citations need their encrypted echo before assistant text on replay.
         let assembler = ContextAssembler()
         let cited = SourceCitation(
             id: "c1",
@@ -264,8 +234,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func assistantSourcesWithoutProviderEchoDoNotProjectSearchResult() throws {
-        // Citations lacking an echo (OpenAI/Gemini/standalone) carry nothing to
-        // round-trip, so no `.searchResult` block is emitted — only the text.
         let assembler = ContextAssembler()
         let foreign = SourceCitation(id: "c1", title: "T", url: URL(string: "https://example.com/a")!)
         let assistant = MessageRecord(
@@ -315,7 +283,6 @@ struct ContextAssemblerTests {
             model: makeModel()
         )
 
-        // Prompt: synthetic system summary + the two messages after m3.
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -333,10 +300,7 @@ struct ContextAssemblerTests {
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
             makeMessage(id: "m2", role: .assistant, content: "Hello", offset: 1),
         ]
-        // Checkpoint points at a message that isn't in the list (e.g.
-        // post-deletion). Assembler keeps every message rather than
-        // silently dropping the tail — losing context is worse than
-        // ignoring a stale checkpoint.
+        // A deleted checkpoint boundary must not silently discard surviving context.
         let checkpoint = CompactionCheckpointRecord(
             id: "ck-stale",
             conversationId: "conv-1",
@@ -355,7 +319,6 @@ struct ContextAssemblerTests {
             model: makeModel()
         )
 
-        // Synthetic system summary + both original messages.
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         #expect(assembly.messages[1].role == .user)
@@ -383,18 +346,11 @@ struct ContextAssemblerTests {
             checkpoint: nil,
             model: makeModel(maxContextTokens: 0)
         )
-        // Misconfigured model surfaces as ratio == 0 rather than crashing,
-        // suppressing auto-compaction.
         #expect(assembly.ratio == 0)
         #expect(assembly.isOverThreshold(0.5) == false)
     }
 
     @Test func leadingSystemRowsArePreservedAcrossCheckpoint() throws {
-        // Conversations may carry a `.system` `MessageRecord` at the
-        // start (e.g. an explicit per-conversation system row). Compaction
-        // must not erase it — the assembler re-emits any leading
-        // `.system` rows covered by the checkpoint in front of the
-        // synthetic summary.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "sys-1", role: .system, content: "You are concise.", offset: 0),
@@ -421,7 +377,6 @@ struct ContextAssemblerTests {
             model: makeModel()
         )
 
-        // Order: original system prompt, synthetic summary, post-checkpoint.
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -429,13 +384,13 @@ struct ContextAssemblerTests {
         } else {
             Issue.record("expected first message to be the original system row, got \(assembly.messages[0].content)")
         }
-        #expect(assembly.messages[1].role == .system) // synthetic summary
+        #expect(assembly.messages[1].role == .system)
         if case .text(let body) = assembly.messages[1].content.first {
             #expect(body.contains("Summary of greetings."))
         } else {
             Issue.record("expected second message to be the synthetic summary, got \(assembly.messages[1].content)")
         }
-        #expect(assembly.messages[2].role == .assistant) // m4
+        #expect(assembly.messages[2].role == .assistant)
     }
 
     @Test func emptyMessagesReturnsEmptyPrompt() throws {
@@ -449,9 +404,6 @@ struct ContextAssemblerTests {
         #expect(assembly.messages.isEmpty)
         #expect(assembly.totalTokens == 0)
         #expect(assembly.isOverThreshold(0.0) == true)
-        // 0 / N ≥ 0.0 is true — the strict-ge boundary makes the empty
-        // case "over threshold 0.0" by definition; tests that pass a real
-        // threshold (≥ a tiny epsilon) won't see this corner.
     }
 
     // MARK: - Leading system block (chat briefing + applets + personalization)
@@ -529,8 +481,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func chatBriefingThenAppletsThenPersonalization() throws {
-        // The three label classes appear in fixed order with their
-        // headers, and applet briefings render in the order supplied.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -567,10 +517,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func emptyAppletBriefingBodiesAreDropped() throws {
-        // The registry already skips empties before constructing the
-        // briefing list, but the assembler defends in depth — a fixture
-        // that hand-rolls a briefing with an empty body shouldn't render
-        // a header with nothing under it.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -622,7 +568,6 @@ struct ContextAssemblerTests {
             userPersonalization: "Always answer in haiku."
         )
 
-        // [0] leading block, [1] checkpoint summary, [2] m3
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -667,7 +612,6 @@ struct ContextAssemblerTests {
             userPersonalization: "Always answer in haiku."
         )
 
-        // [0] leading block, [1] historical .system, [2] checkpoint, [3] m3
         #expect(assembly.messages.count == 4)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -677,7 +621,7 @@ struct ContextAssemblerTests {
         if case .text(let body) = assembly.messages[1].content.first {
             #expect(body == "You are concise.")
         }
-        #expect(assembly.messages[2].role == .system) // checkpoint summary
+        #expect(assembly.messages[2].role == .system)
         #expect(assembly.messages[3].role == .user)
     }
 
@@ -705,11 +649,7 @@ struct ContextAssemblerTests {
     // MARK: - Memories block
 
     @Test func memoriesBlockInjectedAfterLeadingSystemBlock() throws {
-        // Order rationale: the leading block (chat + applets +
-        // personalization) is the most stable across turns, so it sits
-        // at the head of the system run for the Anthropic prompt cache
-        // prefix. Memories change every time the `memory` tool runs and
-        // live in their own block immediately after.
+        // Stable instructions lead the cacheable prefix; tool-written memories change between turns.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -727,7 +667,6 @@ struct ContextAssemblerTests {
             ]
         )
 
-        // [0] leading block (with personalization), [1] memories block, [2] user
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -745,10 +684,6 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[2].role == .user)
     }
 
-    /// The contiguous leading run — chat/applet briefing and native-search
-    /// guidance — is tagged `.stablePrefix` so the Anthropic adapter can place
-    /// its cache breakpoint after it; the volatile memories block and the
-    /// user/assistant history stay `.volatile` (the default).
     @Test func leadingAndWebSearchBlocksAreTaggedStablePrefix() throws {
         let assembler = ContextAssembler()
         let native = LLMModel(
@@ -762,7 +697,6 @@ struct ContextAssemblerTests {
             chatBriefing: "Be concise.",
             memories: [makeMemoryEntry(id: "mem-1", text: "Prefers metric units.")]
         )
-        // [0] leading briefing, [1] web-search guidance, [2] memories, [3] user.
         #expect(assembly.messages.count == 4)
         #expect(assembly.messages[0].cacheHint == .stablePrefix)   // briefing
         #expect(assembly.messages[1].cacheHint == .stablePrefix)   // web-search
@@ -770,9 +704,6 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[3].cacheHint == .volatile)       // history
     }
 
-    /// The re-emitted historical leading `.system` rows and the synthetic
-    /// checkpoint-summary row both stay `.volatile` — only the assembler's
-    /// freshly-built leading block earns `.stablePrefix`.
     @Test func checkpointAndHistoricalSystemRowsStayVolatile() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
@@ -792,8 +723,6 @@ struct ContextAssemblerTests {
             model: makeModel(),
             chatBriefing: "Be concise."
         )
-        // [0] leading block (stable), then historical system row + checkpoint
-        // summary (both volatile), then the kept user turn.
         #expect(assembly.messages[0].cacheHint == .stablePrefix)
         for message in assembly.messages.dropFirst() {
             #expect(message.cacheHint == .volatile)
@@ -801,11 +730,7 @@ struct ContextAssemblerTests {
     }
 
     @Test func memoriesBlockSurfacesIdsAlongsideText() throws {
-        // Regression for PR #72 round-4: the bullets must lead with
-        // `[<id>]` so the LLM can call `memory(op:'update'|'forget',
-        // id:...)` on entries it didn't `save` this session — without
-        // the id, the descriptor's "Ids come from the surfaced memory
-        // block" contract is broken on every follow-up conversation.
+        // Memory IDs let the model update or forget entries saved in earlier sessions.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -825,8 +750,6 @@ struct ContextAssemblerTests {
             Issue.record("missing memories block")
             return
         }
-        // Bullet form `- [<id>] <text>` so a regex on the LLM side
-        // can extract the id deterministically.
         #expect(body.contains("- [A1B2C3D4] Vegetarian."))
     }
 
@@ -849,10 +772,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func whitespaceOnlyMemoriesAreFiltered() throws {
-        // A mid-flight repository hiccup or a user-edited blank shouldn't
-        // produce a stray empty bullet — the block should render only the
-        // real entries, and the whole block should disappear when *all*
-        // entries are blank.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -871,8 +790,6 @@ struct ContextAssemblerTests {
         )
         if case .text(let body) = mixed.messages[0].content.first {
             #expect(body.contains("- [real-1] Real preference."))
-            // Blank entries are dropped entirely — no bullet, no stray
-            // id-only line either.
             #expect(body.contains("[blank-1]") == false)
             #expect(body.contains("[blank-2]") == false)
         }
@@ -893,9 +810,6 @@ struct ContextAssemblerTests {
     }
 
     @Test func memoriesBlockOrderingIsStable() throws {
-        // The block must reflect the caller-provided order verbatim (the
-        // orchestrator sorts by createdAt before passing) — re-ordering
-        // here would flicker "what I remember about you" across turns.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -951,16 +865,13 @@ struct ContextAssemblerTests {
         )
     }
 
-    /// A persisted thinking trace projects as the assistant turn's FIRST
-    /// block (before text and toolUse), carrying the stored signature —
-    /// Anthropic requires the last assistant turn of a tool loop to start
-    /// with its original signed thinking block on replay.
+    /// Anthropic tool continuations must lead with the original signed thinking block.
     @Test func assistantThinkingProjectsFirstWithSignature() throws {
         let assembler = ContextAssembler()
         var assistant = makeMessage(id: "m2", role: .assistant, content: "checking", offset: 1)
         assistant.thinkingContent = "I should call the tool."
         assistant.thinkingSignature = "sig-9"
-        assistant.thinkingModelId = "test-model"   // matches makeModel().id
+        assistant.thinkingModelId = "test-model"
         let messages = [
             makeMessage(id: "m1", role: .user, content: "run the tool", offset: 0),
             assistant,
@@ -979,7 +890,6 @@ struct ContextAssemblerTests {
         }
         #expect(content == "I should call the tool.")
         #expect(signature == "sig-9")
-        // Text and toolUse follow the thinking block.
         guard case .text("checking") = assistantMessage.content.dropFirst().first else {
             Issue.record("expected .text after the thinking block")
             return
@@ -991,17 +901,14 @@ struct ContextAssemblerTests {
         #expect(hasToolUse)
     }
 
-    /// A thinking signature minted by a *different* model than the active one
-    /// must not be replayed — Anthropic signatures are model-specific and a
-    /// foreign one is a 400 on the latest assistant turn. The trace still
-    /// projects (for context), but the signature is dropped so the adapter
-    /// skips it on the wire and the request gate falls back to thinking-off.
+    /// Foreign-model signatures would be rejected. Dropping them lets the adapter
+    /// disable thinking for an unreplayable continuation.
     @Test func thinkingSignatureFromAnotherModelIsNotReplayed() throws {
         let assembler = ContextAssembler()
         var assistant = makeMessage(id: "m2", role: .assistant, content: "checking", offset: 1)
         assistant.thinkingContent = "reasoning from the old model"
         assistant.thinkingSignature = "sig-from-model-A"
-        assistant.thinkingModelId = "model-A"   // differs from makeModel().id ("test-model")
+        assistant.thinkingModelId = "model-A"
         let messages = [
             makeMessage(id: "m1", role: .user, content: "hi", offset: 0),
             assistant,
@@ -1017,15 +924,11 @@ struct ContextAssemblerTests {
             return
         }
         #expect(content == "reasoning from the old model")
-        #expect(signature == nil)   // stripped — wrong model
+        #expect(signature == nil)
     }
 
-    /// An assistant `toolUse` whose result row never landed (cancel/crash
-    /// mid-execution) must still project a `tool_result` — strict providers
-    /// reject a history with an unanswered `tool_use` on every later turn,
-    /// permanently wedging the conversation. The synthesized result rides
-    /// directly behind the issuing assistant turn, before any later
-    /// messages — adjacency is what providers actually validate.
+    /// Missing results need adjacent synthetic replies or strict providers reject
+    /// every subsequent turn against the unanswered call.
     @Test func orphanedToolUseProjectsSynthesizedResult() throws {
         let assembler = ContextAssembler()
         let messages = [
@@ -1047,8 +950,6 @@ struct ContextAssemblerTests {
         }
         #expect(useID == "tc-1")
         #expect(isError == true)
-        // Position: assistant turn, synthesized result, then the later user
-        // row — never result-at-end-of-history.
         let assistantIndex = try #require(assembly.messages.firstIndex { $0.role == .assistant })
         let resultIndex = try #require(assembly.messages.firstIndex { $0.role == .tool })
         let trailingUserIndex = try #require(assembly.messages.lastIndex { $0.role == .user })
@@ -1056,10 +957,8 @@ struct ContextAssemblerTests {
         #expect(resultIndex < trailingUserIndex)
     }
 
-    /// Resolution is positional, not presence-based: a result row that
-    /// sorts *before* its issuing assistant row can't pair on the wire, so
-    /// it must be dropped AND must not suppress the in-place synthesis —
-    /// presence-based suppression would leave the `tool_use` unanswered.
+    /// An earlier result cannot pair with a later call. Drop it without suppressing
+    /// synthesis beside the actual issuer.
     @Test func resultRowBeforeItsToolUseIsDroppedAndSynthesisStillFires() throws {
         let assembler = ContextAssembler()
         let messages = [
@@ -1073,8 +972,6 @@ struct ContextAssemblerTests {
             messages: messages, toolCalls: calls, checkpoint: nil, model: makeModel()
         )
 
-        // The early row is gone; exactly one (synthesized) result remains,
-        // positioned after the assistant turn.
         let toolMessages = assembly.messages.filter { $0.role == .tool }
         #expect(toolMessages.count == 1)
         guard case .toolResult("tc-1", let content, true) = toolMessages.first?.content.first else {
@@ -1087,12 +984,8 @@ struct ContextAssemblerTests {
         #expect(resultIndex == assistantIndex + 1)
     }
 
-    /// A compaction checkpoint whose cutoff lands on the assistant row
-    /// strands the surviving result rows on the kept side — the projection
-    /// must drop them rather than ship an orphan `tool_result`. (Stale
-    /// pre-pair-aware checkpoints in existing databases can still carry
-    /// this shape even though `Compactor.messagesToSummarize` no longer
-    /// produces it for adjacency-well-formed histories.)
+    /// Older checkpoints may split a tool pair even though new cuts preserve it.
+    /// Drop surviving orphan results before replay.
     @Test func checkpointCutBetweenPairDropsOrphanResultRow() throws {
         let assembler = ContextAssembler()
         let messages = [
@@ -1117,8 +1010,6 @@ struct ContextAssemblerTests {
             messages: messages, toolCalls: calls, checkpoint: checkpoint, model: makeModel()
         )
 
-        // No orphan tool_result and no tool_use at all — the pair's
-        // assistant half is summarized away.
         for message in assembly.messages {
             #expect(message.role != .tool)
             for block in message.content {
@@ -1126,12 +1017,9 @@ struct ContextAssemblerTests {
                 if case .toolResult = block { Issue.record("unexpected orphan toolResult past checkpoint") }
             }
         }
-        // The kept user row survives.
         #expect(assembly.messages.contains { $0.role == .user })
     }
 
-    /// In a multi-call batch where only some calls resolved, synthesis fills
-    /// exactly the gaps — the real result row is kept, not duplicated.
     @Test func partiallyResolvedBatchSynthesizesOnlyMissingResults() throws {
         let assembler = ContextAssembler()
         let messages = [
@@ -1157,7 +1045,6 @@ struct ContextAssemblerTests {
             }
         }
         #expect(seenResultIDs.sorted() == ["tc-1", "tc-2"])
-        // The real row's content survives untouched.
         var foundRealResult = false
         for message in assembly.messages {
             for block in message.content {
@@ -1169,18 +1056,12 @@ struct ContextAssemblerTests {
         #expect(foundRealResult)
     }
 
-    /// A role-`.tool` row whose `tool_use` was never projected (e.g. the
-    /// assistant row fell on the far side of a compaction checkpoint) must
-    /// be dropped — an orphan `tool_result` is rejected by strict providers
-    /// just like an unanswered `tool_use`.
     @Test func orphanedToolResultRowIsDropped() throws {
         let assembler = ContextAssembler()
         let messages = [
             makeMessage(id: "m1", role: .tool, content: "stranded result", offset: 0, toolCallId: "tc-ghost"),
             makeMessage(id: "m2", role: .user, content: "hello again", offset: 1),
         ]
-        // The call record survives but points at an assistant row that is
-        // not part of the projected window.
         let calls = [makeToolCall(id: "tc-ghost", messageId: "m-dropped", status: .success)]
 
         let assembly = try assembler.assemble(

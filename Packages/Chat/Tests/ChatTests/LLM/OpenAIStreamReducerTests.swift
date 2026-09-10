@@ -3,12 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `OpenAIStreamReducer`'s state machine: messageStart-first
-/// invariant, thinking↔text block transitions, tool-call accumulation
-/// across argument fragments, surfaced decode errors, and terminal
-/// `messageComplete` with captured token usage. The reducer is
-/// non-throwing — failures arrive as `.error(...)` events inside the
-/// returned arrays so consumers always get a clean stream.
 @Suite("OpenAIStreamReducer")
 struct OpenAIStreamReducerTests {
 
@@ -33,9 +27,6 @@ struct OpenAIStreamReducerTests {
             usage: nil
         )
         let events = reducer.consume(chunk)
-        // Role-only delta with no text/thinking/tool content should not
-        // open any block — only capturedID/Model are stashed; messageStart
-        // is deferred until something is actually emitted.
         #expect(events.isEmpty)
     }
 
@@ -64,8 +55,6 @@ struct OpenAIStreamReducerTests {
             ),],
             usage: nil
         ))
-        // Contract: messageStart precedes any content event, even when
-        // the proxy strips id/model. Empty strings substitute.
         #expect(events.first == .messageStart(id: "", model: ""))
     }
 
@@ -160,9 +149,7 @@ struct OpenAIStreamReducerTests {
     @Test func toolCallFragmentAndFinishReasonInSameChunkStillFlushes() {
         var reducer = OpenAIStreamReducer()
         _ = reducer.consume(makeToolCallStart(name: "lookup", id: "call_same", argsFragment: "{\"q\":"))
-        // Final chunk delivers the closing argument fragment AND the
-        // finish_reason in the same payload — a real OpenAI server
-        // behavior the earlier code path didn't have explicit coverage for.
+        // A server can send the final argument fragment and finish_reason together.
         let events = reducer.consume(OpenAIStreamChunk(
             id: nil, model: nil,
             choices: [OpenAIStreamChoice(
@@ -217,15 +204,12 @@ struct OpenAIStreamReducerTests {
         if case .decodingFailed = errors.first {} else {
             Issue.record("expected .decodingFailed, got \(String(describing: errors.first))")
         }
-        // Reducer must not yield a toolUse for the malformed call.
         let toolUses = events.filter { if case .toolUse = $0 { return true } else { return false } }
         #expect(toolUses.isEmpty)
     }
 
     @Test func malformedToolCallDoesNotBlockSiblingCallsFromFlushing() {
         var reducer = OpenAIStreamReducer()
-        // Broken call at index 0, well-formed call at index 1, finish in
-        // the same chunk so flushToolCalls runs immediately.
         let events = reducer.consume(OpenAIStreamChunk(
             id: "x", model: "m",
             choices: [OpenAIStreamChoice(
@@ -256,8 +240,6 @@ struct OpenAIStreamReducerTests {
             if case .error(let error) = event { return error }
             return nil
         }
-        // Well-formed sibling still surfaces; the broken one is reported
-        // as a single decode error.
         #expect(toolUseNames == ["good"])
         #expect(errors.count == 1)
         if case .decodingFailed = errors.first { } else {
@@ -293,10 +275,8 @@ struct OpenAIStreamReducerTests {
 
     @Test func finishOnFreshReducerStillEmitsMessageStartAndComplete() {
         var reducer = OpenAIStreamReducer()
-        // No chunks consumed. finish() still has to produce a complete,
-        // contract-conforming stream so consumers downstream of provider
-        // pre-flight failures (unsupported model, encoding error) don't
-        // hang waiting for messageComplete.
+        // Preflight failures have no chunks; finish() must still unblock consumers
+        // waiting for messageComplete.
         let events = reducer.finish()
         #expect(events.first == .messageStart(id: "", model: ""))
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))

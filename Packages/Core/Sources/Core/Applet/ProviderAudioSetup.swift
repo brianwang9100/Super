@@ -20,7 +20,6 @@ public struct ProviderAudioCredential: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Immutable defaults used by an inline provider-audio setup draft.
 public struct ProviderAudioSnapshot: Sendable {
     public let enabled: Bool?
     public let source: ProviderAudioCredential?

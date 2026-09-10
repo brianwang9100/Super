@@ -1,11 +1,6 @@
 import Core
 import SwiftUI
 
-/// Bottom-right cluster of empty-state chat-starter buttons. Each renders a
-/// `SuggestedChatAction` as a tappable glass capsule that sends the action's
-/// `message` when tapped. The actions are contributed by the registered applets
-/// and aggregated by the shell; this Region only lays them out and forwards
-/// taps to `onSend`.
 struct SuggestedActions: View {
     let actions: [SuggestedChatAction]
     let onSend: (String) -> Void

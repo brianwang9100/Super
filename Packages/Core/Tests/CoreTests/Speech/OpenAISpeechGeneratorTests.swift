@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Validates speech requests, safe failure translation, and strict company identification without network access.
 @Suite("OpenAI speech")
 struct OpenAISpeechGeneratorTests {
     @Test func requestPreservesTextAndFixesDestination() async throws {

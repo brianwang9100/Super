@@ -1,8 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `LLMProviderRegistry` register / unregister / setActive
-/// semantics, including the auto-active-on-first-register behavior.
 @Suite("LLMProviderRegistry")
 struct LLMProviderRegistryTests {
     @Test func startsEmpty() async {

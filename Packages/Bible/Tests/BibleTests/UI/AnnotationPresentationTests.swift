@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Verifies the causal handoff from transient text to freshly queried rows.
 @Suite("Annotation presentation")
 struct AnnotationPresentationTests {
     private func row(_ id: String, text: String = "Saved") -> BibleAnnotationRecord {

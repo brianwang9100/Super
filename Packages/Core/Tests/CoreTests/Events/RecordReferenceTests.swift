@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for `RecordReference`'s value semantics and `Codable` round-trip —
-/// the latter matters because the same type is persisted into a message's
-/// attachment column, not just passed over the event bus.
 @Suite("RecordReference")
 struct RecordReferenceTests {
     private func sample(id: String = "ref-1") -> RecordReference {

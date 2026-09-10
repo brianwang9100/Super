@@ -2,95 +2,48 @@ import Core
 import Foundation
 import Observation
 
-/// Drives the Bible reading surface: which chapter is on screen, the text
-/// for it, and stepping forward and backward through the canon.
-///
-/// The chapter text loads synchronously from the bundled resources, so
-/// stepping updates the screen immediately; only the reading-position
-/// persistence is asynchronous, fired off the main thread after each step.
+/// Loads bundled chapter text synchronously; reading-position writes are asynchronous.
 @MainActor
 @Observable
 public final class BibleScreenViewModel {
-    /// Where a fresh install opens — 1 Peter 2, the design's demo chapter.
     public static let defaultPosition = BiblePosition(bookId: "1PE", chapterNumber: 2)
 
-    /// The book and chapter currently on screen.
     public private(set) var position: BiblePosition
-    /// Display name of the current book, e.g. `"1 Peter"`.
     public private(set) var bookName: String
-    /// The current chapter's text, or `nil` if its resource failed to load.
     public private(set) var chapter: BibleChapter?
-    /// The translation the chapter is read in — drives both the nav-bar pill
-    /// and which bundled resource the text loads from.
     public private(set) var translation: BibleTranslation = .defaultTranslation
 
-    /// The book picker's view model while its sheet is presented; `nil`
-    /// closes the sheet. Non-nil acts as the presentation flag.
     public private(set) var bookSheet: BibleBookSheetViewModel?
 
-    /// Whether the translation picker is on screen. The sheet is stateless —
-    /// it renders `BibleTranslation.allCases` against `translation` — so a
-    /// flag is all the presentation state it needs.
     public private(set) var isTranslationSheetPresented = false
 
-    /// Verse numbers the reader has tapped to select. Selection remains in
-    /// the reader and nav bar after the action sheet closes.
+    /// Selection survives action-sheet dismissal.
     public private(set) var selectedVerses: Set<Int> = []
 
-    /// Whether the verse actions are open, independently of the selection.
     public private(set) var isActionSheetPresented = false
 
-    /// First verse to scroll into view the next time the chapter reader
-    /// renders. Set by ``openReference(bookId:chapterNumber:verseStart:verseEnd:)``
-    /// for deep-link navigation; the reader consumes it on appear (and on
-    /// any subsequent change for same-chapter deep links) and clears it
-    /// via ``consumePendingScrollVerse()`` so the next user-driven chapter
-    /// step doesn't re-snap to the old anchor.
+    /// Consumed after deep-link scrolling; also changes for same-chapter links.
     public private(set) var pendingScrollVerse: Int?
 
-    /// A transient message shown in the chat-attach toast, or `nil` when no
-    /// toast is up. Used only for the "chat ships later" stub until hand-off
-    /// lands; the toast is dismissed by a tap, never on a timer.
     public private(set) var toast: String?
 
-    /// The narration session driver — held here so its playback survives
-    /// `BibleScreen` rebuilds and so the nav bar, reader, and transport
-    /// sheet all observe the same `currentVerseNumber`.
     public private(set) var narration: NarrationController
 
     /// Whether narration controls are on screen. Dismiss through
     /// ``dismissNarrationSheet()`` to stop playback and downloads together.
     public var isNarrationSheetPresented = false
 
-    /// The annotation target whose sheet is currently presented, or `nil`
-    /// when no sheet is up. Drives the iOS `.sheet(item:)` modifier in
-    /// `BibleScreen`. Setting this to a non-nil spec presents the sheet;
-    /// dragging-to-dismiss or calling `dismissAnnotationSheet()` clears it.
     public var presentedAnnotationTarget: BibleAnnotationTargetSpec?
 
-    /// Whether the reader is waiting for its initial or retry restore read.
-    /// Relative navigation is disabled while this is true; absolute reference
-    /// and translation intents are queued and replayed after reconciliation.
+    /// During restore, relative navigation is disabled; absolute references and translations queue for reconciliation.
     public private(set) var isRestoringNavigation = true
 
-    /// A transient reading-position load or save error shown separately from
-    /// unrelated reader toasts.
     public private(set) var navigationPersistenceError: String?
 
-    /// Whether the first-run liability disclaimer is on screen. Set true
-    /// the first time the user triggers an annotation-generation intent;
-    /// `acknowledgeAnnotationDisclaimer()` clears it and fires any queued
-    /// `pendingAnnotationIntent`.
     public var isAnnotationDisclaimerPresented = false
 
-    /// Generation intents queued while the disclaimer is up. A gapped
-    /// verse selection (e.g. 28, 30) decomposes into multiple
-    /// contiguous-range intents; before the user acknowledges the
-    /// disclaimer they all arrive synchronously in `handleAnnotateSelection`
-    /// and must each be replayed once the user taps "Got it". A scalar
-    /// would let the second arrival overwrite the first and silently
-    /// drop it. Drained in FIFO order on acknowledgement; discarded on
-    /// drag-down dismiss.
+    // Queue every contiguous selection range so later intents cannot overwrite earlier
+    // ones during the disclaimer. Acknowledge drains FIFO; dismissal discards all.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
     /// Shared per-target dispatch state forwarded from the applet-lifetime dispatcher.
@@ -98,20 +51,9 @@ public final class BibleScreenViewModel {
         annotationDispatchViewModel.statusByTargetSnapshot
     }
 
-    /// The note range whose list sheet is presented, or `nil` when no sheet
-    /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Setting it to a
-    /// non-nil presentation opens the list; dragging-to-dismiss or
-    /// `dismissNoteList()` clears it. `autoCompose` opens the editor in
-    /// create mode the moment the list mounts — the entry point for the
-    /// "Add note" tile, the action-sheet outline glyphs, and the chapter /
-    /// book outline glyphs, all of which mean "write a note here" rather than
-    /// "browse this range's notes".
+    /// autoCompose opens the editor as soon as the note list mounts.
     public var presentedNoteList: BibleNoteListPresentation?
 
-    /// The chapter whose bookmark sheet is presented, or `nil` when no sheet
-    /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Captures the
-    /// chapter and citation at presentation time so the sheet's writes stay
-    /// pinned to the chapter it is titled with.
     public var presentedBookmarkSheet: BibleBookmarkPresentation?
 
     private let textLoader: any BibleTextLoader
@@ -125,13 +67,9 @@ public final class BibleScreenViewModel {
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
     let annotationDispatchViewModel: BibleAnnotationDispatchViewModel
-    /// Shared app-wide haptics engine. Fires `.selection` when a verse is
-    /// selected and `.deselection` when one is removed. Defaults to a no-op
-    /// so tests/previews stay silent.
     private let hapticsEngine: any HapticsEngine
     private let initialPosition: BiblePosition
 
-    /// The browser-style chapter visit stack persisted with the cursor.
     private var navigationHistory: BibleNavigationHistory
 
     private enum QueuedNavigationIntent {
@@ -151,47 +89,20 @@ public final class BibleScreenViewModel {
     private var latestExplicitTranslation: BibleTranslation?
     private var latestPersistSequence = 0
 
-    /// Subscription task draining shell sidebar events for this reader only.
     private var sidebarSubscriptionTask: Task<Void, Never>?
 
-    /// One-shot callbacks fired after the dispatch-subscription task
-    /// processes a `sidebarOpened` envelope (and the resulting sheet
-    /// dismissal). Test seam — lets a test await the bus-driven dismiss
-    /// deterministically instead of polling. Never observed in production.
     private var sidebarDismissCallbacks: [@MainActor () -> Void] = []
 
-    /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
 
-    /// In-flight highlight write, retained so tests can await it.
     private var highlightTask: Task<Void, Never>?
 
-    /// In-flight note write (insert / update / delete), retained so tests can
-    /// await it. Each write chains on the prior so awaiting the latest drains
-    /// them all — the same shape as `highlightTask`.
     private var noteTask: Task<Void, Never>?
 
-    /// In-flight bookmark toggle, retained so tests can await it. Chained
-    /// like `noteTask` so rapid card taps stay ordered.
     private var bookmarkTask: Task<Void, Never>?
 
-    /// - Parameters:
-    ///   - positionRepository: persists the reading position; `nil` disables
-    ///     persistence (the applet passes `nil` only if its database fails
-    ///     to open, so the reader still works, just without restore).
-    ///   - highlightRepository: persists verse highlights; `nil` disables
-    ///     highlighting for the same database-unavailable reason.
-    ///   - noteRepository: persists verse notes; `nil` disables note
-    ///     create / edit / delete for the same database-unavailable reason
-    ///     (the note glyphs and list sheet still render from the reactive
-    ///     `@Query`s, which fall back to empty).
-    ///   - bookmarkRepository: persists the six chapter-bookmark slots; `nil`
-    ///     disables toggling for the same database-unavailable reason (the
-    ///     glyph and sheet still render from the reactive `@Query`s).
-    ///   - initialPosition: the position before `load()` reads persisted
-    ///     state — defaults to `defaultPosition`.
-    ///   - annotationDispatchViewModel: applet-lifetime annotation request state
-    ///     shared with any other reader model.
+    /// Nil repositories disable their writes while reading remains available. initialPosition
+    /// applies until restore; annotation dispatch state is shared across readers.
     public init(
         textLoader: any BibleTextLoader,
         catalog: BibleBookCatalog = .standard,
@@ -226,9 +137,6 @@ public final class BibleScreenViewModel {
         self.position = initialPosition
         self.translation = initialTranslation
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
-        // Default to the production synth-backed controller so tests that
-        // don't exercise narration don't need to construct one. Tests
-        // that *do* exercise narration inject a FakeNarrationService.
         self.narration = narration ?? NarrationController(
             service: AVSpeechSynthesizerNarrationService()
         )
@@ -265,8 +173,6 @@ public final class BibleScreenViewModel {
         return reader
     }
 
-    /// Whether a previous / next chapter exists — `false` only at Genesis 1
-    /// and Revelation's final chapter, where the nav controls disable.
     public var canStepBackward: Bool {
         !isRestoringNavigation && catalog.step(from: position, direction: .previous) != nil
     }
@@ -275,14 +181,10 @@ public final class BibleScreenViewModel {
         !isRestoringNavigation && catalog.step(from: position, direction: .next) != nil
     }
 
-    /// Labels for the chapter footer's prev / next cards, e.g. `"Genesis 49"`
-    /// — `nil` at the canon's two ends so the footer drops that card.
     public var previousChapterLabel: String? { label(for: .previous) }
     public var nextChapterLabel: String? { label(for: .next) }
 
-    /// Whether the history cursor can traverse to an earlier chapter visit.
     public var canGoBack: Bool { !isRestoringNavigation && navigationHistory.canGoBack }
-    /// Whether the history cursor can traverse to a later chapter visit.
     public var canGoForward: Bool { !isRestoringNavigation && navigationHistory.canGoForward }
 
     /// The preceding history destination, or ``nil`` at the start or while restoring.
@@ -297,8 +199,7 @@ public final class BibleScreenViewModel {
         return navigationHistory.entries[navigationHistory.currentIndex + 1]
     }
 
-    /// Read the persisted reading position once and load its chapter text.
-    /// Concurrent and repeated appearance calls share the first restore.
+    /// Concurrent and repeated appearance calls share the first reading-position restore.
     public func load() async {
         if didCompleteInitialRestore {
             await restorationTask?.value
@@ -320,10 +221,8 @@ public final class BibleScreenViewModel {
         clearRestorationTask(ifCurrent: generation)
     }
 
-    /// Step one chapter in `direction`, crossing book boundaries. A no-op at
-    /// the canon's ends. The screen updates synchronously; the new position
-    /// is persisted in the background. Stops any active narration —
-    /// the queue is keyed to the chapter we're leaving.
+    /// Stops narration and updates text synchronously, then persists asynchronously.
+    /// Crosses book boundaries; no-op at canon edges.
     public func stepChapter(_ direction: BibleChapterDirection) {
         guard !isRestoringNavigation else { return }
         guard let next = catalog.step(from: position, direction: direction) else { return }
@@ -342,34 +241,26 @@ public final class BibleScreenViewModel {
         traverseHistory(to: navigationHistory.current)
     }
 
-    /// Open the book picker. It opens with the current book expanded and
-    /// scrolled to so the highlighted chapter is on screen — passed in via
-    /// `currentPosition` so the sheet doesn't have to reach back for it.
     public func presentBookSheet() {
         guard !isRestoringNavigation else { return }
         bookSheet = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
     }
 
-    /// Close the book picker without changing the reading position.
     public func dismissBookSheet() {
         bookSheet = nil
     }
 
-    /// Open the translation picker.
     public func presentTranslationSheet() {
         guard !isRestoringNavigation else { return }
         isTranslationSheetPresented = true
     }
 
-    /// Close the translation picker without changing the translation.
     public func dismissTranslationSheet() {
         isTranslationSheetPresented = false
     }
 
-    /// Switch the reading translation and close the picker. The chapter text
-    /// reloads synchronously in the new translation; the choice is persisted
-    /// like a chapter step. Selecting the current translation just closes.
-    /// Stops any active narration — the queue is keyed to the old text.
+    /// Closes the picker. A changed translation stops narration, reloads text, and persists;
+    /// reselecting the current translation only closes.
     public func selectTranslation(_ selected: BibleTranslation) {
         isTranslationSheetPresented = false
         latestExplicitTranslation = selected
@@ -389,12 +280,8 @@ public final class BibleScreenViewModel {
         persist()
     }
 
-    /// Jump straight to a book and chapter chosen in the picker, then close
-    /// the sheet. Persists the new position like a step does. An unknown
-    /// book or an out-of-range chapter is a no-op — the picker only offers
-    /// valid pairs, but this guards future callers (deep links, hand-off).
-    /// Stops any active narration — the queue is keyed to the chapter
-    /// we're leaving.
+    /// Unknown books or invalid chapters are a no-op. Valid selection stops narration,
+    /// closes the picker, and persists the new position.
     public func selectChapter(bookId: String, chapterNumber: Int) {
         guard !isRestoringNavigation else { return }
         guard let book = catalog.book(id: bookId),
@@ -413,23 +300,9 @@ public final class BibleScreenViewModel {
         bookSheet = nil
     }
 
-    /// Open the reader at a specific verse range — switches book/chapter
-    /// if needed, then pre-selects the verses so the reader lands with
-    /// them highlighted (the same look as having just tapped them).
-    ///
-    /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
-    /// and the applet's inbox. Preview requests never call this API; explicit
-    /// Open in Bible completions use the exact-selection overload after dismissal.
-    ///
-    /// - Parameters:
-    ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).
-    ///     Unknown ids are a no-op.
-    ///   - chapterNumber: 1-based chapter; out-of-range is a no-op.
-    ///   - verseStart: First selected verse, or `nil` for a
-    ///     chapter-only navigation (no pre-selection).
-    ///   - verseEnd: Last selected verse, or `nil` for a single verse
-    ///     when `verseStart` is set. An inverted range
-    ///     (`verseEnd < verseStart`) is a no-op.
+    /// Navigates with an inclusive 1-based verse range. Unknown books, invalid chapters,
+    /// nonpositive starts, and inverted ranges are ignored. Nil start opens the chapter
+    /// unselected; nil end selects only the start verse.
     public func openReference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?) {
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
@@ -506,20 +379,14 @@ public final class BibleScreenViewModel {
         applyCurrentChapter()
         // Iterate only real chapter verses, bounding both huge ranges and exact sets.
         selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
-        // Flag the first selected verse for the reader to scroll into
-        // view once it mounts (or, for a same-chapter deep link, on the
-        // next `pendingScrollVerse` change). Chapter-only navigation
-        // leaves this `nil` so the new chapter just snaps to its top
-        // like a manual nav.
+        // Changing the pending verse also scrolls same-chapter links; chapter-only navigation leaves it nil.
         pendingScrollVerse = selectedVerses.min()
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
         bookSheet = nil
     }
 
-    /// Read and clear the pending scroll target. The chapter reader calls
-    /// this after it has issued the scroll so a subsequent user-driven
-    /// chapter step doesn't re-trigger the snap.
+    /// Call after issuing the scroll so later navigation cannot replay it.
     public func consumePendingScrollVerse() -> Int? {
         defer { pendingScrollVerse = nil }
         return pendingScrollVerse
@@ -527,60 +394,24 @@ public final class BibleScreenViewModel {
 
     // MARK: - Immersive reading (scroll-driven chrome)
 
-    /// Whether the reader is in immersive mode: the user has scrolled down
-    /// into the chapter, so the Bible nav bar slides up off screen and the
-    /// shell hides its own chrome (hamburger + chat pill) in sympathy. Driven
-    /// purely by ``updateScroll(offsetY:userDriven:)`` from the chapter
-    /// reader's scroll geometry; `BibleScreen` animates its nav bar off this
-    /// and republishes the change to the shell over the event bus.
     public private(set) var isImmersive = false
 
-    /// Whether the chapter's previous/next footer cards are scrolled into view.
-    /// Driven by ``updateFooterVisibility(_:)`` from the reader's scroll
-    /// geometry; `BibleScreen` reads it to hide the hovering composer chevrons
-    /// once the footer's own chapter-step controls are on screen (they'd be
-    /// redundant). Resets to `false` on a chapter step via ``resetImmersive()``.
     public private(set) var isChapterFooterVisible = false
 
-    /// At or above the top by this many points, chrome is always shown —
-    /// reaching the top of a chapter reveals the bar regardless of the
-    /// in-flight scroll direction.
+    /// Point offset at or above which user scrolling always reveals chrome.
     static let immersiveTopRevealThreshold: CGFloat = 8
-    /// Net downward travel (points, since the last direction reversal)
-    /// required to hide chrome. Small enough to feel responsive, large
-    /// enough that a one-finger settle jitter doesn't trip it.
+    /// Downward travel in points since reversal; ignores small settling jitter.
     static let immersiveHideThreshold: CGFloat = 12
-    /// Net upward travel required to reveal chrome again — any deliberate
-    /// upward scroll brings it back (standard immersive pattern).
+    /// Upward travel in points since reversal needed to reveal chrome.
     static let immersiveRevealThreshold: CGFloat = 8
-    /// Chrome only hides once the reader is scrolled past this offset, so the
-    /// first lines of a chapter keep the bar even on a quick downward flick.
     static let immersiveMinOffsetToHide: CGFloat = 64
 
-    /// Last observed content offset, and the signed run of travel since the
-    /// last direction reversal (`+` = scrolling down / content moving up).
-    /// Scratch state for the direction hysteresis in ``updateScroll``.
     private var lastScrollOffsetY: CGFloat?
     private var scrollTravelSinceReversal: CGFloat = 0
 
-    /// Fold a chapter-reader scroll sample into ``isImmersive``. Pure and
-    /// synchronous so it's unit-testable without rendering: feed offsets +
-    /// the user-driven flag and assert the transitions.
-    ///
-    /// - `userDriven == false` (programmatic `scrollTo` for narration
-    ///   follow, selection-into-view, deep-link landing) only refreshes the
-    ///   baseline offset — it never flips immersive, so an auto-scroll can't
-    ///   hide or reveal the chrome out from under the user.
-    /// - Reaching the top (`offsetY <= immersiveTopRevealThreshold`) always
-    ///   reveals.
-    /// - A net downward run past ``immersiveHideThreshold`` (once scrolled
-    ///   past ``immersiveMinOffsetToHide``) hides; a net upward run past
-    ///   ``immersiveRevealThreshold`` reveals. The run resets on each
-    ///   direction reversal so a small jitter needn't overcome a long
-    ///   opposite stretch.
-    ///
-    /// Idempotent: it only mutates ``isImmersive`` on a real flip, so the
-    /// screen's `.onChange(of:)` publish fires once per transition.
+    /// Programmatic samples only refresh the baseline; user scrolling alone changes
+    /// immersive state. Travel resets at reversals so old movement cannot resist a new
+    /// direction. Only actual flips notify observers.
     public func updateScroll(offsetY: CGFloat, userDriven: Bool) {
         guard userDriven else {
             lastScrollOffsetY = offsetY
@@ -598,8 +429,6 @@ public final class BibleScreenViewModel {
         let delta = offsetY - last
         guard delta != 0 else { return }
 
-        // Reset the run when direction reverses so the new direction starts
-        // accumulating from zero rather than fighting the prior stretch.
         if (delta > 0) != (scrollTravelSinceReversal > 0) {
             scrollTravelSinceReversal = 0
         }
@@ -613,11 +442,7 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Force chrome back on and clear the scroll scratch state. The screen
-    /// calls this when the reader disappears or steps chapters so chrome can
-    /// never strand hidden after leaving a scrolled chapter. Also clears
-    /// ``isChapterFooterVisible`` so a freshly stepped chapter (scroll reset to
-    /// the top) starts with the composer chevrons shown.
+    /// Restores chrome and clears scroll/footer state when leaving or changing chapters.
     public func resetImmersive() {
         scrollTravelSinceReversal = 0
         lastScrollOffsetY = nil
@@ -625,9 +450,6 @@ public final class BibleScreenViewModel {
         updateFooterVisibility(false)
     }
 
-    /// Fold a chapter-reader "footer cards visible" sample into
-    /// ``isChapterFooterVisible``. Idempotent — mutates only on a real flip so
-    /// the screen's reactive readers fire once per transition.
     public func updateFooterVisibility(_ visible: Bool) {
         guard isChapterFooterVisible != visible else { return }
         isChapterFooterVisible = visible
@@ -638,15 +460,11 @@ public final class BibleScreenViewModel {
         isImmersive = value
     }
 
-    /// Toggle a verse's membership in the selection. The first tap enters
-    /// selection mode (the nav-bar citation pill and the action sheet);
-    /// later taps preserve the sheet's visibility until the selection empties.
+    /// First selection opens actions; subsequent taps preserve visibility until selection empties.
     public func toggleVerse(_ number: Int) {
         let startsSelection = selectedVerses.isEmpty
         if selectedVerses.contains(number) {
             selectedVerses.remove(number)
-            // Distinct from selection so the user can feel the difference
-            // between adding and removing a verse.
             hapticsEngine.play(.deselection)
         } else {
             selectedVerses.insert(number)
@@ -659,21 +477,18 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Reopen actions from the selection pill without changing the verses.
-    /// Replaces narration controls and stops their playback and downloads.
+    /// Reopens without changing selection; stops and replaces narration controls.
     public func presentActionSheet() {
         guard !selectedVerses.isEmpty else { return }
         dismissNarrationSheet()
         isActionSheetPresented = true
     }
 
-    /// Close the action sheet while keeping the selected verses available.
+    /// Keeps selected verses.
     public func dismissActionSheet() {
         isActionSheetPresented = false
     }
 
-    /// Drop the whole selection and close its action sheet. The nav bar's
-    /// clear button plays a deselection haptic only when verses were selected.
     public func clearSelection() {
         dismissActionSheet()
         guard !selectedVerses.isEmpty else { return }
@@ -681,8 +496,6 @@ public final class BibleScreenViewModel {
         hapticsEngine.play(.deselection)
     }
 
-    /// The selection's citation, e.g. `"1 Peter 2:4-6, 9"`, or `nil` when no
-    /// verse is selected. Drives the nav bar's selection-mode pill.
     public var selectionCitation: String? {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
@@ -691,9 +504,7 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// The selected verses' text followed by their citation — the payload for
-    /// Copy and Share. `nil` when nothing is selected or the chapter text is
-    /// unavailable.
+    /// Text followed by citation; nil without selected, available text.
     public var selectionShareText: String? {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
@@ -706,29 +517,21 @@ public final class BibleScreenViewModel {
         return "\(body)\n— \(citation) (\(translation.rawValue))"
     }
 
-    /// Copy the selected verses to the clipboard, then leave selection mode.
+    /// Copies then clears selection.
     public func copySelection() {
         guard let text = selectionShareText else { return }
         clipboard.write(text)
         clearSelection()
     }
 
-    /// Toggle `color` across the selection, leaving the selection (and the
-    /// action sheet) intact so the user can keep adjusting. Tapping a colour
-    /// paints every selected verse with it — *unless* every selected verse
-    /// already carries exactly that colour, in which case the tap clears them
-    /// (re-tapping the active colour is a natural way to remove a highlight).
-    /// The write is asynchronous; the chapter's reactive `@Query` repaints once
-    /// it lands. A no-op without a highlight store or with nothing selected.
+    /// Clears if every selected verse already has this color; otherwise colors them all.
+    /// Keeps selection/actions open. No-op without storage or selection.
     public func applyHighlight(_ color: BibleHighlightColor) {
         writeHighlights(failureMessage: "Couldn't save the highlight.") {
             repository, verses, bookId, chapterNumber, now in
             let current = try await repository.activeHighlightColors(
                 bookId: bookId, chapterNumber: chapterNumber, verseNumbers: verses
             )
-            // Clear only when the whole selection already carries this colour;
-            // any other state (a different colour, or an unhighlighted verse)
-            // means the tap applies the colour to all.
             let clearing = verses.allSatisfy { current[$0] == color }
             for verse in verses {
                 if clearing {
@@ -745,8 +548,7 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Clear the highlight on every selected verse, leaving the selection (and
-    /// the action sheet) intact so the user can keep adjusting.
+    /// Clears persisted highlights while retaining selection/actions.
     public func clearHighlight() {
         writeHighlights(failureMessage: "Couldn't clear the highlight.") {
             repository, verses, bookId, chapterNumber, now in
@@ -758,15 +560,8 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Run `mutate` for the selected verses on a background task chained after
-    /// any prior highlight write. The selection (and the action sheet) is left
-    /// intact so the user can keep adjusting the highlight. The highlight
-    /// actions — toggle and clear — differ only in this mutation block and in
-    /// the toast shown when it fails.
-    ///
-    /// - Parameter failureMessage: shown in the toast if the mutation throws.
-    ///   The write is fire-and-forget, so without this a failed write would
-    ///   read as success — the chapter just never repaints.
+    // Serialize mutations and report asynchronous failures so unchanged query results
+    // cannot silently look like successful writes.
     private func writeHighlights(
         failureMessage: String,
         _ mutate: @escaping @Sendable (
@@ -778,7 +573,6 @@ public final class BibleScreenViewModel {
         let bookId = position.bookId
         let chapterNumber = position.chapterNumber
         let now = clock.now()
-        // Chain on the prior write so awaiting the latest task drains them all.
         let previous = highlightTask
         highlightTask = Task { [weak self] in
             await previous?.value
@@ -790,11 +584,8 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Build a `RecordReference` for the current verse selection — its
-    /// citation, translation, and a verbatim text snapshot — for hand-off
-    /// to the Chat composer. Returns nil when nothing is selected or the
-    /// chapter text is unavailable. The view model stays bus-agnostic;
-    /// `BibleScreen` publishes the returned reference.
+    /// Captures translation, citation, and verbatim text for Chat. Nil without usable selection;
+    /// the screen publishes the returned reference.
     public func makeVerseReference() -> RecordReference? {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
@@ -804,8 +595,6 @@ public final class BibleScreenViewModel {
         let citation = BibleCitationFormatter.cite(
             bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
         )
-        // The translation is part of the user-facing label and citation —
-        // a verse's exact wording is translation-specific.
         let label = "\(citation) (\(translation.rawValue))"
         return RecordReference(
             appletID: BibleApplet.appletID,
@@ -819,22 +608,13 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Stand-in for the still-deferred whole-chapter hand-off: the `+` nav
-    /// button lands here, raising a "coming soon" toast. The action
-    /// sheet's verse-selection chat rows now publish a real reference —
-    /// see `BibleScreen.addSelectionToChat`.
     public func presentChatComingSoon() {
         toast = "Chat integration ships in a later update."
         clearSelection()
     }
 
-    /// Build a `RecordReference` covering the entire current chapter — the
-    /// payload the spark menu's `Add to chat` / `Start a new chat`
-    /// actions publish when no verses are selected. Reuses the
-    /// `verseRange` kind so the Chat receiver needs no change: the
-    /// `sourceID` lists every verse 1..N, the citation drops the verse
-    /// clause (e.g. `"1 Peter 2 (WEB)"`), and the snapshot carries the
-    /// full chapter text.
+    /// Captures the chapter using verseRange encoding with every present verse number,
+    /// preserving compatibility with the Chat receiver.
     public func makeChapterReference() -> RecordReference? {
         guard let chapter, !chapter.paragraphs.isEmpty else { return nil }
         let texts = verseTextsByNumber()
@@ -857,40 +637,17 @@ public final class BibleScreenViewModel {
 
     // MARK: - Annotations
 
-    /// Present the annotation sheet for `spec`. Pure presentation — no
-    /// disclaimer check fires here, because tapping a filled bubble only
-    /// reveals an existing card (which was generated by an earlier
-    /// disclaimer-acknowledged flow or by in-chat tool use). The
-    /// disclaimer gate guards *generation*, not *viewing*.
+    /// Viewing existing annotations does not require generation acknowledgement.
     public func presentAnnotationSheet(for spec: BibleAnnotationTargetSpec) {
         presentedAnnotationTarget = spec
     }
 
-    /// Dismiss the annotation sheet. Mirrors the iOS sheet's drag-down
-    /// gesture so the binding remains a single source of truth.
     public func dismissAnnotationSheet() {
         presentedAnnotationTarget = nil
     }
 
-    /// Trigger a user-initiated annotation-generation intent for `spec`.
-    ///
-    /// On the *first* call (per device install) the disclaimer modal goes
-    /// up first and the intent is appended to `pendingAnnotationIntents`;
-    /// `acknowledgeAnnotationDisclaimer()` drains the whole queue in FIFO
-    /// order. Subsequent calls fire immediately.
-    ///
-    /// The queue is what makes a gapped multi-range selection survive the
-    /// gate: `handleAnnotateSelection` in `BibleScreen` synchronously
-    /// calls this method once per contiguous run; without the queue, the
-    /// second call would overwrite the first while the disclaimer was
-    /// still up, silently dropping it.
-    ///
-    /// **PR 3 contract**: "fires" means posting the toast
-    /// `"Annotation generation ships in a later update."` — the headless
-    /// LLM dispatch path lands in PR 4. The disclaimer gate, the pending
-    /// intent queue, and the call paths are all production-ready around
-    /// this stub; swapping the toast for the real dispatch is a one-line
-    /// change.
+    /// Before first acknowledgement, queues every intent behind the disclaimer;
+    /// subsequent triggers dispatch immediately.
     public func triggerAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
         guard disclaimerStore.isAcknowledged else {
             pendingAnnotationIntents.append(spec)
@@ -900,8 +657,7 @@ public final class BibleScreenViewModel {
         performAnnotationGeneration(for: spec)
     }
 
-    /// Persist the disclaimer acknowledgement, dismiss the sheet, and
-    /// fire every queued intent in FIFO order.
+    /// Persists acknowledgement and drains all queued intents in FIFO order.
     public func acknowledgeAnnotationDisclaimer() {
         disclaimerStore.setAcknowledged(true)
         isAnnotationDisclaimerPresented = false
@@ -912,22 +668,13 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Dismiss the disclaimer without acknowledging it (drag-down). The
-    /// whole intent queue is discarded — the user will be prompted again
-    /// on the next generation trigger.
+    /// Discards the queue without acknowledgement; the next trigger asks again.
     public func discardAnnotationDisclaimer() {
         isAnnotationDisclaimerPresented = false
         pendingAnnotationIntents.removeAll()
     }
 
-    /// Navigate the reader to a `super://bible/...` deep link tapped
-    /// inside an annotation summary (the shared markdown renderer
-    /// linkifies citations into these). Dismisses any presented
-    /// annotation sheet on the way so the reader is unobscured. Routes
-    /// through the existing `openReference(...)` path so the chapter
-    /// swap, the pre-selection, and the scroll-to-verse anchor all
-    /// behave identically to an external deep link. Chapter-only links
-    /// (`Psalm 23`) carry nil verses and open the chapter unselected.
+    /// Dismisses annotations and follows the same selection/scroll path as external links.
     public func navigateToDeepLink(_ link: BibleDeepLink) {
         presentedAnnotationTarget = nil
         openReference(
@@ -938,28 +685,13 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Re-fire a failed dispatch with a fresh request id. Triggered by
-    /// the retry button on the annotation sheet. The previous
-    /// `.failed(...)` entry is replaced with a fresh `.running(...)`
-    /// keyed on the new id; the bus completion event for the original
-    /// id (if it ever arrives — typically it already has) is ignored
-    /// because no entry matches.
-    ///
-    /// Skips the `clearSelection()` call the initial trigger does —
-    /// on retry there's no live selection to clear (the dispatch is
-    /// keyed on the captured `spec`), and clearing would briefly
-    /// dismiss + re-present the sheet because the same animation
-    /// chain re-evaluates `presentedAnnotationTarget`.
+    /// Uses a fresh request ID so stale completions cannot affect this attempt.
+    /// Preserve selection to avoid dismissing and re-presenting the sheet during retry.
     public func retryAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
         publishDispatchRequest(for: spec)
     }
 
-    /// Build the `RecordReference` envelope for a one-off
-    /// `bible.annotate` dispatch request. The reference's `id` is the
-    /// `requestId` the completion event will echo back. The `kind` /
-    /// `sourceID` / `displayLabel` / `citation` fields let
-    /// `BibleAnnotateDispatcher`'s prompt name the target without
-    /// importing Bible.
+    // Reference.id correlates completion; routing fields cross the applet boundary without Bible imports.
     private func makeAnnotateRequestReference(for spec: BibleAnnotationTargetSpec) -> RecordReference {
         let citation = citationLabel(for: spec)
         let kind: String
@@ -979,25 +711,12 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// The verbatim, verse-numbered text for an annotation target, so the
-    /// headless generator annotates the *actual* translation rather than its
-    /// recollection (preventing summaries that reference words not in the text).
-    ///
-    /// Chapter and verse-range targets carry their text; a whole-`book` target
-    /// returns `""` — the full book would be an enormous prompt, and the
-    /// book-level summary doesn't quote specific verses. Loaded
-    /// off the bundled text, so an unavailable book degrades to no snapshot
-    /// rather than failing the dispatch.
+    // Omit whole-book text to bound prompt size; chapter/range snapshots ground generation
+    // in the selected translation. Unavailable text degrades to citation-only input.
     private func snapshotText(for spec: BibleAnnotationTargetSpec) -> String {
         BibleVerseTextFormatter.numbered(verses(for: spec))
     }
 
-    /// The verse slice an annotation target covers, loaded at the current
-    /// translation: a chapter spec yields the whole chapter, a verse-range
-    /// spec its inclusive range, a book spec (or a load failure) `[]`.
-    /// Shared by the generation snapshot and the card's quoted text so
-    /// the model is always grounded in exactly the scripture the card
-    /// displays.
     private func verses(for spec: BibleAnnotationTargetSpec) -> [BibleVerse] {
         guard let chapterNumber = spec.chapterNumber,
               let chapter = (try? textLoader.loadChapter(
@@ -1008,15 +727,6 @@ public final class BibleScreenViewModel {
         return verses.filter { $0.number >= start && $0.number <= end }
     }
 
-    /// Initial headless `bible.annotate` dispatch — called by the
-    /// disclaimer-gated trigger from the spark button, the Annotate
-    /// action tile, and empty book-picker bubbles.
-    ///
-    /// `clearSelection()` mirrors every other `BibleActionSheet`-reachable
-    /// action (copy, chat hand-off, highlight): the selection-driven
-    /// sheet is dismissed on completion so the user's next action
-    /// starts fresh and the sheet isn't competing for the bottom edge.
-    /// Retry skips this — see `retryAnnotationGeneration(for:)`.
     private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
         clearSelection()
         publishDispatchRequest(for: spec)
@@ -1058,16 +768,7 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Close the native sheets this screen presents so the shell's drawer
-    /// (an in-view overlay that renders below a native sheet's window) wins
-    /// the z-order when the sidebar opens. Each call is a no-op when that
-    /// sheet isn't up, so dismissing all of them unconditionally is safe.
-    ///
-    /// The annotation *disclaimer* is deliberately excluded: it's a
-    /// confirmation gate, not a passive sheet — flipping its binding fires
-    /// `discardAnnotationDisclaimer()` and silently throws away the user's
-    /// pending annotation intent. Leaving it up is the safer trade-off; the
-    /// user just invoked it and is unlikely to reach for the hamburger mid-gate.
+    /// Native sheets cover the shell drawer. Preserve the disclaimer, whose dismissal would discard queued intents.
     private func dismissPresentedSheets() {
         dismissActionSheet()
         dismissNarrationSheet()
@@ -1077,26 +778,17 @@ public final class BibleScreenViewModel {
         dismissNoteList()
     }
 
-    /// Test seam: register a one-shot callback fired after the
-    /// subscription processes a `sidebarOpened` envelope and dismisses
-    /// the presented sheets. Lets tests await the bus-driven dismiss
-    /// deterministically without `Task.yield()` polling (AGENTS.md §2).
-    /// Underscored because it's not stable API.
+    /// Fires once after processing sidebarOpened and dismissing sheets.
     func _onNextSidebarDismiss(_ callback: @escaping @MainActor () -> Void) {
         sidebarDismissCallbacks.append(callback)
     }
 
-    /// Test seam forwarded to the shared dispatcher after it processes a
-    /// `bibleAnnotateCompleted` envelope. Lets tests await completion processing
-    /// deterministically without `Task.yield()` polling (AGENTS.md
-    /// §2). Scoped to completion events only — the request echo would
-    /// otherwise race the callback ahead of the actual state update.
-    /// Underscored because it's not stable API.
+    /// Fires after completion state updates; request echoes cannot satisfy this test seam.
     func _onNextDispatchCompletion(_ callback: @escaping @MainActor () -> Void) {
         annotationDispatchViewModel._onNextCompletionProcessed(callback)
     }
 
-    /// Registers a callback after the next progress envelope has been processed.
+    /// Fires once after processing the next progress envelope.
     func _onNextDispatchProgress(_ callback: @escaping @MainActor () -> Void) {
         annotationDispatchViewModel._onNextProgressProcessed(callback)
     }
@@ -1112,17 +804,11 @@ public final class BibleScreenViewModel {
         annotationDispatchViewModel.clearDraft(for: spec, requestID: requestID)
     }
 
-    /// Dispatch status for `spec`, or `nil` when no headless dispatch
-    /// is running or failed for it. `AnnotationSheetContainer` reads
-    /// this to drive its generating / failed / populated layouts.
+    /// Nil when no dispatch is running or failed for this target.
     public func dispatchStatus(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
         annotationDispatchViewModel.status(for: spec)
     }
 
-    /// Raise the toast shown when a per-card delete write fails — the
-    /// `AnnotationSheet`'s @Query would otherwise leave the card visible
-    /// with no signal that the tap did nothing. Routed from
-    /// `AnnotationSheetContainer.onDeleteFailed`.
     public func presentDeleteAnnotationFailedToast() {
         toast = "Couldn't delete the annotation."
     }
@@ -1133,10 +819,6 @@ public final class BibleScreenViewModel {
         annotationDispatchViewModel.clearFailure(for: spec)
     }
 
-    /// Human-readable citation for an annotation target, used as the
-    /// sheet header. Examples: `"Romans"` for a book target,
-    /// `"Romans 8"` for a chapter, `"Romans 8:28-30"` for a verse range,
-    /// `"Romans 8:28"` when the range is one verse.
     public func citationLabel(for spec: BibleAnnotationTargetSpec) -> String {
         let bookName = catalog.book(id: spec.bookId)?.name ?? spec.bookId
         switch spec {
@@ -1152,20 +834,11 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// The `.chapter` annotation target for the chapter currently on screen —
-    /// the spark menu's Annotate target when no verses are selected, and the
-    /// chapter reader's "generate" bubble target. Reflects the live `position`,
-    /// so it tracks chapter stepping.
     public var currentChapterAnnotationSpec: BibleAnnotationTargetSpec {
         .chapter(bookId: position.bookId, chapterNumber: position.chapterNumber)
     }
 
-    /// Annotation target specs for each contiguous range in the current
-    /// verse selection. A single contiguous run produces one spec; a
-    /// gapped selection (e.g. 1, 2, 5) produces multiple specs (1-2 and
-    /// 5-5). Drives the spark-button and verse-action-tile annotate
-    /// flows, which trigger one generation intent per range. Returns
-    /// `[]` when no verses are selected.
+    /// One target per contiguous selection run, e.g. 1,2,5 becomes 1-2 and 5-5.
     public var selectedAnnotationRanges: [BibleAnnotationTargetSpec] {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return [] }
@@ -1192,11 +865,6 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Build the `RecordReference` for the annotation sheet's "Add to
-    /// chat" action. The composer renders the summary into the markdown
-    /// block the LLM receives. The citation reflects the record's
-    /// underlying target (book / chapter / verse range) — derived from
-    /// its `target` discriminator and `verseStart` / `verseEnd`.
     public func makeAnnotationReference(_ record: BibleAnnotationRecord) -> RecordReference {
         let spec = targetSpec(for: record)
         let citation = citationLabel(for: spec)
@@ -1211,38 +879,17 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Hand the annotation off to chat from the sheet's overflow menu:
-    /// build its `RecordReference` and dismiss the sheet so the transcript
-    /// is visible underneath (unlike the action sheet's verse hand-off,
-    /// which dismisses for free when the selection clears, this sheet is
-    /// driven by `presentedAnnotationTarget` and must be cleared
-    /// explicitly). Returns the reference for the screen to publish on the
-    /// event bus — publishing lives in the view layer, which owns the bus.
+    /// Dismisses the annotation sheet and returns a reference for the screen to publish.
     public func addAnnotationToChat(_ record: BibleAnnotationRecord) -> RecordReference {
         let reference = makeAnnotationReference(record)
         dismissAnnotationSheet()
         return reference
     }
 
-    /// The plain verse text the annotation card quotes above its
-    /// summary — the same `verses(for:)` slice the generation snapshot
-    /// is grounded in, joined without verse numbers (the card quotes
-    /// scripture; numbers are reader chrome). `nil` for chapter/book
-    /// targets (a whole chapter is too long to inline) and when the
-    /// text fails to load — the card degrades to title + summary.
-    ///
-    /// Uses the user's currently selected translation: the record
-    /// stores none, and a regenerated summary is produced against the
-    /// current translation anyway.
-    ///
-    /// Memoized per `(spec, translation)`: the screen calls this inside
-    /// its `.sheet(item:)` content closure, which SwiftUI re-evaluates
-    /// on every tracked invalidation while the sheet is up — without
-    /// the memo each re-render would repeat a synchronous chapter
-    /// load + JSON decode on the main actor for a presentation-constant
-    /// value. `@ObservationIgnored` because the cache is a pure memo
-    /// written during view-body evaluation — it must not itself
-    /// invalidate observers.
+    /// Quotes only verse ranges using the current translation; records store none.
+    /// Nil for other targets or missing text. Memoize by target/translation to avoid
+    /// repeated synchronous decoding during sheet-body evaluation; cache writes must
+    /// not themselves notify observers.
     public func annotationVerseText(for spec: BibleAnnotationTargetSpec) -> String? {
         guard spec.verseStart != nil, spec.verseEnd != nil else { return nil }
         let key = "\(spec.id)|\(translation.rawValue)"
@@ -1255,17 +902,10 @@ public final class BibleScreenViewModel {
         return text
     }
 
-    /// Single-entry memo for ``annotationVerseText(for:)`` — one sheet
-    /// is presented at a time, so one slot suffices.
     @ObservationIgnored private var annotationVerseTextCache: (key: String, text: String?)?
 
-    /// Map a stored `BibleAnnotationRecord` back to its target spec. The
-    /// schema constraints make the column-`nil` arms unreachable when
-    /// `target` matches (chapter/verse rows are written with their
-    /// chapter / verse columns set), so a violation here means a
-    /// migration regression. `preconditionFailure` surfaces the bug
-    /// immediately rather than silently producing a `chapterNumber: 0`
-    /// spec that opens the wrong sheet.
+    // Missing required positions indicate malformed persisted records. Fail rather than
+    // fabricate verse/chapter zero and navigate to the wrong target.
     private func targetSpec(for record: BibleAnnotationRecord) -> BibleAnnotationTargetSpec {
         switch record.target {
         case .book:
@@ -1296,42 +936,25 @@ public final class BibleScreenViewModel {
 
     // MARK: - Notes
 
-    /// Present the note list sheet for `spec` — the tap target of every note
-    /// glyph (a verse trailer, the chapter title, or a book-picker row),
-    /// whether filled or outline. Opens straight to the list; the user composes
-    /// from the sheet's `+`, so an empty range lands on the list's empty state
-    /// rather than auto-opening the editor.
+    /// Opens the list even when empty; glyph taps do not auto-compose.
     public func presentNoteList(for spec: BibleNoteTargetSpec) {
         presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: false)
     }
 
-    /// Present the note list for `spec` already composing. Reached only via the
-    /// verse-selection action sheet's explicit "Add note" tile
-    /// (`composeNoteForSelection`) — note glyphs route through `presentNoteList`
-    /// instead. The list mounts behind the editor so a saved note lands the
-    /// user back on the populated list.
+    /// Opens create mode over the list so saving returns to the populated list.
     public func composeNote(for spec: BibleNoteTargetSpec) {
         presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: true)
     }
 
-    /// Compose a note on the current verse selection — the action sheet's
-    /// "Add note" tile. The note's range is the selection's bounding span
-    /// (`min…max`); a gapped selection (e.g. 16, 18) still yields one note on
-    /// the whole passage rather than decomposing into multiple, because a note
-    /// is free-text *about* the passage, not a per-range generation like an
-    /// annotation. Clears the selection like every other action-sheet action.
-    /// A no-op with nothing selected.
+    /// Uses the selection's bounding span, including gaps, then clears selection.
+    /// Unlike annotation generation, a note is one free-text response to the whole passage.
     public func composeNoteForSelection() {
         guard let spec = selectionNoteSpec else { return }
         clearSelection()
         composeNote(for: spec)
     }
 
-    /// The note target spec for the current verse selection — its bounding span
-    /// (`min…max`), or `nil` when nothing is selected. Exposed without side
-    /// effects so the action sheet can capture it, dismiss itself, and present
-    /// the editor from the sheet's `onDismiss` (avoiding a two-sheet race);
-    /// `composeNoteForSelection()` reuses it for the clear-and-present path.
+    /// Captures the bounding span without side effects so the sheet can dismiss before composing.
     public var selectionNoteSpec: BibleNoteTargetSpec? {
         let verses = selectedVerses.sorted()
         guard let first = verses.first, let last = verses.last else { return nil }
@@ -1343,15 +966,11 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Close the note list sheet (drag-down or programmatic).
     public func dismissNoteList() {
         presentedNoteList = nil
     }
 
-    /// Insert a user-authored note on `spec`. The body is trimmed and a blank
-    /// body is dropped (the editor already disables Save while blank — this
-    /// guards programmatic callers). The write is asynchronous; the list
-    /// sheet's `@Query` repaints once it lands. A no-op without a note store.
+    /// Trims text, ignores blanks, and writes asynchronously; no-op without storage.
     public func createNote(target spec: BibleNoteTargetSpec, body: String) {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1374,8 +993,7 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Replace one note's body, stamping a fresh `updatedAt`. Blank bodies are
-    /// dropped (same guard as `createNote`).
+    /// Trims text and ignores blanks; stamps a fresh updatedAt.
     public func updateNote(id: String, body: String) {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1385,19 +1003,14 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Delete one note by id. The list sheet's `@Query` drops the card once
-    /// the write lands; the failure toast covers a write that throws so the
-    /// still-present card doesn't read as a successful delete.
     public func deleteNote(id: String) {
         writeNote(failureMessage: "Couldn't delete the note.") { repository in
             try await repository.deleteOne(id: id)
         }
     }
 
-    /// Run `mutate` against the note store on a task chained after any prior
-    /// note write, surfacing a toast if it throws. Chaining keeps rapid
-    /// create / edit / delete ordered and lets a test drain them all by
-    /// awaiting the latest — the same shape as `writeHighlights`.
+    // Chain rapid writes in issue order and expose a toast on failure. Awaiting the
+    // latest task drains every earlier mutation.
     private func writeNote(
         failureMessage: String,
         _ mutate: @escaping @Sendable (any BibleNoteRepository) async throws -> Void
@@ -1416,12 +1029,8 @@ public final class BibleScreenViewModel {
 
     // MARK: - Bookmarks
 
-    /// Present the bookmark sheet for the on-screen chapter — the tap target
-    /// of the chapter-title bookmark glyph. Captures the position and its
-    /// citation so the sheet stays pinned to this chapter. Clears any verse
-    /// selection as a defense for direct callers; with the action sheet up,
-    /// `BibleScreen` routes the tap through `handOffAfterSelectionDismiss`
-    /// so this runs only after that sheet has fully dismissed.
+    /// Captures this chapter/citation and clears selection. With actions open, the screen
+    /// must defer this presentation until their dismissal completes.
     public func presentBookmarkSheet() {
         clearSelection()
         presentedBookmarkSheet = BibleBookmarkPresentation(
@@ -1431,24 +1040,16 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// `"John 3"`-style citation for any chapter, resolved through the same
-    /// catalog every other citation surface uses. Falls back to the raw book
-    /// code for an id outside the catalog.
     public func chapterCitation(bookId: String, chapterNumber: Int) -> String {
         let name = catalog.book(id: bookId)?.name ?? bookId
         return "\(name) \(chapterNumber)"
     }
 
-    /// Close the bookmark sheet (drag-down or programmatic).
     public func dismissBookmarkSheet() {
         presentedBookmarkSheet = nil
     }
 
-    /// Toggle `color` on the presented chapter — the sheet's single card-tap
-    /// action; the repository resolves it to assign, move, or unassign (see
-    /// `BibleBookmarkRepository.toggle`). The write is asynchronous; every
-    /// bookmark surface repaints through its `@Query` once it lands. A no-op
-    /// without a presented sheet or a bookmark store.
+    /// Uses the presented chapter, not current navigation. No-op without a sheet or store.
     public func toggleBookmark(color: BibleBookmarkColor) {
         guard let presentation = presentedBookmarkSheet,
               let bookmarkRepository else { return }
@@ -1469,11 +1070,6 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Human-readable citation for a note target, used as the list sheet's
-    /// header and the editor's "ON …" caption. Examples: `"Romans"` (book),
-    /// `"Romans 8"` (chapter), `"Romans 8:28-30"` (range), `"Romans 8:28"`
-    /// (single verse). Mirrors the annotation overload — kept separate so the
-    /// two features stay decoupled.
     public func citationLabel(for spec: BibleNoteTargetSpec) -> String {
         let bookName = catalog.book(id: spec.bookId)?.name ?? spec.bookId
         switch spec {
@@ -1489,26 +1085,20 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Awaits the pending background note writes. Test-only seam, with the
-    /// same chained-drain behaviour as `_waitForPendingHighlightWrite()`.
+    /// Drains all note writes queued so far.
     public func _waitForPendingNoteWrite() async {
         await noteTask?.value
     }
 
-    /// Awaits the pending background bookmark toggles. Test-only seam, with
-    /// the same chained-drain behaviour as `_waitForPendingNoteWrite()`.
+    /// Drains all bookmark toggles queued so far.
     public func _waitForPendingBookmarkWrite() async {
         await bookmarkTask?.value
     }
 
     // MARK: - Narration
 
-    /// Begin a Narrate session for the current selection if any, else
-    /// the whole chapter. Pops the transport sheet so the user lands on
-    /// the controls; a no-op when the chapter text failed to load.
-    ///
-    /// The default Apple voice is prepared when the applet attaches; subsequent
-    /// starts preserve the user’s selected company and voice.
+    /// Narrates the selection or whole chapter and opens transport. No-op without text;
+    /// preserves the chosen voice.
     public func startNarration() {
         let utterances = narrationUtterances()
         guard !utterances.isEmpty else { return }
@@ -1522,7 +1112,6 @@ public final class BibleScreenViewModel {
         narration = controller
     }
 
-    /// Present the narration controls from the reader's nav bar.
     public func presentNarrationSheet() {
         isNarrationSheetPresented = true
     }
@@ -1533,15 +1122,11 @@ public final class BibleScreenViewModel {
         isNarrationSheetPresented = false
     }
 
-    /// Short human label for the verse currently being narrated, e.g.
-    /// `"1 Peter 2:9"`. `nil` when narration is idle.
     public var narrationCitation: String? {
         guard let verse = narration.currentVerseNumber else { return nil }
         return "\(bookName) \(position.chapterNumber):\(verse)"
     }
 
-    /// The utterances to feed the synthesizer for the active "Narrate"
-    /// action — the selection if any, else every verse in reading order.
     private func narrationUtterances() -> [NarrationVerseUtterance] {
         let texts = verseTextsByNumber()
         guard !texts.isEmpty else { return [] }
@@ -1557,14 +1142,10 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Dismiss the chat-attach toast.
     public func dismissToast() {
         toast = nil
     }
 
-    /// The chapter's verse text keyed by verse number — joining the fragments
-    /// of a verse that straddles a paragraph boundary and flattening the `\n`
-    /// line breaks poetry carries so copied text stays on one line.
     private func verseTextsByNumber() -> [Int: String] {
         guard let chapter else { return [:] }
         return Dictionary(
@@ -1572,15 +1153,12 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Awaits the pending background reading-position writes. Test-only seam
-    /// — each write chains on the prior, so awaiting the latest drains them
-    /// all. Production code never needs to observe the persistence task.
+    /// Drains all reading-position writes queued so far.
     public func _waitForPendingPersist() async {
         await persistTask?.value
     }
 
-    /// Flush the newest complete navigation snapshot after any restore gate.
-    /// The app calls this when entering the background.
+    /// Flushes the newest complete navigation snapshot after any pending restore.
     public func flushNavigationPersistence() async {
         if !didCompleteInitialRestore {
             await load()
@@ -1625,16 +1203,13 @@ public final class BibleScreenViewModel {
         navigationPersistenceError = nil
     }
 
-    /// Awaits the pending background highlight writes. Test-only seam, with
-    /// the same chained-drain behaviour as `_waitForPendingPersist()`.
+    /// Drains all highlight writes queued so far.
     public func _waitForPendingHighlightWrite() async {
         await highlightTask?.value
     }
 
     private func applyCurrentChapter() {
-        // The book name comes from the catalog (it matches the source text and is
-        // always available), so the nav bar stays correct even when the chapter
-        // text fails to load and the reader can still step to an adjacent chapter.
+        // Catalog metadata keeps navigation usable when chapter text cannot load.
         bookName = catalog.book(id: position.bookId)?.name ?? bookName
         chapter = (try? textLoader.loadChapter(
             bookId: position.bookId,

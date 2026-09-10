@@ -6,16 +6,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleChapterFooter` — the prev / next cards that close the
-/// reading column. Captured standalone because in a full `BibleScreen` the
-/// footer sits below a long chapter, off the captured frame.
-///
-/// The both-cards state covers the three themes; the single-card states
-/// cover the canon's two ends, where one card drops out.
+/// Captured separately because full-screen snapshots leave this footer below the frame.
 @Suite("BibleChapterFooter snapshots", .serialized)
 @MainActor
 struct BibleChapterFooterSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("both cards render in the light theme")

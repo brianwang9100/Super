@@ -2,7 +2,6 @@ import Core
 import Foundation
 import Observation
 
-/// Owns one chapter preview's presentation lifetime and completion.
 @MainActor
 @Observable
 final class BibleChapterPreviewViewModel {
@@ -20,7 +19,7 @@ final class BibleChapterPreviewViewModel {
         self.onFinish = onFinish
     }
 
-    /// Accepts only this native presentation's first successful completion.
+    /// Accepts only the first completion for this presentation identity.
     func presentationDidComplete(identity: UUID) {
         guard identity == self.identity, isActive, !isFinishing, !isReady else { return }
         isReady = true
@@ -32,7 +31,7 @@ final class BibleChapterPreviewViewModel {
         reader.presentActionSheet()
     }
 
-    /// Cancels presentation work only; repositories and the shared dispatcher keep accepted work.
+    /// Invalidates presentation callbacks while accepted work continues.
     func invalidate() {
         isActive = false
         isReady = false

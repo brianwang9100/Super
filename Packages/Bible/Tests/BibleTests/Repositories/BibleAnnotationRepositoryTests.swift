@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `GRDBBibleAnnotationRepository` against an
-/// in-memory database — multi-row insertion, atomic replace, target-group
-/// listing across the three target shapes, and single-row deletion.
 @Suite("GRDBBibleAnnotationRepository")
 struct BibleAnnotationRepositoryTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -15,7 +12,6 @@ struct BibleAnnotationRepositoryTests {
         return (GRDBBibleAnnotationRepository(database: database), database)
     }
 
-    /// Build a verse-target record with sensible defaults.
     private func verseRecord(
         id: String,
         bookId: String = "ROM",
@@ -136,7 +132,6 @@ struct BibleAnnotationRepositoryTests {
     @Test("hasAnnotation is slot-specific across chapter and target kind")
     func hasAnnotationIsSlotSpecific() async throws {
         let (repository, _) = try makeFixture()
-        // Annotate chapter 8 only.
         try await repository.replace(
             target: .chapter, bookId: "ROM", chapterNumber: 8,
             verseStart: nil, verseEnd: nil,
@@ -148,13 +143,11 @@ struct BibleAnnotationRepositoryTests {
                 )
             ]
         )
-        // A different chapter is still empty.
         let otherChapter = try await repository.hasAnnotation(
             target: .chapter, bookId: "ROM", chapterNumber: 9,
             verseStart: nil, verseEnd: nil
         )
         #expect(otherChapter == false)
-        // The book-level slot is a different target kind — still empty.
         let bookSlot = try await repository.hasAnnotation(
             target: .book, bookId: "ROM", chapterNumber: nil,
             verseStart: nil, verseEnd: nil
@@ -165,7 +158,6 @@ struct BibleAnnotationRepositoryTests {
     @Test("hasVerseAnnotations is true once any verse range in the chapter is annotated")
     func hasVerseAnnotationsReflectsAnyVerseRow() async throws {
         let (repository, _) = try makeFixture()
-        // Empty to start, and a chapter-level row doesn't count as a verse one.
         #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 8) == false)
         try await repository.replace(
             target: .chapter, bookId: "ROM", chapterNumber: 8,
@@ -177,8 +169,6 @@ struct BibleAnnotationRepositoryTests {
         )
         #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 8) == false)
 
-        // A single verse range in the chapter flips it true; a different chapter
-        // stays false (chapter-specific).
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30, inserting: [verseRecord(id: "v")]
@@ -192,9 +182,7 @@ struct BibleAnnotationRepositoryTests {
     @Test("rows sort by createdAt then id")
     func listOrdering() async throws {
         let (repository, _) = try makeFixture()
-        // Insert out of order: the later row first, then two same-time rows
-        // out of id order. `list()` must return (createdAt ASC, id ASC) —
-        // the same contract as the sheet's `@Query`.
+        // Mix insertion, timestamp, and ID order to exercise both sort keys.
         let later = t0.addingTimeInterval(60)
         let rows = [
             verseRecord(id: "c", createdAt: later),
@@ -209,7 +197,6 @@ struct BibleAnnotationRepositoryTests {
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30
         )
-        // Two rows share `t0` and tie-break on id; the later row sorts last.
         #expect(listed.map(\.id) == ["a", "b", "c"])
     }
 
@@ -268,7 +255,6 @@ struct BibleAnnotationRepositoryTests {
             verseStart: 32, verseEnd: 32,
             inserting: [verseRecord(id: "b", verseStart: 32, verseEnd: 32)]
         )
-        // Replacing v32 must not blow away v28-30.
         let firstGroup = try await repository.list(
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30
@@ -291,15 +277,12 @@ struct BibleAnnotationRepositoryTests {
     @Test("replace is atomic — a mid-call validation throw leaves seed rows intact")
     func replaceIsAtomicOnValidationFailure() async throws {
         let (repository, _) = try makeFixture()
-        // Seed the target group with an existing row.
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30,
             inserting: [verseRecord(id: "original")]
         )
-        // Now replace with a batch where the second record doesn't match
-        // the target group. `replace` walks the batch up-front and throws
-        // before touching the table — the seed row must survive.
+        // A later invalid record must reject the whole batch without erasing the original.
         let mismatched = verseRecord(id: "bad", verseStart: 99, verseEnd: 100)
         await #expect(throws: BibleAnnotationRepositoryError.recordOutsideTargetGroup(id: "bad")) {
             try await repository.replace(
@@ -312,8 +295,6 @@ struct BibleAnnotationRepositoryTests {
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30
         )
-        // Original survives; neither the validated `new-1` row nor the
-        // mismatched `bad` row landed.
         #expect(listed.map(\.id) == ["original"])
     }
 
@@ -356,7 +337,6 @@ struct BibleAnnotationRepositoryTests {
     @Test("deleteAll removes every row across book, chapter, and verse groups")
     func deleteAllClearsEverything() async throws {
         let (repository, database) = try makeFixture()
-        // Seed one row in each of the three target shapes.
         try await repository.replace(
             target: .book, bookId: "ROM",
             chapterNumber: nil, verseStart: nil, verseEnd: nil,
@@ -383,7 +363,6 @@ struct BibleAnnotationRepositoryTests {
 
         try await repository.deleteAll()
 
-        // Every target group is now empty.
         #expect(try await repository.list(
             target: .book, bookId: "ROM",
             chapterNumber: nil, verseStart: nil, verseEnd: nil
@@ -396,7 +375,6 @@ struct BibleAnnotationRepositoryTests {
             target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30
         ).isEmpty)
-        // And the table is genuinely empty (coverage resets to zero).
         let remaining = try await database.queue.read { db in
             try BibleAnnotationRecord.fetchCount(db)
         }

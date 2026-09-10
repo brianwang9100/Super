@@ -1,14 +1,7 @@
 import Foundation
 import GRDB
 
-/// GRDB-backed `BulkAnnotationLedger` over the `bulkAnnotationRun` /
-/// `bulkAnnotationRunUnit` tables.
-///
-/// `createRun(_:units:)` writes the run row and every unit row in one
-/// `queue.write` transaction, so a throw mid-insert rolls back to no run at all
-/// rather than a run with a partial unit set. `deleteRun` / `deleteRunsCompleted`
-/// rely on the unit table's `ON DELETE CASCADE` foreign key (GRDB enables
-/// `PRAGMA foreign_keys` by default) to clear children.
+// Create the run and all units atomically. Deletion relies on enabled foreign-key cascades.
 public struct GRDBBulkAnnotationLedger: BulkAnnotationLedger {
     private let queue: DatabaseQueue
 
@@ -39,9 +32,6 @@ public struct GRDBBulkAnnotationLedger: BulkAnnotationLedger {
         return try await queue.read { db in
             try BulkAnnotationRunRecord
                 .filter(activeStatuses.contains(Column("status")))
-                // The single-active-run invariant means there's normally one
-                // row; `id` is a deterministic tiebreak (matching
-                // `completedRuns()`) for the defensive multi-row case.
                 .order(Column("createdAt").desc, Column("id").desc)
                 .fetchOne(db)
         }
@@ -72,9 +62,6 @@ public struct GRDBBulkAnnotationLedger: BulkAnnotationLedger {
         try await queue.read { db in
             try BulkAnnotationRunRecord
                 .filter(Column("completedAt") != nil)
-                // `id` is a deterministic tiebreak for the (theoretical) case
-                // of two runs sharing a `completedAt`, matching the house
-                // style of fully-ordered list queries (`bibleAnnotation`).
                 .order(Column("completedAt").desc, Column("id").desc)
                 .fetchAll(db)
         }
@@ -88,8 +75,6 @@ public struct GRDBBulkAnnotationLedger: BulkAnnotationLedger {
 
     public func deleteRunsCompleted(before cutoff: Date) async throws {
         _ = try await queue.write { db in
-            // `completedAt < cutoff` already excludes NULL (active) rows in
-            // SQL; the explicit IS-NOT-NULL keeps the intent legible.
             try BulkAnnotationRunRecord
                 .filter(Column("completedAt") != nil && Column("completedAt") < cutoff)
                 .deleteAll(db)

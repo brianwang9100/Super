@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Coordinates native study-sheet handoffs without owning reading state or accepted writes.
+/// Coordinates native study-sheet handoffs without cancelling accepted work.
 @MainActor
 @Observable
 final class BibleStudyPresentationViewModel {
@@ -26,7 +26,7 @@ final class BibleStudyPresentationViewModel {
         isActive && candidate == identity
     }
 
-    /// Re-entry starts a fresh presentation lifetime; callbacks from the old one are inert.
+    /// Starts a new identity so callbacks from the prior presentation are inert.
     func activate() {
         guard !isActive else { return }
         identity = UUID()
@@ -34,7 +34,7 @@ final class BibleStudyPresentationViewModel {
         isFinishing = false
     }
 
-    /// Invalidate presentation work only. Persisted writes and annotation jobs keep running.
+    /// Invalidates presentation work while accepted writes and annotation jobs continue.
     func invalidate() {
         isActive = false
         pendingHandoff = nil
@@ -43,7 +43,6 @@ final class BibleStudyPresentationViewModel {
         presented.removeAll()
     }
 
-    /// Chapter changes invalidate deferred presentation while accepted writes keep running.
     func cancelPendingHandoff() {
         pendingHandoff = nil
     }
@@ -97,14 +96,13 @@ final class BibleStudyPresentationViewModel {
         viewModel.clearSelection()
     }
 
-    /// Track mounted sheets even after a drag gesture has cleared their model binding.
+    /// Tracks mounted sheets after interactive dismissal clears their binding.
     func didPresent(_ sheet: Sheet, identity callbackIdentity: UUID) {
         guard isActive, callbackIdentity == identity else { return }
         presented.insert(sheet)
         if isFinishing { dismissing.insert(sheet) }
     }
 
-    /// Called by the native sheet's onDismiss, never by a timer or a binding setter.
     func didDismiss(_ sheet: Sheet, identity callbackIdentity: UUID) {
         guard isCurrent(callbackIdentity) else { return }
         dismissing.remove(sheet)
@@ -119,23 +117,20 @@ final class BibleStudyPresentationViewModel {
         }
     }
 
-    /// Dismiss the study stack before allowing the host to complete its outer presentation.
-    /// Repeated finish requests are ignored; the first captured completion wins.
+    /// Completes the outer presentation after every mounted study sheet dismisses.
     func finish(_ onFinish: @escaping () -> Void) {
         guard isActive, !isFinishing else { return }
         isFinishing = true
         pendingHandoff = nil
         completion = onFinish
-        // Bindings request presentation; SwiftUI can coalesce an unmounted request
-        // away without onDismiss. Only mounted sheets own a native dismissal wait.
+        // SwiftUI may coalesce unmounted requests without sending `onDismiss`.
         dismissing.formUnion(presented)
         viewModel.dismissNoteList()
         viewModel.dismissBookmarkSheet()
         viewModel.dismissAnnotationSheet()
         viewModel.discardAnnotationDisclaimer()
         viewModel.dismissActionSheet()
-        // Preview has no narration contribution. Avoid stopping a full-reader session
-        // unless its own host explicitly requests completion.
+        // A preview must not stop narration owned by the full reader.
         if viewModel.isNarrationSheetPresented { viewModel.dismissNarrationSheet() }
         viewModel.dismissBookSheet()
         completeIfDismissed()

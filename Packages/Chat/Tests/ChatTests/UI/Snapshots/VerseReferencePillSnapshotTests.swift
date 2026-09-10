@@ -6,16 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshot matrix for `VerseReferencePill` — the verse-reference chip
-/// shown in the composer strip and (read-only) inside a sent user bubble.
-/// Covers light/dark/sepia, the removable vs. read-only forms, label
-/// truncation, and Dynamic Type XXL.
 @Suite("VerseReferencePill snapshots", .serialized)
 @MainActor
 struct VerseReferencePillSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private func host<V: View>(_ view: V, theme: SuperTheme.Identifier) -> some View {
         view

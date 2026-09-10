@@ -1,7 +1,5 @@
 import Foundation
 
-/// One chapter of a book — an ordered list of heading, prose, and poetry
-/// paragraphs as segmented from the source text.
 public struct BibleChapter: Codable, Sendable, Equatable, Identifiable {
     public let number: Int
     public let paragraphs: [BibleParagraph]
@@ -15,14 +13,8 @@ public struct BibleChapter: Codable, Sendable, Equatable, Identifiable {
 }
 
 extension BibleChapter {
-    /// The chapter's verses in ascending order, with multi-paragraph fragments
-    /// of the same verse number coalesced into a single entry.
-    ///
-    /// A verse whose text straddles a prose/poetry boundary is stored as several
-    /// `BibleVerse` fragments sharing one `number` (see `BibleVerse`); this joins
-    /// those fragments space-separated, flattens `\n` line breaks to spaces, and
-    /// skips headings — so callers downstream of the reader (the `bible.read`
-    /// tool, annotation grounding) see exactly one verse per number.
+    /// Coalesces same-number fragments in reading order, joining text with spaces,
+    /// flattening line breaks, and excluding headings for lookup and annotation grounding.
     func coalescedVerses() -> [BibleVerse] {
         var order: [Int] = []
         var fragments: [Int: [String]] = [:]

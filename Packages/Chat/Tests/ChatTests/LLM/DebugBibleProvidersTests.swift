@@ -5,12 +5,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for the DEBUG-only Bible-tool debug providers: `DebugBibleTarget`
-/// parsing precedence, the canned `bible.annotate` / `bible.note` tool calls
-/// each provider emits, the loop-termination guard that stops them annotating
-/// forever, and an end-to-end run through `ChatSession`'s tool loop against a
-/// fake `bible.annotate` / `bible.note` executor (the real Bible tools are
-/// covered by the Bible package's own suite — Chat can't import Bible).
 @Suite("Debug Bible providers")
 struct DebugBibleProvidersTests {
 
@@ -121,8 +115,7 @@ struct DebugBibleProvidersTests {
     }
 
     @Test func freeTextPicksTheEarliestBookNotTheLongestSpelling() {
-        // Longest-first iteration must not let a later, longer book name win
-        // over the one the user actually cited first.
+        // Longest-name-first matching must still select the earliest citation in the text.
         let messages = [LLMMessage(role: .user, text: "annotate John 3:16 — compare with 1 Corinthians")]
         let target = DebugBibleTarget.parse(from: messages)
         #expect(target == DebugBibleTarget(
@@ -131,8 +124,6 @@ struct DebugBibleProvidersTests {
     }
 
     @Test func freeTextIgnoresNumbersNotAdjacentToTheBook() {
-        // A number elsewhere in the sentence must not be read as a citation;
-        // a bare book mention resolves to the whole-book target.
         let messages = [LLMMessage(role: .user, text: "annotate Romans, the meeting is at 8:30")]
         let target = DebugBibleTarget.parse(from: messages)
         #expect(target == DebugBibleTarget(
@@ -158,9 +149,6 @@ struct DebugBibleProvidersTests {
         #expect(input["verseStart"] == .int(28))
         #expect(input["verseEnd"] == .int(30))
 
-        // The single long-form `summary` field replaces the old `entries`
-        // array: it's a non-empty markdown document with `###` headings,
-        // matching the dispatcher's single-summary contract.
         guard case .string(let summary)? = input["summary"] else {
             Issue.record("expected summary string, got \(String(describing: input["summary"]))")
             return
@@ -209,7 +197,7 @@ struct DebugBibleProvidersTests {
         #expect(reference["chapter"] == .int(8))
         #expect(reference["startVerse"] == .int(28))
         #expect(reference["endVerse"] == .int(30))
-        // No translation argument → the tool uses the current selection.
+        // Omitting translation uses the current selection.
         #expect(input["translation"] == nil)
     }
 
@@ -225,7 +213,6 @@ struct DebugBibleProvidersTests {
         let reference = try #require(Self.firstReference(input))
         #expect(reference["book"] == .string("PSA"))
         #expect(reference["chapter"] == .int(23))
-        // No verse bounds → whole chapter.
         #expect(reference["startVerse"] == nil)
         #expect(reference["endVerse"] == nil)
     }
@@ -241,7 +228,7 @@ struct DebugBibleProvidersTests {
         let input = try #require(Self.object(call.input))
         let reference = try #require(Self.firstReference(input))
         #expect(reference["book"] == .string("ROM"))
-        // bible.lookup's read action requires a chapter; a whole-book reference defaults to 1.
+        // bible.lookup read requires a chapter; whole-book targets default to 1.
         #expect(reference["chapter"] == .int(1))
         #expect(reference["startVerse"] == nil)
     }
@@ -257,10 +244,8 @@ struct DebugBibleProvidersTests {
         #expect(call.name == "bible.lookup")
         let input = try #require(Self.object(call.input))
         #expect(input["action"] == .string("search"))
-        // The whole user turn becomes the query; no translation → current selection.
         #expect(input["query"] == .string("verses about anxiety"))
         #expect(input["translation"] == nil)
-        // No `match:` directive → the argument is omitted and the tool defaults.
         #expect(input["match"] == nil)
     }
 
@@ -304,8 +289,6 @@ struct DebugBibleProvidersTests {
     }
 
     @Test func searchProviderIgnoresOrdinaryWordsThatLookLikeModes() async throws {
-        // "all" and "any" as bare words must NOT be read as a directive — only
-        // the explicit `match:` token counts.
         let provider = DebugSearchLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
         let events = try await Self.collect(
@@ -372,10 +355,7 @@ struct DebugBibleProvidersTests {
         #expect(hasText)
     }
 
-    /// Regression: a fresh user turn after an *earlier* tool result (e.g. the
-    /// user ran a debug note, then switched to the annotate model in the same
-    /// conversation) must still fire a new tool call — only a *trailing* tool
-    /// result (mid-loop re-invocation) suppresses it.
+    /// Only trailing tool results suppress a new call; older results must not block a new user turn.
     @Test func annotateProviderStillCallsToolWhenEarlierToolResultPrecedesNewUserTurn() async throws {
         let provider = DebugAnnotateLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
@@ -406,13 +386,11 @@ struct DebugBibleProvidersTests {
         _ = await Self.drain(stream)
         await setup.session.waitUntilFinished()
 
-        // Tool ran exactly once with the parsed verse target.
         #expect(await executor.executionCount() == 1)
         let input = try #require(await executor.capturedInputs().first)
         #expect(input["target"] == .string("verse"))
         #expect(input["bookId"] == .string("ROM"))
         #expect(input["verseStart"] == .int(28))
-        // Loop terminated: user → assistant(toolUse) → tool → assistant(text).
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }
@@ -515,7 +493,6 @@ struct DebugBibleProvidersTests {
         #expect(input["action"] == .string("read"))
         #expect(input["book"] == .string("JHN"))
         #expect(input["chapter"] == .int(3))
-        // Chapter reference → whole-chapter read, no verse range.
         #expect(input["verseStart"] == nil)
     }
 
@@ -530,7 +507,6 @@ struct DebugBibleProvidersTests {
         let input = try #require(Self.object(call.input))
         #expect(input["action"] == .string("search"))
         #expect(input["color"] == .string("yellow"))
-        // No book named → whole-bible search.
         #expect(input["book"] == nil)
     }
 
@@ -561,14 +537,12 @@ struct DebugBibleProvidersTests {
         #expect(input["book"] == .string("JHN"))
         #expect(input["chapter"] == .int(3))
         #expect(input["verseStart"] == .int(16))
-        // Clear carries no colour.
         #expect(input["color"] == nil)
     }
 
     @Test func highlightProviderExplicitActionDirectiveWinsOverInference() async throws {
         let provider = DebugHighlightLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
-        // A colour is present (would infer `set`), but the directive forces `read`.
         let events = try await Self.collect(
             provider, messages: [LLMMessage(role: .user, text: "action:read John 3:16 yellow")], model: model
         )
@@ -630,8 +604,7 @@ struct DebugBibleProvidersTests {
 
     // MARK: - Helpers
 
-    /// A user turn shaped like `BibleAnnotateDispatcher.prompt` — the headless
-    /// verse-tap "Add annotation" path.
+    /// Matches BibleAnnotateDispatcher.prompt for a headless annotation request.
     private static func dispatcherMessage(referenceID: String, kind: String) -> LLMMessage {
         LLMMessage(role: .user, text: """
         Annotate this scripture target.
@@ -645,8 +618,6 @@ struct DebugBibleProvidersTests {
         """)
     }
 
-    /// A turn-loop history where the tool has already run — the provider must
-    /// emit plain text (no further tool call) so the loop ends.
     private static func afterToolRanMessages() -> [LLMMessage] {
         [
             LLMMessage(role: .user, text: "annotate Romans 8:28-30"),
@@ -679,7 +650,6 @@ struct DebugBibleProvidersTests {
         return nil
     }
 
-    /// The first element of a `bible.lookup` read input's `references` array, as an object.
     private static func firstReference(_ input: [String: JSONValue]) -> [String: JSONValue]? {
         guard case .array(let references)? = input["references"],
               case .object(let first)? = references.first else { return nil }

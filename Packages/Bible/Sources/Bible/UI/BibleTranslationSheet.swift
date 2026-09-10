@@ -1,21 +1,14 @@
 import Core
 import SwiftUI
 
-/// The translation picker: a short bottom-aligned sheet listing the bundled
-/// translations. Tapping a row switches the reading translation and closes
-/// the sheet; the active translation's row is tinted and checked.
 struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Declared once and shared by the nav bar and the presentation so the two
-    /// can't drift; a short content-sized sheet.
     private let sizing = SheetSizing.fitsContent
 
-    /// The translation currently in use — its row renders as active.
     let current: BibleTranslation
-    /// Extra bottom padding so the last row clears the shell's minimized
-    /// chat pill; `0` in standalone (snapshot) contexts.
+    /// Reserve for the minimized chat pill; zero in standalone contexts.
     let bottomInset: CGFloat
     let onSelect: (BibleTranslation) -> Void
     let onClose: () -> Void
@@ -32,7 +25,6 @@ struct BibleTranslationSheet: View {
             .padding(.top, 2)
             .padding(.bottom, 22 + bottomInset)
         }
-        // Detents + drag indicator + background, derived from `sizing`.
         .sheetPresentation(sizing, estimatedHeight: 320)
     }
 

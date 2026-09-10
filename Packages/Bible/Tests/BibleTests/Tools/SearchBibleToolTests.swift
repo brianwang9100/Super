@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `SearchBibleTool` — the `bible.search` content lookup: query
-/// validation, translation resolution + fallback, optional book scoping, limit
-/// clamping, the numbered output contract, and the empty-result (non-error)
-/// contract.
 @Suite("SearchBibleTool")
 struct SearchBibleToolTests {
     private func makeTool(
@@ -209,9 +205,6 @@ struct SearchBibleToolTests {
 
 // MARK: - Test doubles
 
-/// A `BibleTextSearching` that records the arguments of the last call and
-/// returns a fixed result set, so tests can assert both formatting and argument
-/// plumbing.
 private actor RecordingSearcher: BibleTextSearching {
     let hits: [BibleVerseMatch]
     private(set) var lastTranslation: BibleTranslation?

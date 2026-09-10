@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// Divider strip rendered at the compaction boundary — a "COMPACTED" rule
-/// over a tappable summary card. Collapsed by default with the summary
-/// clipped to three lines + a "Show more" affordance; tap toggles to the
-/// full markdown summary and a "Show less" affordance.
 struct CompactionBanner: View {
     let summary: String
     @Environment(\.superTheme) private var theme
@@ -47,10 +43,6 @@ struct CompactionBanner: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Compaction summary")
-            // Hint adds info beyond the gesture VoiceOver already
-            // announces ("double-tap to activate") per Apple HIG. The
-            // `.isButton` trait is synthesized by `Button` itself, so no
-            // explicit `.accessibilityAddTraits(.isButton)` is needed.
             .accessibilityHint(isExpanded ? "Collapses the summary" : "Expands the summary")
             .animation(.easeInOut(duration: 0.15), value: isExpanded)
         }

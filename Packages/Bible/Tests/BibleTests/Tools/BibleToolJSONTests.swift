@@ -2,7 +2,6 @@ import Core
 import Testing
 @testable import Bible
 
-/// Numeric argument validation must reject values that cannot fit in an Int.
 @Suite("BibleToolJSON")
 struct BibleToolJSONTests {
     @Test func integerArgumentsAcceptOnlyExactlyRepresentableValues() {

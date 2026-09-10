@@ -4,10 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `HeuristicTokenEstimator` — the chars/4 fallback used by
-/// `ContextAssembler` and `Compactor`. Establishes the ratios are stable
-/// (so a future real-tokenizer drop-in can be A/B compared) and that
-/// message-level estimation rolls up the per-block costs.
 @Suite("TokenEstimator")
 struct TokenEstimatorTests {
 
@@ -18,10 +14,8 @@ struct TokenEstimatorTests {
 
     @Test func shortStringRoundsUpToOneToken() {
         let estimator = HeuristicTokenEstimator()
-        // 1–4 chars → 1 token.
         #expect(estimator.estimate("a") == 1)
         #expect(estimator.estimate("abcd") == 1)
-        // 5–8 chars → 2 tokens.
         #expect(estimator.estimate("abcde") == 2)
         #expect(estimator.estimate("abcdefgh") == 2)
     }
@@ -29,16 +23,12 @@ struct TokenEstimatorTests {
     @Test func englishProseRatioIsStable() {
         let estimator = HeuristicTokenEstimator()
         let prose = "The quick brown fox jumps over the lazy dog and naps."
-        // 54 chars → ceil(54/4) = 14
         #expect(estimator.estimate(prose) == 14)
     }
 
     @Test func denseCodeOvershootsButStays4to1() {
         let estimator = HeuristicTokenEstimator()
         let code = "let x: Int = 42; let y: String = \"hello\"; print(x + y.count)"
-        // 60 chars → 15 tokens (overshoots — real tokenizer would emit
-        // closer to ~20 tokens for code, but overshooting the budget is
-        // safe).
         #expect(estimator.estimate(code) == 15)
     }
 
@@ -60,16 +50,12 @@ struct TokenEstimatorTests {
                 .toolResult(toolUseID: "t1", content: "1234567890123", isError: false), // 4
             ]),
         ]
-        // Hand-counted chars/4 costs; dropping any block, name, signature,
-        // snippet, or one of the messages must change the result.
+        // Hand-counted per-block costs keep omitted fields visible in the total.
         #expect(estimator.estimate(messages: messages) == 22)
         #expect(estimator.estimate(messages: []) == 0)
     }
 
     @Test func toolUseInputContributesToBudget() {
-        // A bloated tool-use input should noticeably increase the
-        // estimate — this prevents an "ignore tool args" regression that
-        // would let a 50-key payload pass under the radar.
         let estimator = HeuristicTokenEstimator()
         let small = LLMMessage(role: .assistant, content: [
             .toolUse(id: "t1", name: "k", input: .object(["a": .string("x")]), signature: nil),
@@ -114,8 +100,6 @@ struct TokenEstimatorTests {
             ]
         )
         let cost = estimator.estimate(tools: [echo])
-        // The estimate must include at least the name + description + the
-        // parameter's own description — proving none of the three are dropped.
         let floor = estimator.estimate("echo")
             + estimator.estimate("Echoes the input text back to the caller.")
             + estimator.estimate("What to echo.")
@@ -124,8 +108,6 @@ struct TokenEstimatorTests {
     }
 
     @Test func toolParametersIncreaseTheEstimate() {
-        // A tool that declares parameters costs more than the same tool with
-        // none — the parameter schema is real window weight.
         let estimator = HeuristicTokenEstimator()
         let bare = tool(name: "noop", description: "Does nothing.", parameters: [])
         let withParams = tool(
@@ -139,9 +121,6 @@ struct TokenEstimatorTests {
     }
 
     @Test func nestedValueSchemaIsCounted() {
-        // A parameter whose elements carry a nested object schema must cost
-        // more than the same parameter without it — the recursion can't drop
-        // deeply-shaped parameters (e.g. read's array-of-objects passages).
         let estimator = HeuristicTokenEstimator()
         let flat = tool(
             name: "read",

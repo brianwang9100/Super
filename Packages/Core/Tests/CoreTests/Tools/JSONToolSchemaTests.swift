@@ -1,11 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `JSONToolSchema` — the shared builder that renders
-/// `[LLMToolParameter]` into the JSON-Schema `parameters` object every HTTP LLM
-/// adapter sends. The load-bearing case is `items` on `.array` parameters,
-/// whose omission makes the native Gemini adapter reject the tool declaration
-/// with HTTP 400 (`parameters.properties[entries].items: missing field`).
 @Suite("JSONToolSchema")
 struct JSONToolSchemaTests {
     private func object(_ value: JSONValue?) -> [String: JSONValue] {

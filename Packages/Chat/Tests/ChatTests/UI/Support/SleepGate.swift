@@ -1,22 +1,8 @@
 import Foundation
 import Synchronization
 
-/// One-shot gate that suspends `wait()` callers until `release()` opens
-/// it, then resumes every awaiter (current and future). Used by tests
-/// that inject a sleep closure into a `Task`-managed timer so the body
-/// pauses on a deterministic signal rather than a real-clock duration —
-/// see `StreamingTextCoalescerTests` for the call site. (CoreTests
-/// carries its own copy for `CodeBlockCopyControllerTests`, which moved
-/// there with the markdown renderer; per-package test-helper copies are
-/// the repo convention.)
-///
-/// Sleep is what most callers want; the gate also serves as a stop-the-
-/// world barrier for any closure-shaped suspension point.
-///
-/// State is protected by ``Synchronization/Mutex`` per AGENTS.md
-/// §Swift Concurrency ("Never use `DispatchQueue` or `NSLock` for
-/// synchronization"). A `Mutex<State>` makes the class straightforwardly
-/// `Sendable` without `@unchecked`.
+/// One-shot barrier for injected sleep closures. Opening releases current
+/// waiters and lets future callers pass immediately.
 final class SleepGate: Sendable {
     private let state = Mutex(State())
 

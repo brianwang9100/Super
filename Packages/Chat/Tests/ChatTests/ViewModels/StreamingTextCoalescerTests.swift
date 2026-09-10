@@ -2,15 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for ``StreamingTextCoalescer``'s flush policy: buffer
-/// non-whitespace chunks behind a 100ms timer, flush immediately when
-/// a chunk's tail is whitespace, force-flush on demand, and discard the
-/// buffer on reset.
-///
-/// All tests inject a ``SleepGate``-backed sleep so the ceiling timer
-/// waits for an explicit `release()` before firing — no real-clock
-/// timing in the assertions, deterministic ordering through awaitable
-/// signals as ``AGENTS.md`` §Testing.2 requires.
 @Suite("StreamingTextCoalescer")
 @MainActor
 struct StreamingTextCoalescerTests {
@@ -80,8 +71,6 @@ struct StreamingTextCoalescerTests {
         #expect(sink.flushed == ["partial"])
         #expect(coalescer._pendingText.isEmpty)
 
-        // Releasing the gate must NOT trigger a second flush; the force
-        // flush already cancelled the timer.
         gate.release()
         await coalescer._waitForPendingFlushTask()
         #expect(sink.flushed == ["partial"])
@@ -123,9 +112,6 @@ struct StreamingTextCoalescerTests {
     }
 }
 
-/// Main-actor-isolated sink for the flush callback so assertions can
-/// inspect the published chunks without worrying about cross-actor
-/// reads.
 @MainActor
 private final class FlushSink {
     var flushed: [String] = []

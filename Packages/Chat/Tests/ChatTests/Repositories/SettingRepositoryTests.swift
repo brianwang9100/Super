@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBSettingRepository` get/set/delete and snapshot listing.
 @Suite("GRDBSettingRepository")
 struct SettingRepositoryTests {
 

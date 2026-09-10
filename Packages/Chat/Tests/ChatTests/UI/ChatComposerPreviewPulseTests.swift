@@ -2,7 +2,6 @@
 import Testing
 @testable import Chat
 
-/// The preview phase preserves ring appearance while preventing a repeating capture animation.
 @Suite("ChatComposer preview pulse")
 struct ChatComposerPreviewPulseTests {
     #if canImport(UIKit)

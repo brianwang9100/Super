@@ -2,7 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `SuperAppInfo` initialization and bundle-fallback behavior.
 @Suite("SuperAppInfo")
 struct SuperAppInfoTests {
     @Test func initStoresAllFields() {

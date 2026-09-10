@@ -3,18 +3,12 @@ import SwiftUI
 import Testing
 @testable import Core
 
-/// Tests for ``SplashHighlighter``'s palette wiring, grammar gating, and
-/// the tokenize → render split. The tokenization step returns a value-
-/// typed `[Token]` so we can assert on the actual stream rather than on
-/// the opaque `Text` the renderer produces.
 @Suite("SplashHighlighter")
 struct SplashHighlighterTests {
     @Test("palette derives from the active SuperTheme")
     func paletteUsesThemeForeground() {
         let theme = SuperTheme.make(.vellumLight)
         let palette = CodePalette.from(theme)
-        // Plain text uses the theme's code foreground so the highlighted
-        // body matches the surrounding chrome — design tokens, not magic.
         #expect(palette.plain == theme.codeForeground)
         #expect(palette.call == theme.codeForeground)
         #expect(palette.property == theme.codeForeground)
@@ -32,8 +26,6 @@ struct SplashHighlighterTests {
         #expect(palette.color(for: .property)      == palette.property)
         #expect(palette.color(for: .dotAccess)     == palette.dotAccess)
         #expect(palette.color(for: .preprocessing) == palette.preprocessing)
-        // `.custom` falls through to plain — exercised explicitly so the
-        // switch never quietly drops to a stray `default`.
         #expect(palette.color(for: .custom("foo")) == palette.plain)
     }
 
@@ -47,8 +39,6 @@ struct SplashHighlighterTests {
     @Test("nil language defaults to Swift grammar — keywords + numbers classified")
     func nilLanguageDefaultsToSwift() {
         let tokens = SplashHighlighter.tokenize("let x = 1\n", language: nil)
-        // Pull out the typed-classified tokens; Swift's grammar must
-        // recognize `let` as a keyword and `1` as a number.
         let typed: [(String, TokenType)] = tokens.compactMap { token in
             if case .typed(let text, let type) = token { return (text, type) }
             return nil

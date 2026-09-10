@@ -1,12 +1,7 @@
 import Core
 import Foundation
 
-/// A `ToolExecutor` that blocks on `execute(...)` until the test calls
-/// `resume(with:)`, modeling a slow remote tool. Used by tests that need
-/// a deterministic mid-turn pause — the `awaitFirstCall()` signal lets a
-/// test synchronize on "the tool has started running" so it can attach a
-/// late subscriber or swap a view model with confidence the session is
-/// in a known state.
+/// Signals entry through awaitFirstCall() and blocks until resume(with:).
 final class ResumableToolExecutor: ToolExecutor, Sendable {
     let toolID: String
     private let state: ResumableToolState

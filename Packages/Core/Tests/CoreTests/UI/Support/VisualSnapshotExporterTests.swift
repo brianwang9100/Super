@@ -5,7 +5,6 @@ import Testing
 import UIKit
 @testable import VisualTestSupport
 
-/// Exercises baseline enforcement, optional exports, and asynchronous renderer failures.
 @Suite("Visual snapshot exporter", .serialized)
 @MainActor
 struct VisualSnapshotExporterTests {

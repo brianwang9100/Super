@@ -7,34 +7,18 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Remaining legacy snapshots of `SettingsSheet`'s content across themes and
-/// panes. The sheet now presents via a native `.sheet` (the system owns the
-/// scrim, drag bar, and rounded surface), so each scenario renders the sheet
-/// content on a fixed-size neutral container — the presentation chrome is the
-/// system's and out of scope for these content snapshots.
-///
-/// Eighteen representative cases now live in `SettingsPanePreviews.swift`;
-/// keep the unmigrated cases here until their replacements are verified.
-///
-/// Keep the Dynamic Type XXL companions: root/search/tools/data captures
-/// guard fixed chrome, while model-detail fields and model subtitles can
-/// scale with Dynamic Type. These fixtures must be audited individually;
-/// equality of some default/XXL images does not establish equivalent coverage.
+/// Content-only captures; the native sheet owns presentation chrome. SettingsPanePreviews
+/// covers migrated cases. Keep XXL companions: fixed chrome and scalable model fields
+/// have different risks even when some default/XXL images happen to match.
 @Suite("SettingsSheet snapshots", .serialized)
 @MainActor
 struct SettingsSheetSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private static let frame = CGSize(width: 402, height: 874)
 
     private static let appInfo = SuperAppInfo(bundleName: "Super", version: "0.3.1", build: "1")
 
     private static let sampleModels: [SettingsViewModel.ModelRow] = [
-        // opus is the row used by the model-detail-edit snapshot — flag
-        // `hasAPIKey: true` so the pane seeds the SecureField with the
-        // placeholder bullets that signal "a key is already stored."
         .init(
             id: "opus", name: "Opus 4.7", monogram: "O4",
             endpoint: "api.example.com/v1", maxContextTokens: 200_000, isEnabled: true,
@@ -46,9 +30,6 @@ struct SettingsSheetSnapshotTests {
         .init(id: "gemma", name: "Gemma 4", monogram: "G", endpoint: "api.example.com/v1", maxContextTokens: 64_000, isEnabled: true),
     ]
 
-    /// `sampleModels` plus an Apple Foundation row — kept separate so
-    /// it doesn't ripple into the populated-models / root / Dynamic
-    /// Type XXL snapshots that consume `sampleModels` directly.
     private static let sampleModelsWithAppleFoundation: [SettingsViewModel.ModelRow] = sampleModels + [
         .init(
             id: "afm",
@@ -66,10 +47,6 @@ struct SettingsSheetSnapshotTests {
     ]
 
     #if DEBUG
-    /// `sampleModels` plus the debug provider row. Exists only in DEBUG
-    /// builds because `LLMProviderKind.debug` is itself DEBUG-only —
-    /// outside DEBUG the case doesn't compile, so neither does this
-    /// fixture or the snapshot tests that reach for it.
     private static let sampleModelsWithDebug: [SettingsViewModel.ModelRow] = sampleModels + [
         .init(
             id: "debug-canned",
@@ -87,10 +64,6 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
-    /// `sampleModels` plus a native-web-search OpenAI row (kind
-    /// `.openAIResponses`, `searchBackend: "native"`). Edited, it resolves to
-    /// the OpenAI provider with the "Web search" picker showing "Native
-    /// (OpenAI)" — the headline state of this PR's picker.
     private static let sampleModelsWithNativeOpenAI: [SettingsViewModel.ModelRow] = sampleModels + [
         .init(
             id: "openai-native", name: "GPT-5.5", monogram: "G5",
@@ -102,12 +75,6 @@ struct SettingsSheetSnapshotTests {
         ),
     ]
 
-    /// `sampleModels` plus a native Google row whose `modelId` is no longer
-    /// in the curated catalog (a catalog-pruned model). Edited, it must
-    /// render the provider-only "Google" header, the Model dropdown showing
-    /// the raw stored wire id (via the stored-model union), and an enabled
-    /// Save — the state that was Save-bricked before edit-mode model
-    /// editing shipped.
     private static let sampleModelsWithOffCatalogGoogle: [SettingsViewModel.ModelRow] = sampleModels + [
         .init(
             id: "google-legacy", name: "Gemini 2.5 Pro", monogram: "G2",
@@ -121,10 +88,6 @@ struct SettingsSheetSnapshotTests {
     ]
 
     #if DEBUG
-    /// `sampleModels` plus a debug row wired to the client-mock search backend
-    /// (`searchBackend: "debug"`). Edited, the "Web search" picker shows
-    /// "Debug (mock)". DEBUG-only (the case + option are compiled out of
-    /// Release).
     private static let sampleModelsWithDebugSearch: [SettingsViewModel.ModelRow] = sampleModels + [
         .init(
             id: "debug-mock-search", name: "Debug (mock search)", monogram: "DB",
@@ -135,9 +98,7 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
-    /// Fetched-list fixture for the unlocked create-flow snapshots: two
-    /// catalog ids plus one unknown id, reconciled once so the default/XXL
-    /// variants render the identical dropdown.
+    /// Reconcile once so default and XXL captures share the same known/unknown model choices.
     private static let openAIUnlockedFetchedModels = [
         "openai": LLMProviderCatalog.reconcile(
             providerID: "openai",
@@ -145,18 +106,10 @@ struct SettingsSheetSnapshotTests {
         ),
     ]
 
-    // `ToolRow.name`/`summary` carry the user-facing display name + short
-    // description (resolved from `LLMTool.displayName`/`summary`), never the
-    // LLM-facing tool prompt. Two enabled tools so `SettingsRootPane`'s
-    // "N enabled" value stays "2 enabled".
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "bible.annotate", name: "Bible annotations", summary: "Writes a markdown study summary for a passage.", isEnabled: true),
-        // Disabled so the *enabled* count stays at 2 (leaving SettingsRootPane's
-        // "N enabled" Tools-row value and its baselines unchanged), and to show
-        // the toggle's off state in the snapshot.
         .init(id: "time.now", name: "Current time", summary: "Reports the current date and time.", isEnabled: false),
-        // Memory is enabled so the gear affordance (visible only when both
-        // enabled AND configurable) renders.
+        // The gear is visible only for an enabled, configurable tool.
         .init(
             id: MemoryTool.toolID,
             name: "Memory",
@@ -171,12 +124,6 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .vellumLight, pane: .models, name: "settings_models_light")
     }
 
-    // Models pane presented as the sheet's *modal root* — the composer's
-    // "Manage models…" entry. Unlike `modelsPopulated` (pushed atop the
-    // Settings root, back chevron), the leading header button here is a
-    // close-✕ that dismisses the whole sheet. Light / dark / sepia covers the
-    // theme branches (the AGENTS.md §3 minimum matrix); the card list itself
-    // is already pinned across Dynamic Type by the pushed `models` variants.
     @Test("models pane as modal root (close button)")
     func modelsPaneAsModalRoot() async {
         await verifyModelsPaneAsModalRoot(
@@ -205,8 +152,6 @@ struct SettingsSheetSnapshotTests {
             tools: Self.sampleTools,
             chatCount: 7
         )
-        // Seed the modal root before building the harness so the sheet renders
-        // Models at the base of the stack with a close-✕ leading button.
         viewModel.rootPane = .models
         let view = SettingsSheetSnapshotHarness(
             viewModel: viewModel,
@@ -272,10 +217,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Dynamic Type XXL companion per AGENTS.md §Testing.3 ("at minimum
-    // one larger Dynamic Type size"). Models pane card layout — monogram
-    // tile + two-line text stack + trailing toggle — is the most likely
-    // surface to regress at XXL, so this is the variant we anchor.
     @Test("dynamic type XXL on models pane with AFM row")
     func modelsPaneWithAFMXXL() async {
         await verifyModelsPaneWithAFM(
@@ -287,15 +228,7 @@ struct SettingsSheetSnapshotTests {
     }
 
     #if DEBUG
-    // Coverage for the DEBUG-only `case .debug:` arms in
-    // `SettingsModelsPane.isModelAvailable(for:)` and `subtitle(for:)`
-    // (PR #92 review). The row renders with monogram `DB`, name "Debug
-    // (canned)", and subtitle `8K ctx · canned responses` from the
-    // debug-arm code path; `isAvailable == true` keeps the toggle on
-    // and the row enabled. The available AFM dark fixture owns shared
-    // card colors; the monogram/label/subtitle layout is pinned at
-    // Dynamic Type XXL by `modelsPaneWithAFMXXL`, so we don't duplicate
-    // that variant for the debug row.
+    // Exercises DEBUG availability/subtitles; AFM fixtures cover shared dark colors and XXL row layout.
     @Test("models pane with debug provider row")
     func modelsPaneWithDebug() async {
         await verifyModelsPaneWithDebug(
@@ -326,17 +259,8 @@ struct SettingsSheetSnapshotTests {
     }
     #endif
 
-    // Coverage for the native-web-search arms in
-    // `SettingsModelsPane.isModelAvailable(for:)` and `subtitle(for:)`
-    // (PR2 review). A `.anthropicNative` row folds into the same
-    // `.openAICompatible` arm: always available, "Nk ctx · endpoint"
-    // subtitle. The row carries `searchBackend: "native"` and a non-shim
-    // `endpoint` (api.anthropic.com/v1, not /openai/) so a regression that
-    // mis-routes a native kind — e.g. to the AFM arm (would gate
-    // availability on AFM + swap the subtitle) — is caught. The available
-    // AFM dark fixture owns shared card colors; the card layout is
-    // already pinned at Dynamic Type XXL by
-    // `modelsPaneWithAFMXXL`.
+    // A native endpoint must use remote-provider availability/subtitles, not AFM gating.
+    // AFM fixtures cover shared dark colors and XXL row layout.
     @Test("models pane with a native-web-search row")
     func modelsPaneWithNativeSearch() async {
         await verifyModelsPaneWithNativeSearch(
@@ -402,9 +326,7 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    /// `ChatSettings.default` with the two title-summarization knobs set.
-    /// `recordId` is the summarizer row's **record id** (`ModelRow.id`), the
-    /// unique identity the picker now matches on.
+    /// recordId is the model row identity, not a provider model ID.
     private static func titleSettings(enabled: Bool, recordId: String? = nil) -> ChatSettings {
         var settings = ChatSettings.default
         settings.summarizeTitlesEnabled = enabled
@@ -458,16 +380,6 @@ struct SettingsSheetSnapshotTests {
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }
-
-    // Per-provider create-flow snapshots — one row per entry in
-    // `LLMProviderCatalog.all`, light + dark each. Each one captures
-    // the visible-field set the provider's catalog entry dictates.
-    // OpenAI/Anthropic/Google/xAI render the key-first LOCKED state
-    // (Provider dropdown + API Key only — the Model/Max-context/
-    // Thinking/Web-search rows stay hidden until the key has content;
-    // see the `_unlocked` snapshots for the revealed state). Apple
-    // hides URL/Name/Key/Thinking and keeps Provider + Model stacked;
-    // Custom shows every field (no live list to gate on).
 
     @Test("model detail create flow — Apple Intelligence selected")
     func modelDetailProviderApple() async {
@@ -524,11 +436,7 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Apple-disabled state: AFM unavailable on this device, Custom
-    // is the active provider, and the Apple entry in the Provider
-    // dropdown is the locked one. We can't capture the dropdown's
-    // expanded menu in a steady-state snapshot, so this pins the
-    // collapsed row's visual state when Custom is the active pick.
+    // A collapsed snapshot cannot inspect the expanded provider menu lock state.
     @Test("model detail create flow — Apple provider locked (AFM unavailable)")
     func modelDetailProviderAppleDisabled() async {
         await verifyCreateWithProvider(
@@ -551,13 +459,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Dynamic Type XXL anchor per Chat AGENTS.md's
-    // `light/dark/sepia × default × XXL` matrix. Custom is picked
-    // because it exercises the widest set of visible rows (Provider
-    // dropdown + Name + Base URL + Model ID + API Key + Max Context
-    // + Thinking toggle), so a Dynamic Type regression in row
-    // truncation, label wrapping, or picker chevron alignment
-    // shows up here.
     @Test("dynamic type XXL on model detail create flow — Custom")
     func modelDetailProviderCustomXXL() async {
         await verifyCreateWithProvider(
@@ -570,12 +471,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Inline-error state for the Max Context field after the user
-    // typed an over-cap value and tapped Save. Uses the test seam
-    // `initialModelDetailContextWindowError` to pre-set the error
-    // without simulating a Save tap (plus a seeded key so the gated
-    // Max-context row renders at all). Per AGENTS.md §Testing.3 —
-    // SwiftUI views ship snapshots for their error state.
     @Test("model detail create flow — context-window over-cap error (light)")
     func modelDetailProviderContextWindowError() async {
         await verifyCreateWithProvider(
@@ -602,10 +497,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // The unlocked create-flow state: key typed, live list fetched. Pins
-    // the full key-first reveal — Provider, API Key, then Model (showing a
-    // live id), Max context, Thinking, Web search — and that a fetched
-    // list (including a non-catalog id) drives the dropdown.
     @Test("model detail create flow — key entered, live models fetched (light)")
     func modelDetailProviderOpenAIUnlocked() async {
         await verifyCreateWithProvider(
@@ -619,8 +510,7 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Dynamic Type XXL on the unlocked state — the changed surface of the
-    // key-first redesign (Custom's XXL anchor covers the ungated layout).
+    // Covers the unlocked provider state; Custom XXL covers the ungated layout.
     @Test("dynamic type XXL on model detail create flow — unlocked OpenAI")
     func modelDetailProviderOpenAIUnlockedXXL() async {
         await verifyCreateWithProvider(
@@ -635,8 +525,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Key typed, fetch in flight: the Model row's refresh affordance swaps
-    // to the spinner while the gated rows are already revealed.
     @Test("model detail create flow — key entered, models loading (light)")
     func modelDetailProviderOpenAIModelsLoading() async {
         await verifyCreateWithProvider(
@@ -663,8 +551,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // The live model-list fetch fell back to the curated catalog (no/bad key,
-    // offline, etc.): the inline note renders under the Model dropdown.
     @Test("model detail create flow — live model-list fallback note (light)")
     func modelDetailModelListFallbackNote() async {
         await verifyCreateWithModelListNote(
@@ -692,8 +578,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .modelDetail(id: nil),
             initialModelDetailSelection: .openAI,
-            // The note renders under the key-gated Model dropdown — seed a
-            // key so the gated rows (and the note) are visible at all.
+            // Seed a key so the gated Model row and its fallback note are visible.
             initialModelDetailAPIKey: "sk-snapshot"
         )
         .superTheme(.make(theme))
@@ -794,28 +679,21 @@ struct SettingsSheetSnapshotTests {
         _ = await save.value
     }
 
-    // Locks in the `baseURL == nil` init path introduced by the
-    // provider-kind discriminator work: `_baseURLText` falls back
-    // to the placeholder default when the row's URL is nil.
     @Test("model detail seeded form for Apple Foundation row")
     func modelDetailAppleFoundation() async {
         await verifyAppleFoundation(theme: .vellumLight, name: "settings_model_detail_afm_light")
     }
 
-    // Dark companion per AGENTS.md §Testing.3.
     @Test("model detail seeded form for Apple Foundation row (dark)")
     func modelDetailAppleFoundationDark() async {
         await verifyAppleFoundation(theme: .vellumDark, name: "settings_model_detail_afm_dark")
     }
 
-    // Dynamic Type XXL companion per AGENTS.md §Testing.3.
     @Test("dynamic type XXL on Apple Foundation model detail pane")
     func modelDetailAppleFoundationXXL() async {
         await verifyAppleFoundationXXL(theme: .vellumLight, name: "settings_model_detail_afm_light_xxl")
     }
 
-    // Dark + XXL cell to fill the `light/dark/sepia × default/Dynamic
-    // Type XXL` matrix called out in `Packages/Chat/AGENTS.md`.
     @Test("dynamic type XXL on Apple Foundation model detail pane (dark)")
     func modelDetailAppleFoundationXXLDark() async {
         await verifyAppleFoundationXXL(theme: .vellumDark, name: "settings_model_detail_afm_dark_xxl")
@@ -864,13 +742,11 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.
     @Test("model detail seeded form (edit flow) in dark")
     func modelDetailEditDark() async {
         await verify(theme: .vellumDark, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_dark")
     }
 
-    // Dynamic Type XXL companion for modelDetailEdit; covers the "at minimum one larger Dynamic Type size" half of AGENTS.md §Testing.3.
     @Test("dynamic type XXL on model detail edit pane")
     func modelDetailEditXXL() async {
         let function = #function
@@ -909,7 +785,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Dynamic Type XXL covers the new "Web search" row's text reflow.
     @Test("dynamic type XXL on model detail edit — native web search selected")
     func modelDetailNativeSearchXXL() async {
         let function = #function
@@ -948,7 +823,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Dynamic Type XXL covers the dropdown row's reflow with a raw wire id.
     @Test("dynamic type XXL on model detail edit — off-catalog stored model")
     func modelDetailEditOffCatalogModelXXL() async {
         let function = #function
@@ -979,9 +853,6 @@ struct SettingsSheetSnapshotTests {
     }
     #endif
 
-    /// Drive the model-detail pane in edit mode over an arbitrary `models`
-    /// fixture + row id — used by the web-search picker snapshots, which need
-    /// rows (native / debug-backed) that aren't in the default `sampleModels`.
     private func verifyModelDetailEdit(
         theme: SuperTheme.Identifier,
         models: [SettingsViewModel.ModelRow],
@@ -1005,8 +876,7 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    // Default light/dark and tall-light appearance now live in Argos.
-    // Retain the XXL sentinel and tall-dark coverage until separately migrated.
+    // Keep XXL and tall-dark cases until their Argos replacements are verified.
 
     @Test("dynamic type XXL on appearance pane")
     func appearancePaneXXL() async {
@@ -1028,14 +898,7 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_appearance_light_xxl", function: function)
     }
 
-    // With font-scale + Haptics at the top, the tail of the theme grid runs
-    // off the bottom of the standard 874pt pane snapshots above — so the pane
-    // needs a full-height render for the later families to get explicit
-    // coverage. These use a tall fixed layout rather than the shared 874 frame
-    // so the whole scroll content lands in one image. The `…Haptics…`
-    // function and baseline names predate the reorder and are kept as-is —
-    // baseline filenames embed the function name, so renaming would orphan
-    // the recorded PNGs.
+    // Legacy Haptics function names are embedded in baseline paths; renaming would orphan PNGs.
     @Test("appearance pane full height — whole theme grid in dark")
     func appearancePaneHapticsDark() {
         verifyTallAppearancePane(
@@ -1064,9 +927,7 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_tools_light_xxl", function: function)
     }
 
-    // Native Settings previews own cost-gate ON in light/dark and OFF in
-    // light. Keep this XXL fixed-chrome sentinel: a diff flags accidental
-    // Dynamic Type scaling in the Search pane.
+    // Native previews cover the cost-gate states; this XXL sentinel detects accidental scaling of fixed chrome.
 
     @Test("search pane, dynamic type XXL")
     func searchPaneXXL() async {
@@ -1080,10 +941,6 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_search_on_light_xxl", function: function)
     }
 
-    /// Dynamic Type XXL sentinel for the label/status reflow column. Settings
-    /// text is DT-inert (`typography.font(role)` with `relativeTo: nil`), so
-    /// this is byte-identical to the default-DT idle baseline — a guard against
-    /// accidentally reintroducing OS Dynamic Type scaling to settings chrome.
     @Test("data pane — export idle, Dynamic Type XXL")
     func dataPaneIdleXXL() {
         verifyDataPane(
@@ -1099,9 +956,7 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: .exporting, name: "settings_data_exporting_dark")
     }
 
-    // Note: the `.finished` phase no longer renders an in-pane row — it
-    // auto-presents the system share sheet (out of scope for these content
-    // snapshots), so there is no `dataPaneFinished` case.
+    // Finished export presents the system share sheet, outside these content snapshots.
 
     @Test("data pane — export failed")
     func dataPaneFailed() {
@@ -1109,7 +964,6 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_failed_dark")
     }
 
-    /// Render the Data pane with the export controller forced into `phase`.
     private func verifyDataPane(
         theme: SuperTheme.Identifier,
         phase: ChatExportController.Phase,
@@ -1147,24 +1001,12 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_root_light_xxl", function: function)
     }
 
-    // The Settings sheet's slide-up entry transition is opacity-only with
-    // Reduce Motion on (see `SettingsSheet.swift`). The steady-state first
-    // frame for both transitions is identical, so a captured snapshot
-    // wouldn't detect a regression in the reduced-motion branch even if we
-    // recorded one — the same gap documented in
-    // `MessageListSnapshotTests` and `SidebarDrawerSnapshotTests`.
-
-    /// `ChatSettings.default` with `themeId` overridden — used by the
-    /// appearance-pane variants so the grid's selected card matches the
-    /// chrome theme under test.
     private static func settings(themeId: ChatSettings.ThemeID) -> ChatSettings {
         var settings = ChatSettings.default
         settings.themeId = themeId
         return settings
     }
 
-    /// `ChatSettings.default` with the web-search cost gate overridden —
-    /// used by the Search-pane variants to capture the toggle-off state.
     private static func settings(askBeforeSearching: Bool) -> ChatSettings {
         var settings = ChatSettings.default
         settings.askBeforeSearching = askBeforeSearching
@@ -1194,9 +1036,7 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    /// Tall fixed layout so the full Look & Feel pane (font-scale card +
-    /// Haptics toggle + theme grid) renders in one image — the standard 874pt
-    /// frame clips the grid's later families off the bottom.
+    /// The standard-height canvas clips later theme families; capture the whole grid here.
     private static let tallFrame = CGSize(width: 402, height: 1340)
 
     private func verifyTallAppearancePane(
@@ -1230,14 +1070,7 @@ struct SettingsSheetSnapshotTests {
         }
     }
 
-    /// Compares (or records) `view` against the named baseline.
-    ///
-    /// Uses the same `precision` / `perceptualPrecision` budget as
-    /// `ChatScreenSnapshotTests` so both snapshot suites share one comparison
-    /// policy. The small tolerance absorbs the custom brand face's run-to-run
-    /// glyph-edge anti-aliasing (which trips exact comparison at large Dynamic
-    /// Type) while still failing on any real layout/text/color regression — a
-    /// genuine change registers far above a ~1% / ~3% delta.
+    /// Scope tolerance to cross-runner font-edge antialiasing.
     private func recordOrCompare<V: View>(
         view: V,
         name: String,
@@ -1263,13 +1096,7 @@ struct SettingsSheetSnapshotTests {
         audioSetup: ProviderAudioSetup? = nil,
         modelRepository: any ModelConfigurationRepository = NoopModelRepository()
     ) -> SettingsViewModel {
-        // Snapshots default to `.unavailable(.deviceNotEligible)` so the
-        // host's real `SystemLanguageModel.default.availability` (which
-        // varies between local dev and CI runners) never leaks into the
-        // pixel-comparison. Tests that exercise AFM-specific rendering
-        // pass an explicit availability. Same reasoning pins
-        // `appleFoundationContextTokens` to a fixed value so the AFM read-only
-        // Max-context row renders a stable number regardless of the host.
+        // Fix availability and context size so host model state cannot change rendered values.
         SettingsViewModel(
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
@@ -1286,28 +1113,14 @@ struct SettingsSheetSnapshotTests {
     }
 }
 
-/// SwiftUI test harness — present the sheet in its open state on top of a
-/// neutral background so the snapshot frames the chrome consistently. Uses
-/// `SettingsSheet`'s internal `initialPane:` seam to render any sub-pane
-/// without programmatically driving the navigation stack.
 private struct SettingsSheetSnapshotHarness: View {
     let viewModel: SettingsViewModel
     let initialPane: SettingsSheet.Pane
-    /// Forwarded to `SettingsSheet`'s internal test seam — only
-    /// observed when `initialPane == .modelDetail(id: nil)`.
+    /// Only applies to model-detail creation.
     var initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom
-    /// Forwarded to `SettingsSheet`'s test seam for snapshotting the
-    /// Max-Context inline-error state without driving a Save tap.
     var initialModelDetailContextWindowError: String?
-    /// Forwarded to `SettingsSheet`'s test seam — seeds the create-mode
-    /// API-key field so the key-gated rows (Model / Max context / Thinking /
-    /// Web search) render without driving the SecureField.
     var initialModelDetailAPIKey: String?
-    /// When `true`, render `initialPane` as the sheet's *modal root* (empty
-    /// navigation path, `viewModel.rootPane` pre-seeded) — the close-✕ leading
-    /// header state used by the composer's "Manage models…". When `false`
-    /// (default), the pane is rendered *pushed* via the `initialPane:` seam,
-    /// which shows the back chevron.
+    /// Root presentation uses close; a pushed pane uses back. Seed rootPane before rendering.
     var presentAsRoot = false
 
     @State private var presented = true
@@ -1319,21 +1132,14 @@ private struct SettingsSheetSnapshotHarness: View {
                 .ignoresSafeArea()
             sheet
         }
-        // Mirror the production composition root (`AppShell`), which builds
-        // `.superTypography` from the persisted settings. Without this the
-        // panes would render with the environment-default typography and a
-        // future font-scale variant would silently snapshot the wrong scale.
+        // Match persisted typography from the composition root instead of environment defaults.
         .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
     }
 
     @ViewBuilder
     private var sheet: some View {
         if presentAsRoot {
-            // Use the *public* init with an empty navigation path so the leading
-            // header renders the close-✕ (the composer's "Manage models…" entry
-            // point). The caller seeds `viewModel.rootPane = initialPane` before
-            // constructing the harness — mutating it here would write the model
-            // during view-body evaluation.
+            // Seed rootPane before construction to avoid mutating the model during body evaluation.
             SettingsSheet(isPresented: $presented, viewModel: viewModel)
         } else {
             SettingsSheet(

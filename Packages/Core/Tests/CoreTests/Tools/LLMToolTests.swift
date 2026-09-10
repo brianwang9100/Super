@@ -1,8 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `LLMTool`, `LLMToolParameter`, and the `LLMToolCategory` /
-/// `ParameterType` enums.
 @Suite("LLMTool")
 struct LLMToolTests {
     @Test func initStoresAllFields() {

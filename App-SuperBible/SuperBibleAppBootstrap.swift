@@ -5,13 +5,6 @@ import Foundation
 import FoundationModels
 import SwiftUI
 
-/// Wired-up dependency graph the SuperBible shell hands to its views.
-///
-/// Mirrors `SuperOSAppDependencies` field-for-field on the
-/// Chat-infra side and exposes the same `shellDependencies` slicer so
-/// the shared `AppShell` consumes both targets uniformly. The Todo /
-/// placeholder-applet fields are omitted because SuperBible's v1 applet
-/// set is Chat (host) + Bible + Plans (at SB-M2).
 @MainActor
 struct SuperBibleAppDependencies {
     let chatDatabase: ChatDatabase
@@ -28,38 +21,22 @@ struct SuperBibleAppDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
-    /// Headless `bible.annotate` dispatcher. Held here so it lives as
-    /// long as the dependency graph does — its bus subscription is
-    /// owned by the instance, so dropping the reference would silently
-    /// kill the headless dispatch path.
+    /// Retain the dispatcher for the app session; deallocation ends its bus subscription.
     let bibleAnnotateDispatcher: BibleAnnotateDispatcher
 
-    /// Applet-contributed Settings surfaces (Bible's "Annotations" hub),
-    /// injected into the shell's environment by `SuperBibleContentView` so the
-    /// Chat-hosted Settings can render them without importing Bible.
+    /// Exposes Bible settings to Chat without a cross-applet import.
     let appletSettingsContributions: [AppletSettingsContribution]
 
-    /// Drives an active bulk-annotation run on a `BGProcessingTask` while the app
-    /// is backgrounded. Held by the app's `BulkAnnotationBackgroundController` so
-    /// it survives the Settings screen being dismissed. `nil` when the Bible
-    /// database failed to open (bulk generation is then unavailable anyway).
+    /// Outlives the Settings screen; nil when Bible's database could not open.
     let bulkAnnotationBackground: BulkAnnotationBackgroundScheduler?
 
-    /// Shared holder for the chat composer's hovering flank buttons. The Bible
-    /// reader publishes its previous / next chapter chevrons here so they render
-    /// above the minimized composer pill; the shell injects it into the backdrop
-    /// subtree (writer) and the composer-accessory layer (reader). SuperBible-only.
+    /// Shared by the Bible reader and shell for composer-accessory publication.
     let composerAccessoryStore: ComposerAccessoryStore
 
-    /// Shared app-wide haptics engine. One instance threaded into both the
-    /// shell (via `shellDependencies`) and the applets registered here.
     let hapticsEngine: any HapticsEngine
     let providerAudioSetup: ProviderAudioSetup?
     let audioActivity: AudioActivity
 
-    /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
-    /// so the same shell renders both targets — the only difference visible
-    /// to the shell is the applet set inside `appletRegistry`.
     var shellDependencies: AppShellDependencies {
         AppShellDependencies(
             chatDatabase: chatDatabase,
@@ -77,14 +54,8 @@ struct SuperBibleAppDependencies {
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
             hapticsEngine: hapticsEngine,
-            // SuperBible diverges from SuperOS: every cold launch opens to
-            // Bible with the chat overlay as a pill. The applet override
-            // is enforced separately in `bootstrap()` (UserDefaults skip
-            // + `applets.first?.appletID`); this knob covers the chat
-            // anchor only. See App-SuperBible/AGENTS.md § Launch behavior.
+            // Cold launch shows Bible with Chat minimized; foreground returns retain shell state.
             launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized),
-            // SuperBible hovers the Bible reader's chapter chevrons above the
-            // composer pill; the same store the Bible backdrop writes to.
             composerAccessoryStore: composerAccessoryStore,
             providerAudioSetup: providerAudioSetup,
             audioActivity: audioActivity
@@ -92,29 +63,9 @@ struct SuperBibleAppDependencies {
     }
 }
 
-/// One-shot composition root for the SuperBible target. Stays separate
-/// from `SuperOSAppBootstrap` because the two apps register different
-/// applet sets — but the generic plumbing (directory creation, provider
-/// hydration, debug-model seed) is shared through `AppBootstrapSupport`.
-///
-/// Lives in `App-SuperBible/` for symmetry with
-/// `App/SuperOSAppBootstrap.swift`. Both files compile in their owner
-/// target only; `App/Shell/` content (`AppShell`, `AppShellDependencies`,
-/// `AppBootstrapSupport`) is what crosses into the SuperBible target via
-/// the explicit `sources:` entries in `project.yml`.
 enum SuperBibleAppBootstrap {
-    /// Build the full dependency graph.
-    ///
-    /// - Parameters:
-    ///   - directory: Where `chat.sqlite` and `bible.sqlite` live.
-    ///     Defaults to the user's Application Support directory under
-    ///     `Super/` (inside SuperBible's own per-bundle-id container).
-    ///     Tests pass a temp directory.
-    ///   - keychain: Keychain backend. Defaults to `AppleKeychainClient`;
-    ///     tests inject `InMemoryKeychainClient` so the suite doesn't
-    ///     touch the user's real Keychain.
-    /// - Throws: Any GRDB or filesystem error from opening the database,
-    ///   or any Keychain error encountered while hydrating saved providers.
+    /// Defaults storage to this target's Application Support/Super directory.
+    /// Database and filesystem setup errors propagate; tests may inject storage and Keychain.
     @MainActor
     static func bootstrap(
         directory: URL? = nil,
@@ -140,25 +91,10 @@ enum SuperBibleAppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
-        // Construct Bible up-front for two downstream wirings:
-        //   1. `registerAnnotationTool(in:)` here so `bible.annotate` is
-        //      registered against the shared `ToolRegistry`. The applet
-        //      owns `bible.sqlite` (opened inside `BibleApplet.init`), so
-        //      tool registration funnels through this helper rather than
-        //      the bootstrap building the repository directly. No-op when
-        //      the database failed to open.
-        //   2. `attach(to:)` below, once the shared `SuperEventBus` exists,
-        //      so the applet's `BibleReferenceInbox` receives Chat-side
-        //      verse-citation taps.
-        // Constructed here (rather than after the AFM seed below) so the
-        // annotation tool can be registered with a model-aware stamp
-        // provider that captures it. `hydrateProviders` still runs later;
-        // the stamp provider reads the active model lazily at
-        // tool-execution time, long after hydration.
+        // Construct Bible before registering annotation tools. The stamp provider reads the
+        // active model at execution time, after provider hydration.
         let llmProviderRegistry = LLMProviderRegistry()
 
-        // One haptics engine for the whole app — shared by the shell's
-        // environment, the chat + Settings view models, and the Bible applet.
         let hapticsEngine = SystemHapticsEngine()
 
         let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
@@ -185,12 +121,6 @@ enum SuperBibleAppBootstrap {
         await bibleApplet.registerHighlightTool(in: toolRegistry)
         await bibleApplet.registerLookupTool(in: toolRegistry)
 
-        // Bible's "Annotations" hub for the shared Settings screen is built
-        // further down, once the `.userBulk` annotate dispatcher it drives
-        // exists (it needs `compactor` + the repos constructed below).
-
-        // Best-effort AFM seed, same shape as SuperOS — skipped on
-        // ineligible devices and pre-populated DBs.
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
@@ -227,59 +157,24 @@ enum SuperBibleAppBootstrap {
 
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
-        // SuperBible v1 applet set: Chats (searchable history list,
-        // distinct from the chat overlay) + Bible + Bookmarks (the Bible
-        // companion list of chapter bookmarks). Plans joins at SB-M2;
-        // no Todo or productivity-style placeholders ever (per
-        // `App-SuperBible/AGENTS.md` § Module identity). The array order
-        // drives the sidebar rail order — Chats first so the rail leads
-        // with the user's chats. The cold-launch active backdrop is
-        // decoupled from this order: `initialActiveID` is set explicitly
-        // to `BibleApplet.appletID` below. (`bibleApplet` is constructed
-        // earlier so it can register the `bible.annotate` tool with the
-        // shared registry; the local is reused here for the registry slot
-        // and again below for `attach(to: eventBus)`.)
+        // Array order controls the sidebar; initialActiveID independently selects the launch backdrop.
         let applets: [any MiniApplet] = [
             ChatsApplet(chatDatabase: database),
             bibleApplet,
-            // Bookmarks shares Bible's `bible.sqlite` via a handed-over
-            // read-only `DatabaseContext` (the Bible-internal `BibleDatabase`
-            // never leaks to the root). SuperBible-only: SuperOS deliberately
-            // does not register it.
+            // Share Bible's database through a read-only context without exposing its internal database type.
             bibleApplet.makeBookmarksApplet(),
         ]
-        // SuperBible diverges from SuperOS: the persisted active applet
-        // in `UserDefaults` is *deliberately ignored* on cold launch.
-        // Every app open lands on Bible regardless of where the user
-        // navigated mid-session in the prior run. Pair with
-        // `launchBehavior: AppShellLaunchBehavior(initialChatState:
-        // .minimized)` in `shellDependencies` so the chat overlay also
-        // opens as a pill. `BibleApplet.appletID` is passed explicitly
-        // (rather than `applets.first?.appletID`) so the sidebar rail
-        // order can change independently of the cold-launch backdrop.
-        // The shell still *writes* to `activeAppletStorageKey` when the
-        // user picks an applet — that write is harmless dead weight
-        // here. See App-SuperBible/AGENTS.md § Launch behavior.
+        // Ignore saved backdrop selection on cold launch. Pair Bible with the minimized chat launch state.
         let appletRegistry = AppletRegistry(
             applets: applets,
             initialActiveID: BibleApplet.appletID
         )
 
-        // Per-applet briefings via the same `resolvedBriefings()` helper
-        // SuperOS uses — sorted by `appletID`, empty bodies skipped.
         let appletBriefings = appletRegistry.resolvedBriefings()
-        // The SuperBible-flavor Chat-assistant base prompt. Reads
-        // `Resources/SuperBibleSystemPrompt.md` from the App-SuperBible
-        // target bundle (i.e., `Bundle.main`), not Chat's SwiftPM
-        // bundle — `ChatBriefing.load()` (used by SuperOS) would
-        // otherwise return Chat's generic `DefaultSystemPrompt.md`.
-        // The `.compact` variant is the lean persona small-window models
-        // (on-device Apple Foundation Model) receive instead.
+        // Load the app-bundled Bible persona; ChatBriefing would load the generic package persona.
         let chatBriefing = SuperBibleSystemPromptLoader.load()
         let compactChatBriefing = SuperBibleSystemPromptLoader.loadCompact()
 
-        // DEBUG-only: mock-search backend fulfiller so the seeded "Debug
-        // (mock search)" model exercises the full search flow with no key.
         #if DEBUG
         let webSearchFulfiller: (any WebSearchFulfilling)? = DebugWebSearchFulfiller()
         #else
@@ -299,33 +194,21 @@ enum SuperBibleAppBootstrap {
             chatBriefing: chatBriefing,
             compactChatBriefing: compactChatBriefing,
             appletBriefings: appletBriefings,
-            // Live active-applet accessor: on the compact tier the session
-            // injects only the active applet's briefing.
+            // Read the active applet live for compact-tier briefings.
             activeAppletID: { await appletRegistry.activeID },
             userPersonalization: initialSettings.userPersonalization,
             memoryRepository: memoryRepository,
             webSearchFulfiller: webSearchFulfiller
         )
 
-        // Resolve tool calls stranded by a prior crash/force-quit before any
-        // session can stream — a stranded `tool_use` without its result row
-        // otherwise replays as provider-invalid history on the next turn.
+        // Repair stranded tool calls before sessions can replay provider-invalid history.
         await chatSessionStore.recoverInterruptedToolCalls()
 
-        // Single shared event bus — created here (not inline in the
-        // return) so we can subscribe `BibleApplet` to inbound deep
-        // links from the Chat-side citation linkifier and the scene
-        // root's `.onOpenURL` handler before handing the bus to the
-        // shell.
+        // Subscribe Bible before exposing the bus to the shell and its deep-link routes.
         let eventBus = SuperEventBus()
         await bibleApplet.attach(to: eventBus)
 
-        // Bible → Chat headless dispatch (PR4): a fresh
-        // single-tool `ToolRegistry` exposing only `bible.annotate`
-        // so the transient session can't reach for any other tool.
-        // The shared user-facing registry stays unchanged. The
-        // dispatcher subscribes to `bibleAnnotateRequested` on the
-        // same bus the Bible UI publishes on.
+        // Restrict headless sessions to bible.annotate with their own tool registry.
         let bibleAnnotateRegistry = ToolRegistry()
         await bibleApplet.registerAnnotationTool(
             in: bibleAnnotateRegistry,
@@ -342,11 +225,8 @@ enum SuperBibleAppBootstrap {
         )
         await bibleAnnotateDispatcher.attach(to: eventBus)
 
-        // Bible → bulk-annotation generation: a SECOND single-tool dispatcher,
-        // stamped `.userBulk` (vs the spark button's `.user`), driven directly
-        // by the Bible-side `BulkAnnotationRunner` rather than the event bus —
-        // so it is deliberately NOT `attach`-ed. Injected as the runner's
-        // `BibleAnnotateGenerating` seam at the Annotations Settings hub.
+        // Bulk dispatch uses a separate userBulk stamp and is called directly by the runner.
+        // Do not attach it to the event bus used by interactive annotation requests.
         let bibleBulkAnnotateRegistry = ToolRegistry()
         await bibleApplet.registerAnnotationTool(
             in: bibleBulkAnnotateRegistry,
@@ -365,12 +245,7 @@ enum SuperBibleAppBootstrap {
             compactor: compactor
         )
 
-        // The Annotations hub + background scheduler, both backed by one shared
-        // runner. BYOK cost confirmation defaults on; the on-device default model
-        // makes this a no-op gate at run time once the active-model check is
-        // wired. The background scheduler is handed to the app's lifecycle
-        // controller so a run keeps draining on a BGProcessingTask while the app
-        // is suspended.
+        // Settings and background processing share one runner so work outlives the settings screen.
         let bulkWiring = bibleApplet.makeBulkAnnotationWiring(
             requiresCostConfirmation: true,
             generator: bibleBulkAnnotateDispatcher,
@@ -378,9 +253,6 @@ enum SuperBibleAppBootstrap {
         )
         let bibleSettingsContributions = (bulkWiring.map { [$0.settingsContribution] } ?? []) + (narration.map { [$0.contribution] } ?? [])
 
-        // Shared composer-flank holder: the Bible reader writes its prev / next
-        // chapter chevrons here and the shell renders them above the composer
-        // pill. Created once for the app session.
         let composerAccessoryStore = ComposerAccessoryStore()
 
         return SuperBibleAppDependencies(

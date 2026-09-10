@@ -13,7 +13,6 @@ public enum NarrationAudioEvent: Sendable {
     case failed
 }
 
-/// Injectable native audio playback with synchronous transport control on the main actor.
 @MainActor public protocol NarrationAudioPlaying: AnyObject {
     func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent>
     func pause()
@@ -36,7 +35,6 @@ protocol NarrationClipPlaying: AnyObject {
 
 extension AVAudioPlayer: NarrationClipPlaying {}
 
-/// MP3 playback backed by Apple's audio player; delegates bridge into one asynchronous event stream.
 @MainActor public final class NarrationAudioPlayer: NSObject, NarrationAudioPlaying, AVAudioPlayerDelegate {
     private var player: (any NarrationClipPlaying)?
     private let makePlayer: (Data) throws -> any NarrationClipPlaying

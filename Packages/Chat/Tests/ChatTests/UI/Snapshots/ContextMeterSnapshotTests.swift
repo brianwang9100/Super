@@ -6,8 +6,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Coverage on `ContextMeter` across fill ratios. Three points anchor
-/// the visual: empty, half-full, and over the model's window.
 @Suite("ContextMeter snapshots", .serialized)
 @MainActor
 struct ContextMeterSnapshotTests {

@@ -3,11 +3,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for `TodoScreenViewModel`: the create/edit save round-trips, state
-/// cycling, delete, and case-insensitive label creation. The view model
-/// owns no task/label list (those bind reactively in the view), so each
-/// test asserts against the repositories directly. Runs against an
-/// in-memory GRDB database with a `FixedClock` and `DeterministicIDGenerator`.
 @Suite("TodoScreenViewModel")
 @MainActor
 struct TodoScreenViewModelTests {

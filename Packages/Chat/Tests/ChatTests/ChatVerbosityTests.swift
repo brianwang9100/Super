@@ -1,7 +1,6 @@
 import Testing
 @testable import Chat
 
-/// Tests for `ChatVerbosity` ranking and display semantics.
 @Suite("ChatVerbosity")
 struct ChatVerbosityTests {
     @Test func ranksAreOrderedSimpleThinkingVerbose() {

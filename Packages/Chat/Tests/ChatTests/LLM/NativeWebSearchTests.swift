@@ -4,9 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Unit coverage for `NativeWebSearch` — the shared sentinel/proposal
-/// convention the cost gate and the native adapters key off. Pure logic, no
-/// provider or network.
 @Suite("NativeWebSearch")
 struct NativeWebSearchTests {
 
@@ -37,9 +34,7 @@ struct NativeWebSearchTests {
 
     @Test("partition keeps the proposal tool as a normal client tool")
     func partitionKeepsProposal() {
-        // The proposal tool is a real function the model sees — only the
-        // sentinel is stripped. A turn while the gate is ON carries the
-        // proposal (no sentinel), so `searchEnabled` must be false.
+        // The cost-gate proposal remains a callable function; only the sentinel enables search.
         let (clientTools, enabled) = NativeWebSearch.partition([
             tool("alpha"),
             NativeWebSearch.proposalTool

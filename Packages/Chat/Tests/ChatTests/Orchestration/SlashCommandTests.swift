@@ -3,8 +3,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `SlashCommand` parsing — the composer-side dispatch hook
-/// that recognizes `/compact` (and future commands) at submission time.
 @Suite("SlashCommand")
 struct SlashCommandTests {
 
@@ -24,8 +22,6 @@ struct SlashCommandTests {
     }
 
     @Test func unknownSlashCommandReturnsNil() {
-        // Unrecognized commands fall through to a normal user turn —
-        // the composer doesn't strip the slash for the user.
         #expect(SlashCommand(rawText: "/clear") == nil)
         #expect(SlashCommand(rawText: "/help") == nil)
     }

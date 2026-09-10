@@ -4,10 +4,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `BibleScreenViewModel` — default and restored reading position,
-/// chapter stepping (within a book, across book boundaries, and the no-op at
-/// the canon's ends), translation switching, and verse selection with its
-/// citation, Copy, and chat-stub toast.
 @Suite("BibleScreenViewModel")
 @MainActor
 struct BibleScreenViewModelTests {
@@ -33,8 +29,6 @@ struct BibleScreenViewModelTests {
         )
     }
 
-    /// A view model wired to a fresh in-memory highlight store, returned
-    /// alongside the database so a test can assert the persisted rows.
     private func makeHighlightingViewModel() throws -> (BibleScreenViewModel, BibleDatabase) {
         let database = try BibleDatabase.makeInMemory()
         let repository = GRDBBibleHighlightRepository(
@@ -43,7 +37,6 @@ struct BibleScreenViewModelTests {
         return (makeViewModel(highlightRepository: repository), database)
     }
 
-    /// The active highlights persisted for 1 Peter 2.
     private func highlights(in database: BibleDatabase) throws -> [BibleHighlightRecord] {
         try database.queue.read { db in
             try ChapterHighlightsRequest(bookId: "1PE", chapterNumber: 2).fetch(db)
@@ -111,7 +104,6 @@ struct BibleScreenViewModelTests {
     func stepForwardCrossesBook() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // 1 Peter has 5 chapters; step from 2 to its last, then once more.
         for _ in 0..<3 { viewModel.stepChapter(.next) }   // 1PE 2 → 5
         #expect(viewModel.position == BiblePosition(bookId: "1PE", chapterNumber: 5))
         viewModel.stepChapter(.next)
@@ -182,8 +174,6 @@ struct BibleScreenViewModelTests {
 
         viewModel.presentBookSheet()
         let firstSheet = viewModel.bookSheet
-        // Simulate the reader touching the picker — searching, switching
-        // order — before dismissing without picking a chapter.
         firstSheet?.query = "psalms"
         firstSheet?.order = .alphabetical
         viewModel.dismissBookSheet()
@@ -191,8 +181,6 @@ struct BibleScreenViewModelTests {
         viewModel.presentBookSheet()
         let secondSheet = viewModel.bookSheet
 
-        // The reopened sheet is a fresh instance with a clean query and
-        // ordering, and its anchor still resolves to the current position.
         #expect(secondSheet !== firstSheet)
         #expect(secondSheet?.query.isEmpty == true)
         #expect(secondSheet?.order == .traditional)
@@ -502,7 +490,6 @@ struct BibleScreenViewModelTests {
         let viewModel = makeViewModel(hapticsEngine: haptics)
         await viewModel.load()
 
-        // Clearing with nothing selected is a no-op — no disconnect buzz.
         viewModel.clearSelection()
         #expect(haptics.played.isEmpty)
 
@@ -585,9 +572,7 @@ struct BibleScreenViewModelTests {
 
     @Test("a verse straddling a paragraph boundary joins all its fragments")
     func straddlingVerseJoinsFragments() async {
-        // In 1 Peter 2 (WEB) verse 6 spans a prose sentence and the poetry
-        // quotation that follows it — the share text must carry both. KJV is
-        // all prose, so switch to WEB to exercise the straddling case.
+        // WEB splits verse 6 across prose and poetry; KJV is all prose and would miss this sharing regression.
         let viewModel = makeViewModel()
         await viewModel.load()
         viewModel.selectTranslation(.web)
@@ -651,8 +636,6 @@ struct BibleScreenViewModelTests {
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        // The highlight path now keeps the selection, so verse 9 is still
-        // selected here — clear its highlight directly without re-toggling.
         viewModel.clearHighlight()
         #expect(
             viewModel.selectedVerses == [9],
@@ -672,8 +655,6 @@ struct BibleScreenViewModelTests {
         await viewModel._waitForPendingHighlightWrite()
         #expect(try highlights(in: database).map(\.verseNumber) == [9])
 
-        // Verse 9 is still selected (the sheet stayed open); tap yellow again —
-        // the toggle reads the live colour and clears instead of re-painting.
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
         #expect(try highlights(in: database).isEmpty)
@@ -687,8 +668,6 @@ struct BibleScreenViewModelTests {
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        // Verse 9 is still selected (the sheet stayed open); tapping a different
-        // colour recolours it rather than clearing.
         viewModel.applyHighlight(.green)
         await viewModel._waitForPendingHighlightWrite()
 
@@ -701,14 +680,10 @@ struct BibleScreenViewModelTests {
     func reapplyingColorToMixedSelectionApplies() async throws {
         let (viewModel, database) = try makeHighlightingViewModel()
         await viewModel.load()
-        // Verse 4 is yellow; verse 5 is unhighlighted.
         viewModel.toggleVerse(4)
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        // Verse 4 is still selected (the sheet stayed open); add verse 5 so the
-        // selection is mixed, then tap yellow — only verse 4 matches, so the tap
-        // paints both rather than clearing.
         viewModel.toggleVerse(5)
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
@@ -734,8 +709,6 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         viewModel.toggleVerse(9)
         viewModel.applyHighlight(.pink)
-        // The guard returns early without a store; the selection is untouched
-        // either way (the highlight path now always keeps the sheet open).
         #expect(viewModel.selectedVerses == [9])
     }
 
@@ -745,8 +718,6 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         viewModel.toggleVerse(9)
         viewModel.applyHighlight(.yellow)
-        // The write is fire-and-forget; the toast must surface so a failed
-        // write doesn't silently read as a successful highlight.
         await viewModel._waitForPendingHighlightWrite()
         #expect(viewModel.toast == "Couldn't save the highlight.")
     }
@@ -805,13 +776,10 @@ struct BibleScreenViewModelTests {
         let reference = try #require(viewModel.makeChapterReference())
         #expect(reference.appletID == "bible")
         #expect(reference.kind == "verseRange")
-        // No verse component — the chapter citation drops the ":N" clause.
         #expect(reference.citation == "1 Peter 2 (KJV)")
         #expect(reference.displayLabel == "1 Peter 2 (KJV)")
-        // Snapshot carries the whole chapter — at minimum the famous v9.
         #expect(reference.snapshot.contains("chosen race") || reference.snapshot.contains("chosen generation"))
-        // sourceID encodes every verse in the chapter so a round-trip can
-        // unambiguously rebuild the range. 1 Peter 2 has 25 verses (KJV).
+        // Encode all verse numbers so the reference round-trips the whole chapter range.
         #expect(reference.sourceID.hasPrefix("KJV/1PE/2/"))
         let verses = reference.sourceID
             .split(separator: "/").last
@@ -839,7 +807,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()                          // 1 Peter 2 has 25 verses
 
         viewModel.startNarration()
-        // Starting is synchronous; only playback events arrive asynchronously.
+        // Start is synchronous; only playback events require async consumption.
         #expect(service.startCallCount == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == Array(1...25))
@@ -922,10 +890,6 @@ struct BibleScreenViewModelTests {
         controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.stepChapter(.next)
-        // Strict `== 1`, not `>= 1`: `NarrationController.stop()`
-        // guards on `state != .idle`, so the one navigation action
-        // here forwards to `service.stop()` exactly once. A loose
-        // bound would let a double-stop regression slip through.
         #expect(service.stopCallCount == 1)
     }
 
@@ -1034,7 +998,6 @@ struct BibleScreenViewModelTests {
     func openReferenceOutOfRangeChapterIsNoOp() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // Genesis has 50 chapters.
         viewModel.openReference(bookId: "GEN", chapterNumber: 51, verseStart: 1, verseEnd: nil)
 
         #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
@@ -1053,7 +1016,6 @@ struct BibleScreenViewModelTests {
     func openReferenceDropsOutOfRangeVerses() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // Revelation 22 has 21 verses; 22 is past the end.
         viewModel.openReference(bookId: "REV", chapterNumber: 22, verseStart: 22, verseEnd: 22)
 
         #expect(viewModel.position == BiblePosition(bookId: "REV", chapterNumber: 22))
@@ -1065,7 +1027,6 @@ struct BibleScreenViewModelTests {
     func openReferenceClampsPartlyOutOfRange() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // Revelation 22:20-23 → only 20 and 21 exist.
         viewModel.openReference(bookId: "REV", chapterNumber: 22, verseStart: 20, verseEnd: 23)
 
         #expect(viewModel.selectedVerses == [20, 21])
@@ -1123,7 +1084,6 @@ struct BibleScreenViewModelTests {
 
         #expect(viewModel.consumePendingScrollVerse() == 28)
         #expect(viewModel.pendingScrollVerse == nil)
-        // A second consume is a no-op — returns nil and the slot stays clear.
         #expect(viewModel.consumePendingScrollVerse() == nil)
     }
 }

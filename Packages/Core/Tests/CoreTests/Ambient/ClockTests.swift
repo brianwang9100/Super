@@ -2,7 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `SystemClock` and the deterministic `FixedClock`.
 @Suite("Clock")
 struct ClockTests {
     @Test func systemClockReturnsRecentNow() {

@@ -2,12 +2,7 @@ import Core
 import Foundation
 import GRDB
 
-/// GRDB-backed `BibleBookmarkRepository` over the `bibleBookmark` table.
-///
-/// `toggle` runs all of its decision inside one `DatabaseQueue.write` — a
-/// single transaction — so the delete-then-insert sequence that implements
-/// "move" and "replace" can never violate the table's two UNIQUE indexes
-/// mid-flight. New rows get a UUID from the injected `IDGenerator`.
+// Decide, delete, and insert in one transaction to preserve both uniqueness constraints.
 public struct GRDBBibleBookmarkRepository: BibleBookmarkRepository {
     private let queue: DatabaseQueue
     private let ids: any IDGenerator
@@ -28,12 +23,9 @@ public struct GRDBBibleBookmarkRepository: BibleBookmarkRepository {
                 .filter(Column("colorId") == color.rawValue)
                 .fetchOne(db)
             if let colorRow, colorRow.bookId == bookId, colorRow.chapterNumber == chapterNumber {
-                // The chapter's own ribbon — toggle it off.
                 try colorRow.delete(db)
                 return
             }
-            // Free the colour's previous chapter (move) and the chapter's
-            // previous colour (replace), then land the new assignment.
             try colorRow?.delete(db)
             try BibleBookmarkRecord
                 .filter(Column("bookId") == bookId)

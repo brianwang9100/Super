@@ -1,12 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for the bookmark surfaces' factored VoiceOver label builders — the
-/// chapter-title glyph (`BibleChapterReader.chapterBookmarkLabel`), the sheet's
-/// slot cards (`BookmarkSlotButton.label`), and the book picker's row cluster +
-/// chapter-cell labels (`BibleBookSheet.bookBookmarksLabel` /
-/// `chapterCellLabel`). `@MainActor` because the statics live on `View` types,
-/// whose members are MainActor-isolated.
 @Suite("Bookmark accessibility labels")
 @MainActor
 struct BookmarkAccessibilityTests {

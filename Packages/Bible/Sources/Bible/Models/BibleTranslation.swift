@@ -1,16 +1,11 @@
-/// One of the bundled Bible translations.
-///
-/// All four are public-domain, Protestant-canon translations whose text ships in
-/// the prebuilt `bible-text.sqlite`. The raw value is the storage code persisted
-/// in `BibleReadingPositionRecord` and the `translation` key `DatabaseBibleTextLoader`
-/// (and `bible.search`) resolve rows by.
+/// Public-domain translations bundled in bible-text.sqlite. Raw values are the
+/// persisted reading-position and text-database lookup codes.
 public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identifiable {
-    /// King James Version (2006 public-domain edition) — the default, and the
-    /// first row in the picker.
+    /// King James Version, 2006 public-domain edition.
     case kjv = "KJV"
-    /// World English Bible — the canon `BibleBookCatalog` is verified against.
+    /// World English Bible; the catalog's fixture reference.
     case web = "WEB"
-    /// American Standard Version (1901).
+    /// American Standard Version, 1901.
     case asv = "ASV"
     /// Berean Standard Bible — the modern-English option, released into the
     /// public domain under Creative Commons Zero on 2023-04-30.
@@ -18,7 +13,6 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
 
     public var id: String { rawValue }
 
-    /// Full translation name shown as the picker row's subtitle.
     public var name: String {
         switch self {
         case .web: "World English Bible"
@@ -28,11 +22,9 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
         }
     }
 
-    /// The translation a fresh install opens in.
     public static let defaultTranslation: BibleTranslation = .kjv
 
-    /// The translation for a stored code, falling back to the default when
-    /// the code is unknown — a persisted row from a future build, say.
+    /// Unknown stored codes fall back to the default translation.
     public static func named(_ code: String) -> BibleTranslation {
         BibleTranslation(rawValue: code) ?? .defaultTranslation
     }

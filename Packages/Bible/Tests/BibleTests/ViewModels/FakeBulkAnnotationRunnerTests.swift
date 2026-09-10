@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `FakeBulkAnnotationRunner` — the in-memory engine stand-in driving
-/// the bulk UI. Stepped deterministically (`autoAdvance: false`, manual
-/// `step()`), so there are no sleeps or yield-polling.
 @Suite("FakeBulkAnnotationRunner")
 @MainActor
 struct FakeBulkAnnotationRunnerTests {

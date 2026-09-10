@@ -1,26 +1,8 @@
 import Core
 import Foundation
 
-/// Shared convention for the native web-search cost gate and for asking a
-/// native provider to enable its own server-side web search on a turn,
-/// without changing the frozen
-/// `LLMProvider.stream(messages:model:tools:temperature:)` signature.
-///
-/// Two tool names travel in the `tools` array:
-///
-/// - ``sentinelToolName`` (``sentinelTool``) — an internal token the
-///   `ChatSession` turn loop appends when native search should run *this
-///   turn*. Each native adapter recognizes it via ``partition(_:)``,
-///   translates it into that provider's server-tool descriptor
-///   (`{"type":"web_search"}`, `{"google_search":{}}`, …), and strips it
-///   from the normal function-tool list. The model never sees it.
-/// - ``proposalToolName`` (``proposalTool``) — a real client function the
-///   model *does* see, used only while the cost gate is ON. The model calls
-///   `request_web_search(query, reason)` instead of searching directly; the
-///   turn loop parks that call at `.awaitingConfirmation`, and on approval
-///   re-issues the turn with the sentinel instead. See `ChatSession`'s turn
-///   loop for the gate mechanics and `docs/superpowers/specs/`
-///   `2026-05-31-native-web-search-providers-design.md` §7.
+/// Carries either a user-visible search proposal or an internal provider-search
+/// sentinel through the existing tools parameter.
 enum NativeWebSearch {
     /// `ModelConfiguration.searchBackend` / `LLMModel.searchBackend` value
     /// that selects a provider's own server-side search. Stays an untyped
@@ -29,10 +11,6 @@ enum NativeWebSearch {
     /// here so the comparison isn't a scattered magic literal.
     static let nativeBackendValue = "native"
 
-    /// Whether the active model opted into the provider's native web search.
-    /// The native adapter stamps `searchBackend` onto the `LLMModel` it
-    /// vends (from its `ModelConfiguration`), so the turn loop reads it off
-    /// the model it already holds — no new `send(...)` parameter.
     static func usesNativeSearch(_ model: LLMModel) -> Bool {
         model.searchBackend == nativeBackendValue
     }
@@ -46,9 +24,6 @@ enum NativeWebSearch {
     /// that reads it is plain, testable production code.
     static let mockBackendValue = "debug"
 
-    /// Whether the active model opted into the client-side mock search
-    /// backend. Mutually exclusive with ``usesNativeSearch(_:)`` — a model
-    /// carries one `searchBackend` value.
     static func usesMockSearch(_ model: LLMModel) -> Bool {
         model.searchBackend == mockBackendValue
     }

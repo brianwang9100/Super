@@ -1,9 +1,6 @@
 import Testing
 @testable import Core
 
-/// Verifies the context-window classification that drives compact-vs-full
-/// prompt assembly: on-device windows fall in `.compact`, every cloud/BYOK
-/// window in `.full`.
 @Suite("ModelContextTier")
 struct ModelContextTierTests {
     @Test("on-device windows (4096, 8192) classify as compact")

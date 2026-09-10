@@ -1,25 +1,9 @@
-// `import Combine` is mandatory, not stray: `ValueObservationQueryable`
-// inherits `Queryable`, whose `ValuePublisher` associated type resolves
-// to an `AnyPublisher`. Conforming to it needs the `AnyPublisher:
-// Publisher` conformance visible here or the build fails. No Combine
-// data flow is used — observation runs through GRDB's
-// `ValueObservation` and `@Query`. Matches the convention in
-// `ChapterAnnotationsRequest`.
+// Required for GRDBQuery's AnyPublisher conformance; data flow still uses @Query.
 import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing every annotation row for one specific
-/// target (a book, a chapter, or a single verse range).
-///
-/// Drives the `AnnotationSheet`'s `@Query` so the sheet re-renders
-/// whenever a row in this exact group is inserted, replaced, or deleted —
-/// including writes from elsewhere (the chapter reader's regenerate path,
-/// an in-chat tool call, the bulk runner).
-///
-/// Returns rows ordered by `(createdAt ASC, id ASC)` — insertion order,
-/// matching `ChapterAnnotationsRequest`. One row per target is the steady
-/// state (replace semantics); the container renders the newest row.
+/// Observes one exact target group, ordered by createdAt ASC then id ASC.
 public struct BibleAnnotationsByTargetRequest: ValueObservationQueryable {
     public static var defaultValue: [BibleAnnotationRecord] { [] }
 

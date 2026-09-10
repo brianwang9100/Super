@@ -3,11 +3,7 @@ import Testing
 import WebKit
 @testable import Chat
 
-/// Unit tests for the pure policy backing `GeminiSearchSuggestionsView` — the
-/// height clamp and the navigation decision. The live `WKWebView` itself is
-/// verified by container layout + manual render (per the web-search spec §0 #8:
-/// a `WKWebView` doesn't snapshot deterministically), so the testable surface is
-/// this toolkit-free logic.
+// WKWebView rendering is nondeterministic; this suite checks policy and geometry only.
 @Suite("GeminiSearchSuggestions")
 @MainActor
 struct GeminiSearchSuggestionsTests {
@@ -15,7 +11,6 @@ struct GeminiSearchSuggestionsTests {
 
     @Test func clampHeightHonorsBounds() {
         #expect(GeminiSearchSuggestions.clampHeight(44) == 44)
-        // Below the floor clamps up; above the ceiling clamps down.
         #expect(GeminiSearchSuggestions.clampHeight(4) == GeminiSearchSuggestions.minHeight)
         #expect(GeminiSearchSuggestions.clampHeight(10_000) == GeminiSearchSuggestions.maxHeight)
     }
@@ -23,8 +18,6 @@ struct GeminiSearchSuggestionsTests {
     @Test func clampHeightFallsBackForNonFiniteOrEmpty() {
         #expect(GeminiSearchSuggestions.clampHeight(0) == GeminiSearchSuggestions.minHeight)
         #expect(GeminiSearchSuggestions.clampHeight(-20) == GeminiSearchSuggestions.minHeight)
-        // Non-finite values (NaN / ±infinity) fail the `isFinite` guard and
-        // fall back to the floor rather than the ceiling.
         #expect(GeminiSearchSuggestions.clampHeight(.nan) == GeminiSearchSuggestions.minHeight)
         #expect(GeminiSearchSuggestions.clampHeight(.infinity) == GeminiSearchSuggestions.minHeight)
     }
@@ -32,8 +25,7 @@ struct GeminiSearchSuggestionsTests {
     // MARK: - Navigation policy
 
     @Test func initialDocumentLoadIsAllowed() {
-        // The `loadHTMLString` document is an `.other` navigation; only the
-        // first one (the initial load) is permitted.
+        // loadHTMLString arrives as an .other navigation, so permit only the initial one.
         let decision = GeminiSearchSuggestions.decide(
             navigationType: .other,
             url: URL(string: "about:blank"),
@@ -43,8 +35,7 @@ struct GeminiSearchSuggestionsTests {
     }
 
     @Test func subsequentNonUserNavigationIsCancelled() {
-        // A later `.other` navigation (a redirect/injected nav, not a user tap)
-        // must be blocked so a BYOK proxy can't drive the web view.
+        // Block injected navigation and redirects from provider-supplied HTML.
         let decision = GeminiSearchSuggestions.decide(
             navigationType: .other,
             url: URL(string: "https://evil.example.com"),
@@ -64,7 +55,6 @@ struct GeminiSearchSuggestionsTests {
     }
 
     @Test func userTapOnNonWebLinkIsCancelled() {
-        // A custom-scheme link (e.g. injected `app://`/`tel:`) is not opened.
         let decision = GeminiSearchSuggestions.decide(
             navigationType: .linkActivated,
             url: URL(string: "tel:5551234"),

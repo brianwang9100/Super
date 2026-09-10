@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Verifies that opt-in completion validation survives each real adapter's final flush.
 @Suite("Strict provider completion")
 struct StrictProviderCompletionTests {
     enum Backend: String, CaseIterable, Sendable {

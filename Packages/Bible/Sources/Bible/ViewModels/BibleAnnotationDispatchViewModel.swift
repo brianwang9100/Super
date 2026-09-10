@@ -2,7 +2,7 @@ import Core
 import Foundation
 import Observation
 
-/// Applet-lifetime state for one-off annotation requests shared by every Bible reader.
+/// Shares one-off annotation requests across Bible readers for the applet lifetime.
 @MainActor
 @Observable
 public final class BibleAnnotationDispatchViewModel {
@@ -15,7 +15,6 @@ public final class BibleAnnotationDispatchViewModel {
     private var completionCallbacks: [@MainActor () -> Void] = []
     private var progressCallbacks: [@MainActor () -> Void] = []
 
-    /// Creates an unattached dispatcher. Call ``attach(to:)`` during applet bootstrap.
     public init() {}
 
     /// Subscribes once to annotation progress and completion events on the shared bus.
@@ -41,12 +40,11 @@ public final class BibleAnnotationDispatchViewModel {
         self.attachmentTask = nil
     }
 
-    /// Returns the current request state for an annotation target.
     public func status(for target: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
         statusByTarget[target]
     }
 
-    /// Returns shared transient text, including completed text awaiting query acknowledgement.
+    /// Retains completed text until the observing query acknowledges it.
     public func draft(for target: BibleAnnotationTargetSpec) -> BibleAnnotationDraft? {
         draftsByTarget[target]
     }
@@ -59,7 +57,6 @@ public final class BibleAnnotationDispatchViewModel {
         clearFailure(for: target)
     }
 
-    /// Starts a request, joins an existing request for the target, or reports no attached bus.
     public func request(
         reference: RecordReference,
         for target: BibleAnnotationTargetSpec
@@ -147,12 +144,8 @@ public final class BibleAnnotationDispatchViewModel {
     }
 }
 
-/// The immediate outcome of asking the shared annotation dispatcher to start work.
 public enum BibleAnnotationDispatchResult: Sendable, Equatable {
-    /// A new request was accepted and published with `requestId`.
     case started(requestId: String)
-    /// The target already has a running request, identified by `requestId`.
     case alreadyRunning(requestId: String)
-    /// No event bus is attached, so the caller should use its local fallback.
     case unavailable
 }

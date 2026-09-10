@@ -4,19 +4,10 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `TitleGenerator`'s model resolution, prompt assembly, stream
-/// consumption, and title cleanup. The provider is the in-tree
-/// `FakeLLMProvider` from `Helpers/`, so no network or real LLM is touched.
-/// The summarizer model + toggle are read from an in-memory
-/// `ChatSettingsStore`.
 @Suite("TitleGenerator")
 struct TitleGeneratorTests {
     private let model = OrchestrationFixtures.defaultModel()
 
-    /// Build a store whose title-summarization toggle and selected model id
-    /// are seeded directly. Defaults select the fixture provider by its
-    /// **record id** (`"fake"`, the default `FakeLLMProvider.id`) so the title
-    /// path resolves through `provider(id:)`.
     private func makeStore(enabled: Bool = true, titleModelId: String? = "fake") async -> ChatSettingsStore {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
@@ -111,8 +102,6 @@ struct TitleGeneratorTests {
     @Test("Disabled toggle returns nil and never calls the provider")
     func generateSkipsWhenSummarizationDisabled() async throws {
         let provider = FakeLLMProvider(model: model)
-        // No script enqueued: a stream call would `fatalError`, proving the
-        // provider must not be touched when titling is off.
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
@@ -144,7 +133,6 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        // titleModelId: nil ⇒ automatic ⇒ AFM.
         let generator = TitleGenerator(
             llmProviderRegistry: registry,
             settingsStore: await makeStore(titleModelId: nil)
@@ -160,7 +148,6 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        // Selected id points at a model no registered provider serves.
         let generator = TitleGenerator(
             llmProviderRegistry: registry,
             settingsStore: await makeStore(titleModelId: "deleted-model-id")
@@ -173,12 +160,7 @@ struct TitleGeneratorTests {
 
     @Test("Two providers sharing a modelId: titling routes to the selected record, not the first")
     func generateRoutesBySharedModelIdRecord() async throws {
-        // End-to-end convergence regression. Both providers vend the same
-        // `model.id` ("debug-default") but have distinct record ids — the debug
-        // canned / mock-search shape. `titleModelId` names the mock-search
-        // record, so only that provider must stream. The old `forModelId` scan
-        // resolved to the first by sorted id ("debug-canned"), titling from the
-        // wrong provider.
+        // Shared upstream model IDs must still resolve to the selected configuration provider.
         let shared = LLMModel(
             id: "debug-default", displayName: "Debug",
             supportsThinking: false, supportsTools: false, maxContextTokens: 8_192
@@ -206,7 +188,6 @@ struct TitleGeneratorTests {
         let title = await generator.generate(userText: "Hi", assistantText: "Hello")
 
         #expect(title == "Mock title")
-        // The canned provider must never have been asked to stream.
         #expect(await canned.capturedRequests().isEmpty)
     }
 
@@ -230,17 +211,12 @@ struct TitleGeneratorTests {
         let captured = await provider.capturedRequests()
         #expect(captured.count == 1)
         #expect(captured.first?.messages.map(\.role) == [.system, .user])
-        // Tools must be empty so a tools-capable model doesn't try to
-        // invoke a tool when generating a title.
         #expect(captured.first?.tools.isEmpty == true)
 
         if case .text(let userText) = captured.first?.messages.last?.content.first {
             #expect(userText.contains("first user line"))
             #expect(userText.contains("first assistant line"))
-            // `/no_think` skips Qwen3's reasoning chain on the title
-            // call. Pinned to the trailing position because the chat
-            // template scans for it as the last token of the user
-            // message.
+            // The Qwen chat template expects /no_think at the end of the user message.
             #expect(userText.hasSuffix("/no_think"))
         } else {
             Issue.record("expected user message to be a text block, got \(String(describing: captured.first?.messages.last?.content))")
@@ -265,10 +241,6 @@ struct TitleGeneratorTests {
 
     @Test("Two rows sharing a modelId resolve to the picked record id, not the first")
     func resolveDistinguishesSharedModelId() {
-        // The convergence guarantee for the title path: two providers vending
-        // the same `model.id` (the debug canned/mock-search case) must resolve
-        // by record id. The old `forModelId` scan returned the first by sorted
-        // id ("debug-canned"); keying on record id returns exactly the pick.
         let canned = selectable(recordId: "debug-canned", modelId: "debug-default")
         let mock = selectable(recordId: "debug-mock-search", modelId: "debug-default")
         let resolved = TitleGenerator.resolveTitleModel(
@@ -281,7 +253,6 @@ struct TitleGeneratorTests {
     func resolveLegacyModelId() {
         let a = selectable(recordId: "rec-a", modelId: "a")
         let b = selectable(recordId: "rec-b", modelId: "b")
-        // "b" is a model id, not a record id — the back-compat branch maps it.
         #expect(TitleGenerator.resolveTitleModel(selectedRecordId: "b", available: [a, b])?.recordId == "rec-b")
     }
 
@@ -296,7 +267,6 @@ struct TitleGeneratorTests {
         let afm = selectable(recordId: "afm", modelId: AppleFoundationLLMProvider.defaultModelID)
         let other = selectable(recordId: "other", modelId: "other")
         #expect(TitleGenerator.resolveTitleModel(selectedRecordId: nil, available: [other, afm])?.recordId == "afm")
-        // AFM not in the available list (unsupported device) ⇒ none.
         #expect(TitleGenerator.resolveTitleModel(selectedRecordId: nil, available: [other]) == nil)
     }
 
@@ -322,7 +292,6 @@ struct TitleGeneratorTests {
     }
 }
 
-/// In-memory `SettingRepository` for the title-summarizer tests.
 private actor InMemorySettingRepository: SettingRepository {
     private var storage: [String: String] = [:]
 

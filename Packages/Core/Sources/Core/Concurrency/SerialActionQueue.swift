@@ -6,16 +6,12 @@ public final class SerialActionQueue {
     private var tail: Task<Void, Never>?
     private var pendingCount = 0
 
-    /// Whether an action is executing or waiting, reserved before enqueue returns.
+    /// Becomes true synchronously when an action reserves the lane.
     public var isBusy: Bool { pendingCount > 0 }
 
-    /// Creates an empty action queue.
     public init() {}
 
-    /// Reserves a place in the lane and returns a task for joining this action.
-    /// The entire predecessor finishes before the action starts. Work is not
-    /// superseded or rolled back; callers should await the handle rather than
-    /// cancel it to implement navigation replacement.
+    /// Returns a join handle; cancelling it is not a supported replacement mechanism.
     @discardableResult
     public func enqueue(_ action: @escaping @MainActor @Sendable () async -> Void) -> Task<Void, Never> {
         let predecessor = tail
@@ -29,14 +25,11 @@ public final class SerialActionQueue {
         return task
     }
 
-    /// Runs synchronous work inline when idle, retaining the caller's transaction.
-    /// While busy, returns a task that joins this action after all earlier work.
-    /// A nil result means the action already completed inline.
+    /// Runs inline when idle; otherwise returns a handle for the queued action.
     @discardableResult
     public func enqueueSynchronous(_ action: @escaping @MainActor @Sendable () -> Void) -> Task<Void, Never>? {
         guard !isBusy else { return enqueue { action() } }
-        // Reserve during the callback too, so reentrant submissions queue instead
-        // of executing inside a partially completed synchronous action.
+        // Reserve before the callback so reentrant submissions queue behind it.
         pendingCount += 1
         defer { finishAction() }
         action()

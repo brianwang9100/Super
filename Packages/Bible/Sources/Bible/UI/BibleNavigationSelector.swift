@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Chapter history and both pickers share one glass surface and independent actions.
 struct BibleNavigationSelector: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -114,7 +113,7 @@ struct BibleNavigationSelector: View {
             .accessibilityHidden(true)
     }
 
-    /// Adjacent compact tap regions retain the approved 28 pt glyph-center spacing.
+    /// The opposing image offsets keep adjacent glyph centers 28 points apart.
     private func historyButton(
         image: String, offset: CGFloat, label: String,
         destination: String?, action: @escaping () -> Void

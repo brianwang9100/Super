@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `SidebarViewModel.refresh()` — list ordering, running set
-/// projection, and graceful repository-error fallback.
 @Suite("SidebarViewModel")
 @MainActor
 struct SidebarViewModelTests {
@@ -50,7 +48,7 @@ struct SidebarViewModelTests {
 
         repo.shouldThrow = true
         await vm.refresh()
-        #expect(vm.chats.count == 1) // unchanged
+        #expect(vm.chats.count == 1)
     }
 
     @Test("running ids surface as ChatItem.running flag")
@@ -86,7 +84,6 @@ struct SidebarViewModelTests {
         await vm.refresh()
         #expect(vm.chats.count == 10)
         #expect(vm.hasMoreChats == true)
-        // Newest first: row-14 ... row-5.
         #expect(vm.chats.first?.id == "row-14")
         #expect(vm.chats.last?.id == "row-5")
     }
@@ -136,12 +133,6 @@ struct SidebarViewModelTests {
                 checkpointRepository: NoopCheckpointRepository()
             )
         )
-        // Note: we don't have a way to seed the running set without
-        // actually starting sessions. The pure projection that
-        // `runningConversations()` returns is read by `refresh()`, and
-        // `runningConversations()` returns []` for an empty store. This
-        // lets the "running flag projection" test exercise the shape via
-        // the dedicated test seam below.
     }
 }
 

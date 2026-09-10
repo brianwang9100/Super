@@ -6,15 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `VerseTrailers` — the inline glyph cluster after a verse
-/// number. The co-trailing variant (annotation bubble + note glyph) is the
-/// load-bearing case: it locks the stable left-to-right order and the 3pt
-/// gap before PR3 folds the cluster into `VerseFlowLayout`. The single
-/// variants confirm each glyph collapses without leaving a gap.
 @Suite("VerseTrailers snapshots", .serialized)
 @MainActor
 struct VerseTrailersSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("annotation + note co-trail in stable order, light")
@@ -55,8 +49,6 @@ struct VerseTrailersSnapshotTests {
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
-        // A faux verse number anchors the cluster so the baseline shows the
-        // trailers in the context they render in — after type, not floating.
         let view = ZStack {
             theme.background
             HStack(alignment: .firstTextBaseline, spacing: 0) {

@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Small spinning spark shown while the assistant is "thinking" but
-/// hasn't streamed any text yet. Rotates linearly so the user has a
-/// clear "still working" cue during the gap between submit and first
-/// delta. Reduce Motion swaps the rotation for a static accent-colored
-/// spark — the icon still communicates "we're processing" without the
-/// continuous spin.
 struct WaitingSpark: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

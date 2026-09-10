@@ -6,10 +6,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for the empty-state brand glyph in both per-target variants —
-/// the default `.spark` (SuperOS) and the `.star` override (SuperBible) —
-/// each in Vellum light and dark. The glyph is a fixed-size shape with no
-/// text, so there is no Dynamic Type reflow variant.
 @Suite("ChatEmptyState snapshots", .serialized)
 @MainActor
 struct ChatEmptyStateSnapshotTests {

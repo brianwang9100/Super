@@ -1,28 +1,21 @@
 import Foundation
 import GRDB
 
-/// The reader's last-open chapter, persisted so a relaunch lands where they
-/// left off.
-///
-/// Exactly one row ever exists, keyed by the constant `id` `"current"`:
-/// there is no per-book history, just a single moving cursor. `translationId`
-/// holds a `BibleTranslation` raw value — the reader's chosen translation.
+/// A single persisted reader cursor keyed by currentID, with its bounded navigation history.
 public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleReadingPosition"
 
-    /// The sole row's primary key — always `Self.currentID`.
+    /// Always Self.currentID.
     public var id: String
-    /// Three-letter book code, e.g. `"1PE"`.
     public var bookId: String
     /// 1-based chapter number.
     public var chapterNumber: Int
-    /// Translation short code — a `BibleTranslation` raw value, e.g. `"KJV"`.
+    /// Persisted BibleTranslation raw value.
     public var translationId: String
     public var updatedAt: Date
     /// A separately decoded, versioned navigation-history envelope.
     public var navigationHistoryJSON: String?
 
-    /// The fixed primary key of the single reading-position row.
     public static let currentID = "current"
 
     public init(

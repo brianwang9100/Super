@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Unit tests for `ToolWireNameCodec` / `ToolWireNameMap` — the wire-level
-/// tool-name sanitizer the OpenAI and Anthropic adapters use because those
-/// APIs reject Super's dot-namespaced tool IDs (`^[a-zA-Z0-9_-]+$`).
 @Suite("ToolWireNameCodec")
 struct ToolWireNameCodecTests {
     private func makeTool(name: String) -> LLMTool {
@@ -42,12 +39,10 @@ struct ToolWireNameCodecTests {
 
     @Test func unknownWireNamePassesThroughUnchanged() {
         let map = ToolWireNameMap(tools: [makeTool(name: "time.now")])
-        // Server tools or a hallucinated name must not be rewritten.
         #expect(map.originalName(forWire: "web_search") == "web_search")
     }
 
     @Test func unadvertisedOriginalFallsBackToPureSanitizer() {
-        // Replayed history of a since-disabled tool still encodes consistently.
         let map = ToolWireNameMap(tools: [])
         #expect(map.wireName(forOriginal: "todo.create") == "todo_create")
     }
@@ -57,7 +52,6 @@ struct ToolWireNameCodecTests {
         let first = map.wireName(forOriginal: "a.b")
         let second = map.wireName(forOriginal: "a_b")
         #expect(first != second)
-        // Both wire names reverse-map to their own original.
         #expect(map.originalName(forWire: first) == "a.b")
         #expect(map.originalName(forWire: second) == "a_b")
     }

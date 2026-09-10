@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for versioned Bible history encoding and corruption recovery.
 @Suite("BibleNavigationHistoryPayload")
 struct BibleNavigationHistoryPayloadTests {
     private let fallback = BiblePosition(bookId: "1PE", chapterNumber: 2)

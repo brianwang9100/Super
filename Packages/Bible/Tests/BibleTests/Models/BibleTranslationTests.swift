@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleTranslation` — code/name metadata and the `named(_:)`
-/// lookup's fallback when a stored code is unknown.
 @Suite("BibleTranslation")
 struct BibleTranslationTests {
     @Test("the four bundled translations are exposed in order")
