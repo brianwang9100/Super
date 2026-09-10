@@ -160,6 +160,38 @@ struct BibleNavBarSnapshotTests {
         if let failure { Issue.record("\(failure)") }
     }
 
+    @Test("the largest accessibility text fits without crowding navigation controls")
+    func largestAccessibility() {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false)
+            .dynamicTypeSize(.accessibility5)
+            .superTypography(.make(.serif, fontScale: 1.2))
+            .superTheme(.make(.vellumLight))
+        let size = UIHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: 320, height: 1000))
+        #expect(size.width <= 320)
+        #expect(size.height < 480)
+        let failure = verifyVisualSnapshot(
+            of: view.frame(width: 320, height: 480, alignment: .top)
+                .background(SuperTheme.make(.vellumLight).background),
+            as: .image(layout: .fixed(width: 320, height: 480)),
+            named: "largest_accessibility", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
+    @Test("large accessibility layouts fit compact screens and keep a single row on wide screens",
+          arguments: [DynamicTypeSize.accessibility4, .accessibility5], [320.0, 1024.0])
+    func accessibilityLayoutFits(typeSize: DynamicTypeSize, width: Double) {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false)
+            .dynamicTypeSize(typeSize)
+            .superTypography(.make(.serif, fontScale: 1.2))
+            .superTheme(.make(.vellumLight))
+        let size = UIHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: width, height: 1000))
+        #expect(size.width <= width)
+        #expect(size.height < (width == 320 ? 480 : 200))
+    }
+
     @Test("long book names fit in the primary row on compact iPhones",
           arguments: ["2 Corinthians", "2 Thessalonians", "Song of Solomon"], [320.0, 375.0])
     func longNamesStayInPrimaryRow(book: String, width: Double) {

@@ -51,13 +51,16 @@ struct BibleNavBar: View {
         GlassEffectContainer {
             if showsChapterChevrons {
                 adaptiveBar(historyControls)
-            } else {
-                HStack(alignment: .top, spacing: 8) {
-                    // Match the shell hamburger's 44pt frame and keep the pill anchored beside it.
-                    Color.clear.frame(width: 44, height: 44)
-                    navigationPill(historyControls, wraps: dynamicTypeSize.isAccessibilitySize)
-                        .frame(maxWidth: .infinity)
+            } else if dynamicTypeSize >= .accessibility4 {
+                ViewThatFits(in: .horizontal) {
+                    anchoredBar(historyControls)
+                    VStack(spacing: 8) {
+                        Color.clear.frame(height: 44)
+                        navigationPill(historyControls, wraps: true)
+                    }
                 }
+            } else {
+                anchoredBar(historyControls)
             }
         }
         .padding(.horizontal, 12)
@@ -71,6 +74,15 @@ struct BibleNavBar: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+    }
+
+    private func anchoredBar(_ controls: HistoryControls) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            // Match the shell hamburger's 44pt frame and keep the pill anchored beside it.
+            Color.clear.frame(width: 44, height: 44)
+            navigationPill(controls, wraps: dynamicTypeSize.isAccessibilitySize)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     /// Probe the ideal row width so the picker cannot squeeze into the utility buttons.
@@ -114,22 +126,53 @@ struct BibleNavBar: View {
     }
 
     private func navigationPill(_ controls: HistoryControls, wraps: Bool) -> some View {
-        HStack(spacing: 0) {
-            if let selectionCitation, showsSelectionPill {
-                selectionControls(selectionCitation, wraps: wraps)
+        Group {
+            if wraps, dynamicTypeSize.isAccessibilitySize {
+                ViewThatFits(in: .horizontal) {
+                    navigationRow(controls, wraps: wraps)
+                        .fixedSize(horizontal: true, vertical: false)
+                    VStack(spacing: 0) {
+                        passageControls(controls, wraps: wraps)
+                        Rectangle()
+                            .fill(theme.border.opacity(0.6))
+                            .frame(height: 1)
+                            .padding(.horizontal, 12)
+                            .accessibilityHidden(true)
+                        HStack(spacing: 0) {
+                            narrationButton
+                            divider
+                            actionsMenu
+                        }
+                    }
+                }
             } else {
-                navigationSelector(controls, wraps: wraps)
-                    .layoutPriority(-1)
+                navigationRow(controls, wraps: wraps)
             }
-            divider
-            narrationButton
-            divider
-            actionsMenu
         }
         .superGlassSurface(
             in: RoundedRectangle(cornerRadius: 22),
             morph: GlassMorphID("nav.center", in: glassNamespace)
         )
+    }
+
+    private func navigationRow(_ controls: HistoryControls, wraps: Bool) -> some View {
+        HStack(spacing: 0) {
+            passageControls(controls, wraps: wraps)
+            divider
+            narrationButton
+            divider
+            actionsMenu
+        }
+    }
+
+    @ViewBuilder
+    private func passageControls(_ controls: HistoryControls, wraps: Bool) -> some View {
+        if let selectionCitation, showsSelectionPill {
+            selectionControls(selectionCitation, wraps: wraps)
+        } else {
+            navigationSelector(controls, wraps: wraps)
+                .layoutPriority(-1)
+        }
     }
 
     private var divider: some View {
@@ -206,7 +249,8 @@ struct BibleNavBar: View {
             Image(systemName: "ellipsis")
                 .font(typography.font(size: glyphSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
-                .frame(width: 44, height: 44)
+                .padding(4)
+                .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
                 .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
@@ -224,7 +268,8 @@ struct BibleNavBar: View {
             Image(systemName: narrationState == .idle ? "speaker.wave.2" : "speaker.wave.2.fill")
                 .font(typography.font(size: glyphSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
-                .frame(width: 44, height: 44)
+                .padding(4)
+                .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))

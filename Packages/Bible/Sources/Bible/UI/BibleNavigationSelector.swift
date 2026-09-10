@@ -93,7 +93,7 @@ struct BibleNavigationSelector: View {
             .accessibilityHidden(true)
     }
 
-    /// The opposing image offsets keep adjacent glyph centers 28 points apart.
+    /// The opposing image offsets keep adjacent glyph centers 28 points apart at the default size.
     private func historyButton(
         image: String, offset: CGFloat, label: String,
         destination: String?, action: @escaping () -> Void
@@ -103,7 +103,8 @@ struct BibleNavigationSelector: View {
                 .font(typography.font(size: glyphSize, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .offset(x: offset)
-                .frame(width: 32, height: 44)
+                .padding(4)
+                .frame(minWidth: 32, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
