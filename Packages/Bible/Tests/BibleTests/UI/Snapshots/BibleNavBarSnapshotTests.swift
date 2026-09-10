@@ -73,7 +73,7 @@ struct BibleNavBarSnapshotTests {
                showsChapterChevrons: false)
     }
 
-    // MARK: - Narration trailing-control states
+    // MARK: - Narration states
 
     @Test("the narration speaker button renders in the light theme while speaking")
     func narratingSpeakerButtonSpeakingLight() {
@@ -96,7 +96,7 @@ struct BibleNavBarSnapshotTests {
                narrationState: .paused, narrationCitation: "1 Peter 2:9")
     }
 
-    @Test("the narration speaker button keeps the red selection dot when verses are selected")
+    @Test("the ellipsis keeps the selection indicator while narration remains available")
     func narratingSpeakerButtonWithSelectionDotLight() {
         verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
                name: "narrating_speaker_button_with_selection_light",
@@ -156,19 +156,18 @@ struct BibleNavBarSnapshotTests {
         let long = UIHostingController(rootView: SelectorSizeProbe(book: "2 Corinthians"))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
         #expect(long.width > short.width + 30)
-        #expect(long.width <= 231, "Leave room for both 44pt utility buttons and the toolbar gaps")
+        #expect(long.width <= 231, "Leave room for narration, actions, and the sidebar")
         #expect(short.height >= 44)
     }
 
     private struct SelectorSizeProbe: View {
-        @Namespace private var namespace
         let book: String
 
         var body: some View {
             BibleNavigationSelector(
                 bookName: book, chapterNumber: 13, translation: .web,
                 backLabel: nil, forwardLabel: nil, wraps: false, isRestoring: false,
-                morph: GlassMorphID("probe", in: namespace), onBack: {}, onForward: {}, onSelect: {}
+                onBack: {}, onForward: {}, onSelect: {}
             )
             .fixedSize()
             .superTheme(.make(.vellumLight))
@@ -194,8 +193,8 @@ struct BibleNavBarSnapshotTests {
             canStepBackward: canStepBackward, canStepForward: canStepForward,
             narrationState: narrationState, narrationCitation: narrationCitation,
             onPrevious: {}, onNext: {}, onPill: {},
-            onSelectionPill: {}, onClearSelection: {}, onSparkMenuAction: { _ in },
-            onTapNarrationPill: {}, historyControls: history
+            onSelectionPill: {}, onClearSelection: {}, onMenuAction: { _ in },
+            onNarration: {}, historyControls: history
         )
     }
 

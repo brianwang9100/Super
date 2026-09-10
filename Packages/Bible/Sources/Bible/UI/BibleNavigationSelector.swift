@@ -15,7 +15,6 @@ struct BibleNavigationSelector: View {
     let forwardLabel: String?
     let wraps: Bool
     let isRestoring: Bool
-    let morph: GlassMorphID
     let onBack: () -> Void
     let onForward: () -> Void
     let onSelect: () -> Void
@@ -40,7 +39,6 @@ struct BibleNavigationSelector: View {
                 horizontalRow
             }
         }
-        .superGlassSurface(in: RoundedRectangle(cornerRadius: 22), morph: morph)
         .disabled(isRestoring)
     }
 
@@ -75,7 +73,7 @@ struct BibleNavigationSelector: View {
                     .foregroundStyle(theme.inkSoft)
                     .fixedSize()
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.vertical, 8)
             .frame(minHeight: 44)
             .contentShape(Rectangle())

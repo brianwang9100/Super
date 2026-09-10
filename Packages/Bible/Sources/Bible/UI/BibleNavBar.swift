@@ -10,15 +10,16 @@ struct BibleNavBar: View {
     }
 
     /// Uses selected verses when present, otherwise the whole chapter.
-    enum SparkMenuAction: Sendable, Equatable {
+    enum MenuAction: Sendable, Equatable {
         case annotate
         case addToChat
         case newChat
-        case narrate
     }
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var selectionSize: CGFloat = 13
 
     @Namespace private var glassNamespace
 
@@ -38,8 +39,8 @@ struct BibleNavBar: View {
     let onPill: () -> Void
     let onSelectionPill: () -> Void
     let onClearSelection: () -> Void
-    let onSparkMenuAction: (SparkMenuAction) -> Void
-    let onTapNarrationPill: () -> Void
+    let onMenuAction: (MenuAction) -> Void
+    let onNarration: () -> Void
     /// Browser history stays separate from biblical chapter stepping.
     let historyControls: HistoryControls
     var isRestoringNavigation = false
@@ -65,13 +66,12 @@ struct BibleNavBar: View {
     /// Probe the ideal row width so the picker cannot squeeze into the utility buttons.
     private func adaptiveBar(_ controls: HistoryControls) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: 0) {
                 Color.clear.frame(width: 44, height: 44)
-                Spacer(minLength: 0)
+                    .padding(.trailing, 8)
                 centerControls(controls, wraps: false)
                     .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 0)
-                trailingControl
             }
 
             VStack(spacing: 8) {
@@ -83,7 +83,6 @@ struct BibleNavBar: View {
                         chapterButton(.next)
                     }
                     Spacer(minLength: 0)
-                    trailingControl
                 }
                 centerControls(controls, wraps: true)
             }
@@ -96,15 +95,36 @@ struct BibleNavBar: View {
             if showsChapterChevrons, selectionCitation == nil, !wraps {
                 chapterButton(.previous)
             }
-            if let selectionCitation, showsSelectionPill {
-                selectionPill(selectionCitation)
-            } else {
-                navigationSelector(controls, wraps: wraps)
-            }
+            navigationPill(controls, wraps: wraps)
             if showsChapterChevrons, selectionCitation == nil, !wraps {
                 chapterButton(.next)
             }
         }
+    }
+
+    private func navigationPill(_ controls: HistoryControls, wraps: Bool) -> some View {
+        HStack(spacing: 0) {
+            if let selectionCitation, showsSelectionPill {
+                selectionControls(selectionCitation, wraps: wraps)
+            } else {
+                navigationSelector(controls, wraps: wraps)
+            }
+            divider
+            narrationButton
+            divider
+            actionsMenu
+        }
+        .superGlassSurface(
+            in: RoundedRectangle(cornerRadius: 22),
+            morph: GlassMorphID("nav.center", in: glassNamespace)
+        )
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(theme.border.opacity(0.6))
+            .frame(width: 1, height: 16)
+            .accessibilityHidden(true)
     }
 
     private func chapterButton(_ direction: BibleChapterDirection) -> some View {
@@ -125,53 +145,57 @@ struct BibleNavBar: View {
             bookName: bookName, chapterNumber: chapterNumber, translation: translation,
             backLabel: controls.backLabel, forwardLabel: controls.forwardLabel,
             wraps: wraps, isRestoring: isRestoringNavigation,
-            morph: GlassMorphID("nav.center", in: glassNamespace),
             onBack: controls.onBack, onForward: controls.onForward,
             onSelect: onPill
         )
     }
 
-    private func selectionPill(_ citation: String) -> some View {
-        SelectionPill(
-            title: citation,
-            accessibilityLabel: "\(citation), show verse actions",
-            onAction: onSelectionPill,
-            onClear: onClearSelection,
-            morph: GlassMorphID("nav.center", in: glassNamespace)
-        )
-    }
+    private func selectionControls(_ citation: String, wraps: Bool) -> some View {
+        HStack(spacing: 0) {
+            Button(action: onSelectionPill) {
+                Text(citation)
+                    .font(typography.font(size: selectionSize, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(wraps ? nil : 1)
+                    .multilineTextAlignment(.center)
+                    .padding(.leading, 14)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassHapticButtonStyle(.selection))
+            .accessibilityLabel("\(citation), show verse actions")
 
-    // Preserve control geometry while changing idle/playback actions.
-    @ViewBuilder
-    private var trailingControl: some View {
-        switch narrationState {
-        case .idle:
-            sparkMenu
-        case .preparing, .speaking, .paused:
-            narrationButton
+            Button(action: onClearSelection) {
+                Image(systemName: "xmark")
+                    .font(typography.font(size: glyphSize * 0.6, weight: .bold))
+                    .foregroundStyle(theme.inkSoft)
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassHapticButtonStyle(.selection))
+            .accessibilityLabel("Clear selection")
         }
     }
 
-    private var sparkMenu: some View {
+    private var actionsMenu: some View {
         Menu {
-            Button { onSparkMenuAction(.annotate) } label: {
+            Button { onMenuAction(.annotate) } label: {
                 Label("Annotate", systemImage: "text.bubble")
             }
-            Button { onSparkMenuAction(.addToChat) } label: {
+            Button { onMenuAction(.addToChat) } label: {
                 Label("Add to chat", systemImage: "paperplane")
             }
-            Button { onSparkMenuAction(.newChat) } label: {
+            Button { onMenuAction(.newChat) } label: {
                 Label("Start a new chat", systemImage: "bubble.left.and.bubble.right")
             }
-            Button { onSparkMenuAction(.narrate) } label: {
-                Label("Narrate", systemImage: "speaker.wave.2")
-            }
         } label: {
-            Image(systemName: "sparkles")
-                .font(typography.font(size: 17, weight: .semibold))
+            Image(systemName: "ellipsis")
+                .font(typography.font(size: glyphSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+                .contentShape(Rectangle())
                 .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
         .menuStyle(.borderlessButton)
@@ -184,19 +208,20 @@ struct BibleNavBar: View {
     }
 
     private var narrationButton: some View {
-        Button(action: onTapNarrationPill) {
-            Image(systemName: "speaker.wave.2.fill")
-                .font(typography.font(size: 16, weight: .semibold))
+        Button(action: onNarration) {
+            Image(systemName: narrationState == .idle ? "speaker.wave.2" : "speaker.wave.2.fill")
+                .font(typography.font(size: glyphSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
-                .overlay(alignment: .topTrailing) { selectionDotOverlay }
+                .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
         // Keep the spoken citation accessible even though it is not drawn on this button.
         .accessibilityLabel(
-            narrationCitation.map { "Narrating \($0). Open transport controls." }
-                ?? "Open narration transport controls."
+            narrationState == .idle
+                ? selectionCitation.map { "Narrate \($0)" } ?? "Narrate chapter"
+                : narrationCitation.map { "Narrating \($0). Open transport controls." }
+                    ?? "Open narration transport controls."
         )
     }
 
@@ -207,7 +232,8 @@ struct BibleNavBar: View {
                 .fill(theme.errorAccent)
                 .frame(width: 11, height: 11)
                 .overlay(Circle().strokeBorder(theme.background, lineWidth: 2))
-                .offset(x: 2, y: -2)
+                .offset(x: -4, y: 2)
+                .accessibilityHidden(true)
         }
     }
 
@@ -218,7 +244,7 @@ struct BibleNavBar: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(typography.font(size: 16, weight: .medium))
+                .font(typography.font(size: glyphSize, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
                 .superGlassButton(in: Circle(), morph: GlassMorphID(morphID, in: glassNamespace))

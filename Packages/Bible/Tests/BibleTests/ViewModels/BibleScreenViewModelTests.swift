@@ -949,33 +949,45 @@ struct BibleScreenViewModelTests {
         #expect(service.startCallCount == 0)
     }
 
-    @Test("dismissing and reopening narration controls preserves the session", arguments: [
+    @Test("the toolbar speaker starts the chapter or selected verses", arguments: [false, true])
+    func toolbarNarrationStartsCurrentPassage(hasSelection: Bool) async {
+        let service = FakeNarrationService()
+        let viewModel = makeViewModel(narration: NarrationController(service: service))
+        await viewModel.load()
+        if hasSelection {
+            for verse in [9, 3, 5] { viewModel.toggleVerse(verse) }
+            viewModel.dismissActionSheet()
+        }
+
+        viewModel.toggleNarrationControls()
+
+        #expect(viewModel.isNarrationSheetPresented)
+        #expect(service.startCallCount == 1)
+        #expect(service.lastStartArgs?.utterances.map(\.verseNumber)
+            == (hasSelection ? [3, 5, 9] : Array(1...25)))
+    }
+
+    @Test("the toolbar speaker hides and reopens controls without restarting playback", arguments: [
         NarrationController.State.preparing, .speaking, .paused,
     ])
-    func dismissNarrationSheetPreservesSession(state: NarrationController.State) async throws {
+    func dismissNarrationSheetPreservesSession(state: NarrationController.State) async {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
         await viewModel.load()
 
-        #expect(viewModel.narrationAccessoryButton == nil)
-
         viewModel.startNarration()
         if state != .preparing { controller._simulateEvent(.started(verseNumber: 1)) }
         if state == .paused { controller._simulateEvent(.paused) }
-        #expect(viewModel.narrationAccessoryButton == nil)
 
-        viewModel.dismissNarrationSheet()
+        viewModel.toggleNarrationControls()
         #expect(!viewModel.isNarrationSheetPresented)
         #expect(controller.state == state)
         #expect(controller.currentVerseNumber == (state == .preparing ? nil : 1))
         #expect(service.stopCallCount == 0)
 
-        let button = try #require(viewModel.narrationAccessoryButton)
-        #expect(button.isEnabled)
-        button.action()
+        viewModel.toggleNarrationControls()
         #expect(viewModel.isNarrationSheetPresented)
-        #expect(viewModel.narrationAccessoryButton == nil)
         #expect(controller.state == state)
         #expect(service.startCallCount == 1)
         #expect(service.stopCallCount == 0)
@@ -985,7 +997,7 @@ struct BibleScreenViewModelTests {
         #expect(service.stopCallCount == 1)
         #expect(viewModel.isNarrationSheetPresented)
         viewModel.dismissNarrationSheet()
-        #expect(viewModel.narrationAccessoryButton == nil)
+        #expect(!viewModel.isNarrationSheetPresented)
     }
 
     // MARK: - openReference

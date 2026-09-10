@@ -9,8 +9,8 @@ import UIKit
 @Suite("BibleScreen narration lifecycle", .serialized)
 @MainActor
 struct BibleScreenNarrationLifecycleTests {
-    @Test("dismissed narration publishes a reopen button and clears it when stopped", .timeLimit(.minutes(1)))
-    func narrationAccessoryTracksPresentation() async throws {
+    @Test("narration keeps chapter and selection accessories without a redundant center button", .timeLimit(.minutes(1)))
+    func narrationKeepsChapterAndSelectionAccessories() async throws {
         let service = FakeNarrationService()
         let model = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
@@ -35,18 +35,24 @@ struct BibleScreenNarrationLifecycleTests {
         model.startNarration()
         model.narration._simulateEvent(.started(verseNumber: 1))
         model.dismissNarrationSheet()
-        await waitForAccessories(store) { $0.center != nil }
+        model.toggleVerse(3)
+        await waitForAccessories(store) { $0.selection != nil }
+        #expect(store.buttons.center == nil)
+        #expect(store.buttons.leading != nil)
+        #expect(store.buttons.trailing != nil)
 
-        try #require(store.buttons.center).action()
+        model.toggleNarrationControls()
         #expect(model.isNarrationSheetPresented)
         #expect(model.narration.state == .speaking)
         #expect(service.startCallCount == 1)
-        await waitForAccessories(store) { $0.center == nil }
 
         model.dismissNarrationSheet()
-        await waitForAccessories(store) { $0.center != nil }
+        model.clearSelection()
+        await waitForAccessories(store) { $0.selection == nil }
+        #expect(store.buttons.center == nil)
+        #expect(store.buttons.leading != nil)
+        #expect(store.buttons.trailing != nil)
         model.narration.stop()
-        await waitForAccessories(store) { $0.center == nil }
     }
 
     private func waitForAccessories(
