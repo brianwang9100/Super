@@ -43,7 +43,8 @@ struct BibleChapterPreviewSheet: View {
                 if let citation = viewModel.reader.selectionCitation {
                     SelectionPill(title: citation, accessibilityLabel: "Actions for \(citation)",
                                   onAction: { viewModel.reopenActions() },
-                                  onClear: { viewModel.reader.clearSelection() })
+                                  onClear: { viewModel.reader.clearSelection() },
+                                  disclosureSystemImage: "chevron.up")
                         .padding(.vertical, 8)
                         .padding(.horizontal, 14)
                 }

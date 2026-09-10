@@ -259,9 +259,6 @@ public final class BibleScreenViewModel {
         reader.isRestoringNavigation = false
         reader.openReference(bookId: link.bookId, chapterNumber: link.chapter,
                              verseStart: link.verseStart, verseEnd: link.verseEnd)
-        // Keep the exact selection and pending scroll, but wait for the native
-        // chapter presentation to complete before opening its child action sheet.
-        reader.dismissActionSheet()
         return reader
     }
 
@@ -415,7 +412,7 @@ public final class BibleScreenViewModel {
 
     /// Open the reader at a specific verse range — switches book/chapter
     /// if needed, then pre-selects the verses so the reader lands with
-    /// them highlighted (the same look as having just tapped them).
+    /// them highlighted. Actions remain closed until explicitly requested.
     ///
     /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
     /// and the applet's inbox. Preview requests never call this API; explicit
@@ -512,7 +509,7 @@ public final class BibleScreenViewModel {
         // leaves this `nil` so the new chapter just snaps to its top
         // like a manual nav.
         pendingScrollVerse = selectedVerses.min()
-        isActionSheetPresented = !selectedVerses.isEmpty
+        dismissActionSheet()
         persist()
         bookSheet = nil
     }

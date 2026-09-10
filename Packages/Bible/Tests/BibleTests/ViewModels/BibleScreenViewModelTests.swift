@@ -468,18 +468,25 @@ struct BibleScreenViewModelTests {
         #expect(service.stopCallCount == 1)
     }
 
-    @Test("deep links reopen dismissed actions and out-of-range references close them")
-    func openingReferenceUpdatesActionSheet() async {
+    @Test("deep links select and scroll without opening actions", arguments: [false, true], [false, true])
+    func openingReferenceKeepsActionsClosed(sameChapter: Bool, actionsOpen: Bool) async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        viewModel.toggleVerse(9)
-        viewModel.dismissActionSheet()
+        viewModel.toggleVerse(4)
+        if !actionsOpen { viewModel.dismissActionSheet() }
 
-        viewModel.openReference(bookId: "1PE", chapterNumber: 2, verseStart: 9, verseEnd: nil)
+        let bookId = sameChapter ? "1PE" : "ROM"
+        let chapterNumber = sameChapter ? 2 : 8
+        viewModel.openReference(bookId: bookId, chapterNumber: chapterNumber, verseStart: 9, verseEnd: 10)
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [9, 10])
+        #expect(viewModel.pendingScrollVerse == 9)
+
+        viewModel.presentActionSheet()
         #expect(viewModel.isActionSheetPresented)
-        #expect(viewModel.selectedVerses == [9])
+        #expect(viewModel.selectedVerses == [9, 10])
 
-        viewModel.openReference(bookId: "1PE", chapterNumber: 2, verseStart: 99, verseEnd: nil)
+        viewModel.openReference(bookId: bookId, chapterNumber: chapterNumber, verseStart: 99, verseEnd: nil)
         #expect(!viewModel.isActionSheetPresented)
         #expect(viewModel.selectedVerses.isEmpty)
     }

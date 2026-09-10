@@ -24,7 +24,6 @@ final class BibleChapterPreviewViewModel {
     func presentationDidComplete(identity: UUID) {
         guard identity == self.identity, isActive, !isFinishing, !isReady else { return }
         isReady = true
-        reader.presentActionSheet()
     }
 
     func reopenActions() {
