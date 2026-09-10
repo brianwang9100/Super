@@ -43,7 +43,9 @@ struct BibleSelectionSheet: View {
             readButton
         }
         .background(theme.background)
-        .sheetPresentation(.expandable)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(theme.background)
     }
 
     private var bookPicker: some View {

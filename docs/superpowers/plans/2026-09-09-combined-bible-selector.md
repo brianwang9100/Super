@@ -1,6 +1,6 @@
 # Combined Bible selector implementation plan
 
-**Goal:** Implement the approved interactive design: one content-hugging glass selector showing book/chapter above a smaller translation subtitle, opening one native sheet with Book & chapter / Translation segments and one Read action.
+**Goal:** Implement the approved interactive design: one content-hugging glass selector showing book/chapter above a smaller translation subtitle, opening one full-height native sheet with Book & chapter / Translation segments and one Read action.
 
 **Design:** The approved conversation prototype is the specification. Preserve the existing history controls, book search (including verse ranges), ordering, bookmarks, notes, annotation actions, and deferred sheet handoffs. Draft choices survive tab changes and apply together only on Read; closing discards them. Short names use their intrinsic width; normal long names stay in the primary row. Accessibility sizes may use the existing second-row fallback rather than clip controls.
 
@@ -62,3 +62,9 @@
 Merged main’s sparse-comment cleanup, undo/redo history icons, and closed-actions contract for deep-link navigation. The combined selector retains these changes. Independent review found no serious merge regressions; all 946 Bible tests pass. Updated the range-commit assertion to keep actions closed while preserving the selected verses and pending scroll.
 - Both integrated app targets build. The affected toolbar/reader snapshot suites pass after explicit recording of the reviewed history glyph changes. The Mac locked before a final live-app repeat; pre-merge native flows passed, and integrated behavior has automated coverage.
 - Final integrated non-recording comparison passed all 259 Bible captures.
+
+## Full-height presentation refinement
+
+The user requested removing the half-height form factor. The combined selector now offers only the native `.large` detent, retaining the header clearance, drag-to-dismiss affordance, and themed background. Both tabs share this presentation. Validate the existing combined-sheet snapshots and Bible tests; no new captures are needed because the sheet content layout is unchanged. Verify native presentation when the Mac is unlocked.
+
+Full-height refinement validation: 946 Bible tests, all four unchanged combined-sheet captures, SuperBible build, and changed-file lint/diff checks passed. Independent review found no serious issues. Installed the build on the worktree simulator; the desktop driver could not switch from another simulator window for a final live check.
