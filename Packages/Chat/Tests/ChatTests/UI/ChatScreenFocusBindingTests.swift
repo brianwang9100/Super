@@ -6,28 +6,10 @@ import Testing
 import UIKit
 @testable import Chat
 
-/// Tests that `ChatScreen` honours an externally-owned composer focus
-/// binding — the load-bearing contract behind the "minimize chat →
-/// keyboard stays dismissed across re-expand" fix.
-///
-/// Before this fix `composerIsFocused` was a private `@FocusState` inside
-/// `ChatScreen`, which the shell could not clear from outside. Result:
-/// when the user minimized the chat (drag, applet switch, hamburger
-/// menu, …), the UIKit `resignFirstResponder` dispatch hid the keyboard
-/// visually but `@FocusState` stayed set; the next re-expand re-focused
-/// the field and slid the keyboard back up. Lifting the binding out and
-/// having both the shell and `ChatScreen` write through the same
-/// `FocusState<Bool>.Binding` is what makes the dismissal durable.
+// Hiding the keyboard without clearing shell-owned FocusState lets it reappear on expansion.
 @Suite("ChatScreen external composer focus binding")
 @MainActor
 struct ChatScreenFocusBindingTests {
-    /// When `progress` crosses below the editor-interactive threshold,
-    /// `ChatScreen`'s `.onChange(of: progress)` fires `dismissKeyboard()`,
-    /// which writes `false` through whichever focus binding is in scope.
-    /// This test owns the `@FocusState` externally (just like the shell
-    /// does in production) and confirms the threshold cross flips the
-    /// host's binding — proving the shell-owned focus state is what
-    /// gets cleared, not a stale internal copy.
     @Test("threshold cross flips externally-owned composer focus binding to false")
     func thresholdCrossClearsExternalFocusBinding() async throws {
         let viewModel = makeNoopViewModel()
@@ -43,13 +25,8 @@ struct ChatScreenFocusBindingTests {
         let controller = UIHostingController(rootView: host)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         window.rootViewController = controller
-        // `makeKeyAndVisible()` (not just `isHidden = false`) is load-bearing:
-        // SwiftUI's `@FocusState`-driven `becomeFirstResponder` requires a key
-        // window. Without it UIKit refuses focus and SwiftUI auto-reverts
-        // `isFocused` to `false` via a delayed `onChange` — which would let
-        // the `waitFor(false)` assertion below resolve from the revert rather
-        // than from the threshold-cross dismissal we're trying to verify
-        // (false positive that survives even reverting the fix).
+        // FocusState requires a key window. Otherwise UIKit rejects focus and SwiftUI
+        // reverts it, creating a false positive for the dismissal assertion.
         window.makeKeyAndVisible()
         defer {
             window.resignKey()
@@ -59,17 +36,8 @@ struct ChatScreenFocusBindingTests {
 
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
-        // `.onAppear` flips the host's `@FocusState` to true; await the
-        // observable signal rather than yielding a fixed number of
-        // runloop ticks (per AGENTS.md §Testing.2 — `Task.yield`
-        // polling is a race amplifier, not a synchronization primitive).
         await observer.waitFor(true)
 
-        // Drive the threshold crossing — observable progress goes from 1
-        // (expanded, composer interactive) to 0 (minimized pill,
-        // composer disabled). `.onChange(of: progress)` inside
-        // `ChatScreen` should fire `dismissKeyboard()` exactly once on
-        // this downward crossing.
         progressDriver.value = 0
         controller.view.layoutIfNeeded()
         await observer.waitFor(false)
@@ -78,18 +46,12 @@ struct ChatScreenFocusBindingTests {
     }
 }
 
-/// Bridges the host's `@FocusState` to the test by recording the latest
-/// value `onChange` reported and resuming any awaiters expecting that
-/// value. Tests `await observer.waitFor(expected)` instead of polling
-/// `Task.yield()` so the synchronization is deterministic — the
-/// continuation resumes the exact tick the SwiftUI value transitions.
+/// Resumes waiters from observed focus changes without runloop polling.
 @MainActor
 private final class FocusObserver {
     private(set) var value: Bool = false
     private var waiters: [(expected: Bool, continuation: CheckedContinuation<Void, Never>)] = []
 
-    /// Called from the host's `.onChange(of: isFocused)`. Records the
-    /// new value and resumes any waiters whose expected value matches.
     func update(_ newValue: Bool) {
         value = newValue
         let (matched, remaining) = waiters.partitioned { $0.expected == newValue }
@@ -99,10 +61,6 @@ private final class FocusObserver {
         }
     }
 
-    /// Suspends until `update(_:)` reports `expected`. Returns
-    /// immediately if `value` already matches, so an awaiter that
-    /// arrives after the transition still sees it. The test runner's
-    /// timeout catches the case where the value never arrives.
     func waitFor(_ expected: Bool) async {
         if value == expected { return }
         await withCheckedContinuation { continuation in
@@ -112,9 +70,6 @@ private final class FocusObserver {
 }
 
 private extension Array {
-    /// Splits the array into elements matching `isMatch` and the rest,
-    /// preserving order in both — used to resume matching focus waiters
-    /// while keeping the remaining queue intact.
     func partitioned(by isMatch: (Element) -> Bool) -> (matched: [Element], remaining: [Element]) {
         var matched: [Element] = []
         var remaining: [Element] = []
@@ -129,9 +84,7 @@ private extension Array {
     }
 }
 
-/// Drives `ChatScreen.progress` from a test, since `progress` is a `let`
-/// on `ChatScreen` and a re-render only happens when an `@Observable`
-/// the host depends on changes.
+// Observable input forces the host to rebuild ChatScreen with changed progress.
 @MainActor
 @Observable
 private final class ProgressDriver {
@@ -139,8 +92,6 @@ private final class ProgressDriver {
     init(value: Double) { self.value = value }
 }
 
-/// Host view that owns `@FocusState` the way `AppShell` does in
-/// production, plus the progress driver and observer the test reads.
 private struct ExternalFocusHost: View {
     let viewModel: ChatScreenViewModel
     let progressDriver: ProgressDriver

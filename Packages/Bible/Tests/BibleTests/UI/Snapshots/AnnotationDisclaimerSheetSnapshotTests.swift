@@ -6,17 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `AnnotationDisclaimerSheet` — the first-run liability
-/// modal across the three themes plus a Dynamic Type XXL pass to
-/// confirm the body paragraphs don't truncate at larger sizes.
 @Suite("AnnotationDisclaimerSheet snapshots", .serialized)
 @MainActor
 struct AnnotationDisclaimerSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("disclaimer renders in the light theme")

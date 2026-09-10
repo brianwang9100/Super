@@ -2,12 +2,6 @@ import Core
 import Foundation
 import GRDB
 
-/// Persisted user-preference memory in `chat.sqlite`.
-///
-/// One row per stored fact; the LLM (Large Language Model) writes via the
-/// `memory` tool, and the Settings memory pane reads / mutates via
-/// `MemoryRepository`. Column names match the Swift property names —
-/// `camelCase` per the Chat persistence convention.
 public struct MemoryRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "memory"
 
@@ -23,7 +17,6 @@ public struct MemoryRecord: Codable, FetchableRecord, PersistableRecord, Sendabl
         self.updatedAt = updatedAt
     }
 
-    /// Round-trip a Core `MemoryEntry` into / out of the GRDB row.
     public init(entry: MemoryEntry) {
         self.id = entry.id
         self.text = entry.text

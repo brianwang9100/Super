@@ -12,55 +12,26 @@ extension EnvironmentValues {
     }
 }
 
-/// Transcript with stable turn containers. Explicit sends focus the user
-/// message at the top; response updates never request a scroll.
+/// Stable turn containers keep response updates in place. Explicit sends focus the user turn;
+/// a user-requested bottom seek may keep refining until rendered arrival.
 public struct MessageList: View {
     public let items: [Item]
-    /// Live streaming tail. Rendered as an additional assistant row below
-    /// the persisted ones. `nil` when no turn is in flight.
     public let streamingTail: StreamingState?
-    /// Error banner state shown above the composer; nil hides the banner.
     public let error: ErrorState?
     public let verbosity: ChatVerbosity
     public let onRetry: () -> Void
-    /// Fired when the user taps anywhere on the transcript content (a
-    /// message bubble, the spaces between, etc.). `ChatScreen` wires this
-    /// to keyboard dismissal. Lives inside `MessageList` because a tap
-    /// gesture attached *outside* a `ScrollView` is intercepted by the
-    /// scroll view's recognizers and never fires — the gesture must be
-    /// inside the scroll content's `LazyVStack`. Attached as a
-    /// `simultaneousGesture` so it fires alongside taps on interactive
-    /// children (e.g., the `ErrorBanner` retry button) — dismissing the
-    /// keyboard immediately before the child action runs is the intended
-    /// behavior.
+    /// Attach inside scroll content because the ScrollView intercepts ancestor gestures.
+    /// Run simultaneously so child actions also dismiss the keyboard.
     public let onContentTap: () -> Void
-    /// Forwarded to every ``AssistantMessage`` so the Regenerate button
-    /// dims and ignores taps during a turn. Kept at `MessageList`'s
-    /// level (rather than reading the view model from each row) so the
-    /// view tree stays parameter-driven and snapshot tests can pin
-    /// either state without a live view model.
     public let isStreaming: Bool
-    /// Fired with the tapped assistant message's text when the user
-    /// taps Copy. ``ChatScreen`` writes to the pasteboard and flips the
-    /// "Copied!" pill.
     public let onCopyTapped: (String) -> Void
-    /// Fired with the tapped assistant message's id when the user taps
-    /// Regenerate. ``ChatScreen`` stages a confirmation dialog before
-    /// trimming the transcript.
     public let onRegenerateTapped: (String) -> Void
-    /// Fired with the parked `request_web_search` tool-call id when the user
-    /// approves the inline search prompt. Routed to the view model's
-    /// `confirmSearch(id:)`.
     public let onConfirmSearch: (String) -> Void
-    /// Fired with the parked tool-call id when the user declines the inline
-    /// search prompt. Routed to the view model's `skipSearch(id:)`.
     public let onSkipSearch: (String) -> Void
 
-    /// The most recent send, retry, or regenerate action; independent of tokens.
     public let scrollRequest: ScrollRequest?
     /// Unpersisted partial response retained after a stop or error.
     public let interruptedResponse: StreamingState?
-    /// Shows the non-interactive copy confirmation above transcript navigation.
     public let showCopyConfirmation: Bool
 
     public init(
@@ -170,8 +141,7 @@ public struct MessageList: View {
                                 responseTail(turn: turn)
                             }
                         }
-                        // Keep the same parent and row identities when a turn
-                        // becomes history, preserving expanded thinking/tool state.
+                        // Preserve parent and row identities so saved responses retain expanded thinking/tool state.
                         .frame(
                             minHeight: turn.id == scrollRequest?.messageID
                                 ? max(0, containerHeight - 16) : 0,
@@ -211,8 +181,7 @@ public struct MessageList: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                // Synchronous viewport input, never a geometry-to-state feedback
-                // loop. The focused turn keeps its space even after a short reply.
+                // Measure synchronously to avoid a geometry-to-state feedback loop.
                 .frame(minHeight: containerHeight, alignment: .top)
                 .id(Self.bottomID)
                 .onGeometryChange(for: BottomGeometry.self) { [scrollMeasurementID] geometry in

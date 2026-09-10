@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// A fixed chapter with local selection and study sheets above its native presentation.
 struct BibleChapterPreviewSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

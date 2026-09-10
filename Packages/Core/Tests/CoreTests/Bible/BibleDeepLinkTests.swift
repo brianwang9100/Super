@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for `BibleDeepLink`'s three-way encoding between native fields,
-/// URLs, and `RecordReference`s. Round-trips matter because the in-app
-/// tap path (URL → reference) and the Bible-side receiver
-/// (reference → coordinates) both depend on the same grammar.
 @Suite("BibleDeepLink")
 struct BibleDeepLinkTests {
     // MARK: - URL encoding

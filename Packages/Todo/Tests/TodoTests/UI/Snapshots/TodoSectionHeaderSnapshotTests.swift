@@ -6,8 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoSectionHeader` across Vellum light and dark plus a larger
-/// Dynamic Type size.
 @Suite("TodoSectionHeader snapshots", .serialized)
 @MainActor
 struct TodoSectionHeaderSnapshotTests {

@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// "Choose what to annotate" — a flat book list where each book expands to its
-/// chapters. Already-annotated books/chapters carry a "Done" badge. A pinned
-/// footer keeps the live estimate beside Generate. Confirming (after a one-tap
-/// cost check for remote BYOK models) dismisses the sheet and starts the one job.
 struct GenerateAnnotationsSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -34,9 +30,6 @@ struct GenerateAnnotationsSheet: View {
         }
     }
 
-    /// One rendered line in the picker — a book header or one of its chapters.
-    /// Pinned header above the scrolling list: the section caption and a
-    /// master **Select all** row (toggles every chapter of every book).
     private var pickerHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("CHOOSE WHAT TO ANNOTATE")
@@ -74,9 +67,6 @@ struct GenerateAnnotationsSheet: View {
         }
     }
 
-    /// One rendered line — a book header or one of its chapters. Flattened into
-    /// a single list (rather than a `ForEach` of books each nesting a `ForEach`
-    /// of chapters) with globally-unique string ids.
     private enum PickerRow: Identifiable {
         case book(BibleBookSummary)
         case chapter(ChapterRef)
@@ -102,11 +92,8 @@ struct GenerateAnnotationsSheet: View {
         return rows
     }
 
-    /// A `List` (not `LazyVStack`-in-`ScrollView`): it truly virtualizes, so a
-    /// fully-expanded picker (potentially thousands of chapter rows) recycles
-    /// cells correctly instead of blanking them under the scroll view's
-    /// huge backing layer. Default chrome (separators, insets, background) is
-    /// stripped so the rows keep their own custom dividers and surfaces.
+    // List recycles a fully expanded chapter inventory; LazyVStack could blank rows
+    // inside a huge scroll backing layer.
     private var bookList: some View {
         List(pickerRows) { row in
             rowView(row)

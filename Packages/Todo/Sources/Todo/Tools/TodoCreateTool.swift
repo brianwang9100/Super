@@ -1,23 +1,9 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that creates one or more tasks in the `task` table on the
-/// assistant's behalf.
-///
-/// The LLM (Large Language Model) passes a single `tasks` parameter holding a
-/// JSON array of task objects, which the tool parses itself — the flat
-/// tool-parameter model has no native array-of-objects schema, so a JSON
-/// string is the way to carry per-item fields (`title`, `priority`, `dueAt`,
-/// `notes`) in one call. Validation is all-or-nothing: the whole batch is
-/// validated before any row is written, so a malformed item fails the call
-/// up front rather than leaving the valid items half-created. (The writes
-/// themselves are one transaction per row, so a — near-impossible — mid-batch
-/// SQLite failure is reported but not rolled back.)
-///
-/// Validation rejects inputs softly: a missing or malformed payload returns a
-/// `ToolResult` with `isError: true` and a remediation message instead of
-/// throwing, so the model sees the failure and can retry with a corrected
-/// payload rather than tearing down the whole turn. Mirrors `NoteBibleTool`.
+/// Validates the entire input before writing. Individual writes are not one
+/// transaction, so a database failure can leave an explicitly reported partial batch.
+/// Input errors return a failed `ToolResult` so the model can correct and retry.
 public struct TodoCreateTool: ToolExecutor {
     /// Dotted form namespaces the tool under its applet, matching
     /// `bible.note`, `time.now`, etc. The DEBUG-only
@@ -83,8 +69,6 @@ public struct TodoCreateTool: ToolExecutor {
         summary: "Adds one or more tasks to your Todo list."
     )
 
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in the SuperOS bootstrap.
     public static func registration(
         repository: any TaskRepository,
         clock: any Clock = SystemClock(),
@@ -106,8 +90,6 @@ public struct TodoCreateTool: ToolExecutor {
             return Self.errorResult(validation.message)
         }
 
-        // Validation already passed for every item; build each record from the
-        // same `now`, then write.
         let now = clock.now()
         var created: [TaskRecord] = []
         created.reserveCapacity(specs.count)

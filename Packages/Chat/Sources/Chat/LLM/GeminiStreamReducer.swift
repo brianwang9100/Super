@@ -1,29 +1,8 @@
 import Core
 import Foundation
 
-/// Stateful reducer turning Gemini's `streamGenerateContent` chunk sequence
-/// into the normalized `LLMStreamEvent` stream every Super UI consumer expects,
-/// including the native web-search cases (`.searchStarted`, `.citations`, and
-/// the Gemini-only `.searchSuggestionsHTML`).
-///
-/// Same ownership/policy as the other native reducers
-/// (`OpenAIResponsesStreamReducer`, `AnthropicStreamReducer`): a struct that
-/// owns the sequencing state for one in-flight response and is driven purely by
-/// `consume(_:)` + `finish()`. Neither method throws — a malformed shape
-/// surfaces as an `.error(...)` event in the returned array.
-///
-/// Gemini differs from the block-indexed providers: a chunk's `parts` carry
-/// prose fragments inline (a `thought:true` part is reasoning, a plain `text`
-/// part is the answer), so this reducer tracks a *single* open prose block and
-/// switches it — closing one and opening the next — when the part kind flips
-/// between thinking and text. Function calls are delivered whole (not streamed)
-/// and bracket their own start/stop. Native search lands in `groundingMetadata`
-/// on (typically) the final chunk: `webSearchQueries` → `.searchStarted`,
-/// `groundingChunks`+`groundingSupports` → `.citations`, and
-/// `searchEntryPoint.renderedContent` → `.searchSuggestionsHTML`. There is no
-/// terminal SSE (Server-Sent Events) event — the stream ends when the
-/// connection closes, so `finish()` is the sole driver of the final
-/// `.messageComplete`.
+/// Normalizes Gemini parts while switching the single open prose block between
+/// thinking and text. `finish()` terminates streams because Gemini has no sentinel.
 struct GeminiStreamReducer {
     let requiresCompleteResponse: Bool
     private var hasNativeCompletion = false
@@ -44,7 +23,6 @@ struct GeminiStreamReducer {
     private var hadError = false
     private var hadUnsuccessfulStop = false
 
-    /// Monotonic normalized content-block index.
     private var nextBlockIndex = 0
 
     /// The most recent `thoughtSignature` seen on any part this turn. Gemini's
@@ -75,8 +53,6 @@ struct GeminiStreamReducer {
     /// `ChatSession`).
     private var citationOrdinal = 0
 
-    /// Process one decoded Gemini chunk and return the normalized events it
-    /// produced, in observation order.
     mutating func consume(_ chunk: GeminiStreamResponse) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
@@ -107,7 +83,6 @@ struct GeminiStreamReducer {
             if let cached = usage.cachedContentTokenCount { cachedContentTokenCount = cached }
         }
 
-        // Every turn opens with `.messageStart` before any content.
         ensureMessageStart(into: &events)
 
         guard let candidate = chunk.candidates?.first else { return events }
@@ -128,8 +103,7 @@ struct GeminiStreamReducer {
         return events
     }
 
-    /// Final-flush hook. Closes the open prose block and emits the terminal
-    /// `.messageComplete(usage:)`. Idempotent.
+    /// Idempotently closes a stream that has no terminal sentinel.
     mutating func finish() -> [LLMStreamEvent] {
         closeOut()
     }
@@ -143,13 +117,9 @@ struct GeminiStreamReducer {
         return events
     }
 
-    /// Whether an `.error` has already surfaced — the provider reads this in
-    /// its catch path to avoid double-reporting a transport error over a more
-    /// specific streamed one.
+    /// Prevents a transport error from masking a more specific streamed error.
     var hasErrored: Bool { hadError }
 
-    /// Record that the provider already surfaced an error (its thrown-error
-    /// catch path). Suppresses further block flushing.
     mutating func markErrored() {
         hadError = true
     }
@@ -167,7 +137,6 @@ struct GeminiStreamReducer {
             pendingThoughtSignature = signature
         }
 
-        // A function call is delivered whole and brackets its own block.
         if let call = part.functionCall, let name = call.name, !name.isEmpty {
             closeProse(into: &events)
             let index = allocateBlockIndex()
@@ -204,8 +173,6 @@ struct GeminiStreamReducer {
         }
     }
 
-    /// Kind discriminator for `ensureProse` (the associated index lives on the
-    /// `ProseBlock` state, not here).
     private enum ProseKind { case text, thinking }
 
     /// Ensure the open prose block matches `kind`, switching (close + open) when

@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Pure-function coverage on `ChatScreenViewModel.project(...)`. Verifies
-/// that on-disk record arrays are folded into the view-model `Item`s the
-/// list renders, including tool-call result inlining and compaction
-/// banner placement.
 @Suite("ChatScreenViewModel.project")
 struct ChatScreenViewModelProjectionTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -69,18 +65,14 @@ struct ChatScreenViewModelProjectionTests {
 
     @Test("duplicate toolCallId across tool messages does not trap")
     func duplicateToolCallIdDoesNotTrap() {
-        // Regression: Gemini parallel calls to the SAME tool persisted two
-        // tool-result messages sharing one toolCallId. project()'s
-        // Dictionary(uniqueKeysWithValues:) trapped on the duplicate key,
-        // crashing the app on every refresh and on chat reopen (the
-        // bible-"wrath" crash). Projection of stored data must never trap.
+        // Older parallel-call rows can share toolCallId. A unique-key dictionary would
+        // crash every refresh and reopen; projection must tolerate persisted duplicates.
         let messages: [MessageRecord] = [
             MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
             MessageRecord(id: "t1", conversationId: "c", role: .tool, content: "James 1", toolCallId: "bible.lookup", createdAt: now.addingTimeInterval(1)),
             MessageRecord(id: "t2", conversationId: "c", role: .tool, content: "Romans 2", toolCallId: "bible.lookup", createdAt: now.addingTimeInterval(2)),
         ]
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil)
-        // Returns without trapping; the assistant row projects (tool rows fold).
         #expect(items.count == 1)
     }
 
@@ -106,9 +98,6 @@ struct ChatScreenViewModelProjectionTests {
         ]
 
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: toolCalls, checkpoint: nil)
-        // Two visible items: the user bubble and the assistant row holding
-        // the tool call. The tool result MessageRecord is folded in, not
-        // rendered as a separate row.
         #expect(items.count == 2)
         guard case .assistantText(_, _, _, _, let calls, _, _, _, _) = items[1] else {
             Issue.record("expected assistant row at index 1")
@@ -141,10 +130,8 @@ struct ChatScreenViewModelProjectionTests {
             return
         }
         #expect(calls.count == 2)
-        // Mapped: technical `toolName` resolves to the friendly display name…
         #expect(calls[0].toolName == "time.now")
         #expect(calls[0].toolDisplayName == "Current time")
-        // …and an unmapped tool falls back to its technical name.
         #expect(calls[1].toolDisplayName == "mystery.tool")
     }
 
@@ -156,7 +143,6 @@ struct ChatScreenViewModelProjectionTests {
                 title: "NASA: Mars Rover",
                 url: URL(string: "https://www.nasa.gov/mars")!
             ),
-            // No title → pill falls back to the host; leading www. stripped.
             SourceCitation(
                 id: "https://space.com/rover#1",
                 title: "",
@@ -180,11 +166,10 @@ struct ChatScreenViewModelProjectionTests {
         }
         #expect(sources.count == 2)
         #expect(sources[0].id == "https://www.nasa.gov/mars#0")
-        #expect(sources[0].host == "nasa.gov")           // leading www. stripped
+        #expect(sources[0].host == "nasa.gov")
         #expect(sources[0].title == "NASA: Mars Rover")
         #expect(sources[1].host == "space.com")
-        // A titleless source collapses to "" so the pill renders host-only,
-        // rather than a redundant host + "space.com" title pair.
+        // Empty titles render host-only; synthesizing the host would duplicate the pill label.
         #expect(sources[1].title == "")
         #expect(sources[1].url == URL(string: "https://space.com/rover")!)
     }
@@ -192,9 +177,7 @@ struct ChatScreenViewModelProjectionTests {
     @Test("a citation whose title merely repeats its host collapses to a host-only pill")
     func titleEqualToHostCollapses() {
         let attachments = MessageAttachments(sources: [
-            // Title equals the www-prefixed host — redundant, should collapse.
             SourceCitation(id: "1", title: "www.example.com", url: URL(string: "https://www.example.com/page")!),
-            // Title differs only in case from the host — must still collapse.
             SourceCitation(id: "2", title: "Space.com", url: URL(string: "https://space.com/x")!),
         ])
         let items = ChatScreenViewModel.project(
@@ -212,7 +195,7 @@ struct ChatScreenViewModelProjectionTests {
         #expect(sources[0].host == "example.com")
         #expect(sources[0].title == "")
         #expect(sources[1].host == "space.com")
-        #expect(sources[1].title == "")          // case-insensitive collapse
+        #expect(sources[1].title == "")
     }
 
     @Test("assistant row with no attachments projects no source pills")
@@ -252,7 +235,6 @@ struct ChatScreenViewModelProjectionTests {
             Issue.record("expected assistant row")
             return
         }
-        // Rendered unmodified by the always-visible suggestions strip.
         #expect(html == "<div class=\"gsc\">chips</div>")
     }
 
@@ -275,7 +257,6 @@ struct ChatScreenViewModelProjectionTests {
         )
 
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: checkpoint)
-        // Expected layout: user, assistant, banner, user.
         #expect(items.count == 4)
         guard case .compactionBanner(_, let summary) = items[2] else {
             Issue.record("expected compaction banner at index 2")
@@ -300,10 +281,7 @@ struct ChatScreenViewModelProjectionTests {
 
     @Test("compaction banner emits when cutoff lands on a tool row that gets dropped")
     func compactionBannerOnDroppedToolCutoff() {
-        // Cutoff is the tool row, which the projection drops. The banner
-        // must still appear immediately before the next renderable user
-        // message — the prior heuristic compared cutoff to `items.last.id`
-        // and missed this case because the tool row never made it in.
+        // The cutoff can be a folded-away tool row, so rendered item IDs cannot locate it.
         let messages: [MessageRecord] = [
             MessageRecord(id: "u1", conversationId: "c", role: .user, content: "first", createdAt: now),
             MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "running tool", createdAt: now.addingTimeInterval(1)),
@@ -322,8 +300,6 @@ struct ChatScreenViewModelProjectionTests {
         )
 
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: checkpoint)
-        // Expected layout: user, assistant, banner, user. The tool row is
-        // dropped and the banner sits between it and the next user row.
         #expect(items.count == 4)
         guard case .compactionBanner(_, let summary) = items[2] else {
             Issue.record("expected compaction banner at index 2")
@@ -339,9 +315,7 @@ struct ChatScreenViewModelProjectionTests {
 
     @Test("compaction banner emits at the tail when cutoff is the last message")
     func compactionBannerAtTail() {
-        // Cutoff is the most recent persisted message, so there's nothing
-        // after it to trigger the "emit before next iteration" path.
-        // The banner should still render at the tail of the transcript.
+        // A tail cutoff has no following iteration to trigger banner insertion.
         let messages: [MessageRecord] = [
             MessageRecord(id: "u1", conversationId: "c", role: .user, content: "first", createdAt: now),
             MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "reply", createdAt: now.addingTimeInterval(1)),
@@ -386,9 +360,7 @@ struct ChatScreenViewModelProjectionTests {
 
     @Test("an awaiting-confirmation proposal projects with the awaitingConfirmation status")
     func awaitingConfirmationStatusSurfaces() {
-        // The native web-search proposal parks at `.awaitingConfirmation`;
-        // the projection must preserve that (not collapse it to running) so
-        // the inline confirm row renders its approve/skip prompt.
+        // Preserve awaitingConfirmation so the transcript can show approve/skip controls.
         let messages: [MessageRecord] = [
             MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
         ]

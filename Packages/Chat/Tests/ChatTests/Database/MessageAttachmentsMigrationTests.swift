@@ -4,8 +4,6 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Tests for the GRDB encoding and decoding of nullable message attachments.
-/// The shared schema snapshot owns the attachments-column shape.
 @Suite("MessageRecord attachments migration")
 struct MessageAttachmentsMigrationTests {
     @Test func messageWithAttachmentsRoundTripsThroughGRDB() async throws {
@@ -17,7 +15,6 @@ struct MessageAttachmentsMigrationTests {
             snapshot: "For God so loved the world...", id: "r1"
         )
         let json = MessageRecord.encode(MessageAttachments(references: [reference]))
-        // `message.conversationId` is a cascading FK — insert the parent first.
         let conversation = ConversationRecord(id: "c1", createdAt: now, updatedAt: now)
         let message = MessageRecord(
             id: "m1", conversationId: "c1", role: .user, content: "Explain this",

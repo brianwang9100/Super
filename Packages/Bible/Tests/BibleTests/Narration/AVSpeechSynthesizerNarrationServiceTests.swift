@@ -3,31 +3,14 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for ``AVSpeechSynthesizerNarrationService``'s queueing through the
-/// ``SpeechSynthesizing`` seam: the service speaks **one verse at a time**,
-/// queuing the next only when the current one's `didFinish` lands, so the
-/// app's `currentIndex` — not the synthesizer's opaque internal queue —
-/// drives playback order.
-///
-/// This is the regression guard for the narration misorder: queuing a whole
-/// chapter at once let the synthesizer hand back utterances out of order or
-/// a verse short on devices whose Enhanced/Premium voice streams in
-/// mid-queue (heard as "started on verse 6", then "jumped back to verse 5").
-/// Against the old batch-queue service these `spokenTexts` assertions fail —
-/// `startSpeaking` queued every verse immediately, so the count was 3, not 1.
-///
-/// The fake records `speak(_:)` calls; the test fires the synthesizer
-/// delegate callbacks directly (the production code ignores the
-/// `synthesizer` argument, so a throwaway `AVSpeechSynthesizer` satisfies
-/// the signature). No audio hardware, no real-time waits.
+/// Batch queueing misordered/skipped verses when enhanced voices downloaded mid-queue.
+/// Drive delegate callbacks manually to verify that only one utterance is queued.
 @Suite("AVSpeechSynthesizerNarrationService queueing")
 struct AVSpeechSynthesizerNarrationServiceTests {
     private func utterance(_ number: Int, _ text: String) -> NarrationVerseUtterance {
         NarrationVerseUtterance(verseNumber: number, text: text)
     }
 
-    /// A throwaway synthesizer to satisfy the delegate signature; the
-    /// service never reads it.
     private let unusedSynth = AVSpeechSynthesizer()
 
     @Test("refused Resume after an acknowledged pause finishes with a recoverable failure")
@@ -406,7 +389,6 @@ struct AVSpeechSynthesizerNarrationServiceTests {
             [utterance(1, "one"), utterance(2, "two"), utterance(3, "three")],
             rate: 1, voice: nil
         )
-        // The whole chapter is *not* queued — only verse 1.
         #expect(fake.spokenTexts == ["one"])
 
         service.speechSynthesizer(unusedSynth, didFinish: fake.lastUtterance!)
@@ -415,7 +397,6 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         service.speechSynthesizer(unusedSynth, didFinish: fake.lastUtterance!)
         #expect(fake.spokenTexts == ["one", "two", "three"])
 
-        // The last verse finished — nothing further is queued.
         service.speechSynthesizer(unusedSynth, didFinish: fake.lastUtterance!)
         #expect(fake.spokenTexts == ["one", "two", "three"])
     }
@@ -428,10 +409,8 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         let stream = service.startSpeaking(
             [utterance(1, "one"), utterance(2, "two")], rate: 1, voice: nil
         )
-        // Collect every event; the stream finishes when `.completed` lands.
         let collector = Task { await stream.reduce(into: [NarrationEvent]()) { $0.append($1) } }
 
-        // Play verse 1, then verse 2 (queued by verse 1's finish).
         service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
         service.speechSynthesizer(unusedSynth, didFinish: fake.lastUtterance!)
         service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
@@ -459,12 +438,10 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
         #expect(fake.spokenTexts == ["one"])
 
-        // `startSpeaking` stops once up front to clear any prior session;
-        // measure the additional stop the skip's requeue triggers.
+        // startSpeaking already stops once; measure only the skip-induced stop.
         let stopsBeforeSkip = fake.stopCount
         service.skipForward()
         #expect(fake.stopCount == stopsBeforeSkip + 1)
-        // Verse 2 is queued — verse 3 is not (still one at a time).
         #expect(fake.spokenTexts == ["one", "two"])
     }
 
@@ -481,7 +458,6 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         let stopsBeforeRate = fake.stopCount
         service.setRate(1.5)
         #expect(fake.stopCount == stopsBeforeRate + 1)
-        // The current verse (1) is re-spoken — not advanced to verse 2.
         #expect(fake.spokenTexts == ["one", "one"])
     }
 
@@ -497,13 +473,10 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
         let cancelledVerseOne = fake.lastUtterance!
 
-        // Skip to verse 2; verse 1's entry is wiped under the new session
-        // version before its synth is stopped.
         service.skipForward()
         #expect(fake.spokenTexts == ["one", "two"])
 
-        // Verse 1's delayed `didFinish` arrives — it must be dropped, not
-        // mistaken for "verse 2 finished, advance to verse 3".
+        // A delayed finish from cancelled verse 1 must not advance past verse 2.
         service.speechSynthesizer(unusedSynth, didFinish: cancelledVerseOne)
         #expect(fake.spokenTexts == ["one", "two"])
     }
@@ -521,7 +494,6 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         let stopsBeforeBack = fake.stopCount
         service.skipBackward()
         #expect(fake.stopCount == stopsBeforeBack + 1)
-        // The current verse (1) is re-spoken — not advanced to verse 2.
         #expect(fake.spokenTexts == ["one", "one"])
     }
 
@@ -539,8 +511,6 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         let stopsBeforeVoice = fake.stopCount
         service.setVoice(NarrationVoice(voice))
         #expect(fake.stopCount == stopsBeforeVoice + 1)
-        // The current verse (1) restarts — not advanced — and carries the
-        // new voice so the change is audible from this verse, not the next.
         #expect(fake.spokenTexts == ["one", "one"])
         #expect(fake.lastUtterance?.voice?.identifier == voice.identifier)
     }

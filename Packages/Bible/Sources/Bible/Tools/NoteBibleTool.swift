@@ -1,22 +1,9 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that creates, edits, and deletes notes in the `bibleNote`
-/// table on the assistant's behalf.
-///
-/// One tool, three actions — `create`, `edit`, `delete` — discriminated by an
-/// `action` parameter so the LLM (Large Language Model) has a single note
-/// capability rather than three. Notes are true per-row CRUD, so unlike
-/// `bible.annotate` there is no whole-group replace: `create` inserts one
-/// note, `edit` rewrites one note's body, `delete` removes one note by id.
-///
-/// Validation rejects inputs softly: a missing or malformed field returns a
-/// `ToolResult` with `isError: true` and a remediation message instead of
-/// throwing, so the model sees the failure and can retry with a correct
-/// payload rather than tearing down the whole turn.
+/// Edits individual notes; invalid arguments return correctable error results
+/// without terminating the model's turn.
 public struct NoteBibleTool: ToolExecutor {
-    /// Dotted form namespaces the tool under its applet, matching
-    /// `bible.annotate`, `time.now`, etc.
     public static let toolID = "bible.note"
 
     public static let appletID = "bible"
@@ -123,8 +110,6 @@ public struct NoteBibleTool: ToolExecutor {
         summary: "Saves free-text notes on a passage."
     )
 
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in each app's bootstrap.
     public static func registration(
         repository: any BibleNoteRepository,
         clock: any Clock = SystemClock(),
@@ -244,10 +229,7 @@ public struct NoteBibleTool: ToolExecutor {
         let rawVerseStart = BibleToolJSON.optionalInt(input, key: "verseStart")
         let rawVerseEnd = BibleToolJSON.optionalInt(input, key: "verseEnd")
 
-        // `target` is the authoritative discriminator. We enforce the fields
-        // the unit *requires*, then coerce away any position fields it doesn't
-        // use rather than rejecting the call (matches `bible.annotate`). The
-        // coerced (nilled) fields are what get stored and queried back.
+        // Target is authoritative; discard positions it does not use so stored rows remain queryable.
         let chapterNumber: Int?
         let verseStart: Int?
         let verseEnd: Int?

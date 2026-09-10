@@ -1,17 +1,8 @@
 import Core
 import Foundation
 
-/// Production conformer that bridges the view model's `ChatSessionDriver`
-/// dependency to the underlying actor `ChatSession`. Lives as a separate
-/// type rather than a direct conformance because:
-///
-/// - `ChatSession.send(text:model:temperature:)` carries a default
-///   `temperature` argument that doesn't satisfy the protocol's exact
-///   signature; threading temperature here lets the view model stay
-///   ignorant of provider-specific knobs.
-/// - Future drivers (e.g. a deterministic snapshot-test driver, or a
-///   Grouped-conversation driver) can conform directly without having to
-///   subclass an actor.
+/// Fix temperature here because ChatSession's default argument does not satisfy
+/// ChatSessionDriver's shorter protocol signature.
 public struct LiveChatSessionDriver: ChatSessionDriver {
     private let session: ChatSession
     private let temperature: Double

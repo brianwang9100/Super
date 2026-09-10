@@ -8,24 +8,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `AnnotationSheetContainer` — the Region that wraps the
-/// stateless `AnnotationSheet` with its live `@Query` against
-/// `BibleAnnotationsByTargetRequest` and the mutation seams.
-///
-/// The wider sheet chrome is covered by `AnnotationSheetSnapshotTests`
-/// (stateless input). This suite covers the *container*'s own
-/// responsibilities: projecting `records.first` into the single
-/// `AnnotationSheet.Card` (citation title, summary, composed provenance
-/// footer), the empty + generating + failed states with an attached
-/// database context, and the populated state across themes.
+/// Covers database-backed projection; AnnotationSheetSnapshotTests covers stateless sheet chrome.
 @Suite("AnnotationSheetContainer snapshots", .serialized)
 @MainActor
 struct AnnotationSheetContainerSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -142,9 +128,6 @@ struct AnnotationSheetContainerSnapshotTests {
             )
         }
 
-        // `isGenerating: true` callers fold into the same dispatchStatus
-        // parameter the container reads — translated here so test call
-        // sites read as the state they exercise.
         let resolvedStatus: BibleAnnotationDispatchStatus? = {
             if let dispatchStatus { return dispatchStatus }
             if isGenerating { return .running(requestId: "snapshot-fixture") }

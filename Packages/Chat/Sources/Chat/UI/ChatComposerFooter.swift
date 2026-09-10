@@ -1,16 +1,5 @@
 import SwiftUI
 
-/// Footer row that lives inside the composer capsule. Lays out (in order):
-/// `ModelPill` · flexible spacer · `ContextMeter` · trailing send/mic
-/// button (the button itself lives in `ChatComposer`, not here, so the
-/// composer can swap its enabled/disabled state without re-laying out
-/// the row).
-///
-/// Verbosity is owned by Settings (see `SettingsVerbosityPane`); the
-/// composer footer doesn't expose a per-chat picker.
-///
-/// Mirrors the bottom row of the composer in
-/// `.design-tmp/chat/project/src/chat-view.jsx`.
 public struct ChatComposerFooter: View {
     public let modelOptions: [ModelPill.Option]
     public let selectedModelId: String?

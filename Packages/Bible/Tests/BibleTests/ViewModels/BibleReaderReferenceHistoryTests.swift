@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Exact preview handoffs reconcile with persisted history without losing queued selection or translation.
 @Suite("Bible reader reference history")
 @MainActor
 struct BibleReaderReferenceHistoryTests {

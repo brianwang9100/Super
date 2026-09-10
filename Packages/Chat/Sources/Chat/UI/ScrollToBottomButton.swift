@@ -1,12 +1,11 @@
 import Core
 import SwiftUI
 
-/// Floating transcript navigation with the composer accessories' glass and fade.
 struct ScrollToBottomButton: View {
     static let diameter: CGFloat = 44
     static let bottomPadding: CGFloat = 8
 
-    /// Read only in the button so geometry updates cannot relayout the transcript.
+    /// Owns visibility separately so geometry updates do not relayout the transcript.
     @Observable @MainActor
     final class VisibilityState {
         var isVisible = false

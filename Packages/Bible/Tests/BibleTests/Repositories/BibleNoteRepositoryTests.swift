@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `GRDBBibleNoteRepository` against an in-memory
-/// database — per-row insert, in-place update, newest-first listing across
-/// the three target shapes, target-group isolation, and single-row deletion.
 @Suite("GRDBBibleNoteRepository")
 struct BibleNoteRepositoryTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -15,7 +12,6 @@ struct BibleNoteRepositoryTests {
         return (GRDBBibleNoteRepository(database: database), database)
     }
 
-    /// Build a verse-target note with sensible defaults.
     private func verseNote(
         id: String,
         bookId: String = "JHN",
@@ -53,7 +49,6 @@ struct BibleNoteRepositoryTests {
             target: .verse, bookId: "JHN", chapterNumber: 3,
             verseStart: 16, verseEnd: 18
         )
-        // Newest-first: "b" (later) precedes "a".
         #expect(listed.map(\.id) == ["b", "a"])
     }
 
@@ -119,7 +114,6 @@ struct BibleNoteRepositoryTests {
             target: .verse, bookId: "JHN", chapterNumber: 3,
             verseStart: 16, verseEnd: 18
         )
-        // "c" is newest; "a"/"b" share t0 and tie-break on id ascending.
         #expect(listed.map(\.id) == ["c", "a", "b"])
     }
 
@@ -138,7 +132,6 @@ struct BibleNoteRepositoryTests {
         #expect(listed.count == 1)
         #expect(listed.first?.body == "Revised")
         #expect(listed.first?.updatedAt == editedAt)
-        // createdAt is immutable.
         #expect(listed.first?.createdAt == t0)
     }
 

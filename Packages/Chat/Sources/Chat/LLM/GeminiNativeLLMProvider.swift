@@ -1,38 +1,8 @@
 import Core
 import Foundation
 
-/// `LLMProvider` conformer for Google's Gemini **`generateContent`** API
-/// (`POST /v1beta/models/{model}:streamGenerateContent?alt=sse`) — the
-/// native-web-search path for Gemini models.
-///
-/// The default (non-search) Gemini path stays on `OpenAICompatibleLLMProvider`
-/// (via Google's `/v1beta/openai/` compat shim); this adapter is hydrated only
-/// for a model whose `searchBackend == "native"`, because the shim can't carry
-/// the `google_search` grounding tool or the `groundingMetadata` it returns.
-/// Like every native adapter it is a *complete* provider — text, extended
-/// thinking, regular client tool calls, and native search — since once a turn
-/// is on `generateContent` there is no per-message fallback.
-///
-/// Native search is requested per-turn via the `__native_web_search__` sentinel
-/// tool (see ``NativeWebSearch``); when absent, no grounding tool is attached
-/// and the adapter behaves like a plain Gemini client. The grounding tool is
-/// `google_search` (see ``GeminiWebSearch``).
-///
-/// **Search-Suggestions compliance.** Gemini returns
-/// `searchEntryPoint.renderedContent` (the "Google Search Suggestions" HTML),
-/// which Google's terms require be displayed *unmodified* whenever a grounded
-/// response is shown. The reducer surfaces it as `.searchSuggestionsHTML`;
-/// `ChatSession` persists it and `GeminiSearchSuggestionsView` renders it.
-///
-/// **Stream contract** matches the rest of the suite: every stream ends with
-/// `.messageComplete` and never throws — failures arrive as `.error(...)`
-/// immediately before the terminal event. Wire formats per the Gemini +
-/// web-search references (2026-05-31); see
-/// `docs/superpowers/specs/2026-05-31-native-web-search-providers-design.md` §5.2.
-/// ⚠️ The extended-thinking request shape and the client-tool round-trip
-/// (`functionResponse` keyed by function name) are covered by serialization
-/// tests but not yet validated against the live API — both become reachable
-/// only once the search sentinel + tool gate are wired (PR4).
+/// Gemini's native adapter. It preserves tool-call thought signatures and the
+/// unmodified Search Suggestions HTML required for grounded responses.
 public struct GeminiNativeLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -45,19 +15,6 @@ public struct GeminiNativeLLMProvider: LLMProvider {
     /// Gemini accepts temperatures in `[0.0, 2.0]`; clamp rather than reject.
     private static let temperatureRange: ClosedRange<Double> = 0.0...2.0
 
-    /// Designated initializer.
-    ///
-    /// - Parameters:
-    ///   - id: Stable identifier (typically the `ModelConfigurationRecord.id`).
-    ///   - displayName: User-visible label shown in the model picker.
-    ///   - model: The single `LLMModel` this provider routes requests to.
-    ///   - baseURL: Endpoint base, e.g.
-    ///     `https://generativelanguage.googleapis.com/v1beta`. The
-    ///     `/models/{model}:streamGenerateContent` path is appended internally.
-    ///   - apiKey: BYOK (Bring Your Own Key) credential. Sent as
-    ///     `x-goog-api-key` only when the destination passes the
-    ///     cleartext-safety guard.
-    ///   - http: Streaming HTTP client. Tests inject a fake.
     public init(
         id: String,
         displayName: String,
@@ -74,11 +31,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         self.http = http
     }
 
-    /// Convenience that derives identity + model from a stored
-    /// `ModelConfiguration`. The Keychain-backed key is resolved by the caller.
-    ///
-    /// Precondition: `configuration.kind == .geminiNative` and
-    /// `configuration.baseURL != nil`.
+    /// Requires a native Gemini configuration with a base URL.
     public init(configuration: ModelConfiguration, apiKey: String?, http: HTTPClient) {
         precondition(
             configuration.kind == .geminiNative,
@@ -116,7 +69,6 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
     }
 
-    /// Streams with optional local validation of native response completion.
     public func stream(
         messages: [LLMMessage],
         model: LLMModel,
@@ -138,7 +90,6 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                         temperature: temperature
                     )
                     var parser = SSEParser()
-                    // Gemini's JSON is already camelCase — no key strategy.
                     let decoder = JSONDecoder()
 
                     for try await chunk in http.stream(request) {
@@ -154,10 +105,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                         }
                     }
                 } catch {
-                    // Same recovery shape as the other native adapters: honor the
-                    // messageStart-first contract, close any open block before
-                    // the error, and don't double-report when a streamed error
-                    // already surfaced a more specific one.
+                    // Preserve messageStart-first ordering and the original provider error; close blocks before error/completion.
                     let alreadyErrored = reducer.hasErrored
                     reducer.markErrored()
                     for event in reducer.flushPendingStart() {
@@ -180,13 +128,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         }
     }
 
-    /// Decode one SSE frame's data and feed it to the reducer. Unparseable
-    /// frames are skipped rather than thrown — `streamGenerateContent` may emit
-    /// keep-alive or shapes this adapter doesn't model, and a harmless one must
-    /// not abort the turn. Genuine failures arrive either as a non-2xx HTTP
-    /// status (the catch path) or a streamed `error` envelope the reducer maps
-    /// to `.error`.
-    /// Strict completion mode reports malformed frames instead of dropping them.
+    /// Tolerates unmodeled frames; strict completion mode surfaces malformed frames as errors.
     private func consume(
         _ data: String,
         into reducer: inout GeminiStreamReducer,
@@ -214,9 +156,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        // Gemini authenticates with the `x-goog-api-key` header (preferred over
-        // a `?key=` query param so the key stays out of URLs/logs). Same
-        // cleartext guard the other adapters use.
+        // Keep credentials out of URLs and reject unsafe cleartext destinations.
         if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         }
@@ -225,8 +165,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
             max(temperature, Self.temperatureRange.lowerBound),
             Self.temperatureRange.upperBound
         )
-        // Gemini accepts `temperature` alongside thinking (unlike Anthropic), so
-        // it is always sent. `thinkingConfig` is added only for thinking models.
+        // Gemini accepts temperature alongside thinking.
         let thinkingConfig = model.supportsThinking
             ? GeminiGenerateContentRequest.ThinkingConfig(includeThoughts: true)
             : nil
@@ -250,10 +189,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         return request
     }
 
-    /// Build the model-scoped streaming URL. Gemini's method suffix is a literal
-    /// colon segment (`{model}:streamGenerateContent`), so the URL is composed
-    /// by string to keep the colon unencoded, with `alt=sse` for the SSE
-    /// framing this adapter parses.
+    /// Compose as a string to keep the model:streamGenerateContent colon unencoded.
     private func streamURL(modelID: String) -> URL {
         var base = baseURL.absoluteString
         while base.hasSuffix("/") { base.removeLast() }
@@ -265,38 +201,14 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         return url
     }
 
-    /// Translate Chat / Core's `LLMMessage` history into Gemini's
-    /// `(systemInstruction, contents)` pair. The leading `.system` block(s)
-    /// become the top-level `systemInstruction` (Gemini has no system role);
-    /// `.assistant` maps to role `model`; tool *results* (Core's `.tool` role)
-    /// ride a `user`-role content as a `functionResponse` part (Gemini has no
-    /// tool role); adjacent same-role contents are merged so the user/model
-    /// alternation stays clean.
-    ///
-    /// `.searchResult` blocks (Anthropic's encrypted-echo carrier) are ignored
-    /// — Gemini grounding needs no per-turn echo to keep citations valid.
-    ///
-    /// ⚠️ The `functionResponse` carries the call `id` (when Gemini supplied
-    /// one — required so parallel same-tool calls match their results) plus the
-    /// function *name* (a required field, recovered from the issuing `.toolUse`
-    /// block), and its `response` wraps the tool's string output in an object.
-    /// Synthetic ids — older id-less responses (id == name) and locally-minted
-    /// PKs the orchestrator created because the provider gave none — send
-    /// name-only, byte-identical to before; only Gemini-minted ids ride the
-    /// wire.
+    /// Hoists system instructions, merges adjacent roles, and replays only
+    /// Gemini-minted call IDs; fabricated IDs must never reach the API.
     private func translate(_ messages: [LLMMessage]) -> (systemInstruction: GeminiContent?, contents: [GeminiContent]) {
         var systemParts: [String] = []
         var grouped: [(role: String, parts: [GeminiPart])] = []
 
-        // A `.toolResult` carries only the call id; recover the function name
-        // (a required `functionResponse` field) by matching it back to the
-        // assistant `.toolUse` block that issued the call. A call id is sent on
-        // the wire only when Gemini minted it: bare-name fallbacks (older
-        // id-less turns, `id == name`) and locally-minted ids (disambiguated
-        // PKs the orchestrator created because the provider gave none) are
-        // synthetic — Gemini round-trips the ids IT minted, so a fabricated id
-        // must not reach it; those send name-only (byte-identical to a native
-        // id-less turn). See `sendsNameOnly` and the `wireID` guards below.
+        // Recover functionResponse names from tool uses. Gemini accepts only its own IDs;
+        // legacy name fallbacks and locally minted IDs must replay name-only.
         func sendsNameOnly(id: String, name: String) -> Bool {
             id == name || ToolCallRecord.isLocallyMintedID(id)
         }
@@ -357,13 +269,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 if message.role == .assistant {
                     for block in message.content {
                         if case .toolUse(let id, let name, let input, let signature) = block {
-                            // Echo Gemini's per-call id so the next turn's
-                            // functionResponse can match it; omit for synthetic
-                            // ids (id-less `id == name`, or a locally-minted PK)
-                            // so we never send Gemini an id it didn't mint.
-                            // Replay the thinking model's `thoughtSignature` —
-                            // Gemini rejects the follow-up turn with HTTP 400
-                            // when it's dropped.
+                            // Preserve Gemini-minted IDs and thought signatures; missing signatures cause follow-up rejection.
                             let wireID = sendsNameOnly(id: id, name: name) ? nil : id
                             parts.append(.functionCall(
                                 id: wireID,
@@ -384,16 +290,9 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         return (systemInstruction, grouped.map { GeminiContent(role: $0.role, parts: $0.parts) })
     }
 
-    /// Translate advertised tools into Gemini tools. The
-    /// `__native_web_search__` sentinel becomes the `google_search` grounding
-    /// tool; every other tool becomes a `functionDeclarations` entry. Returns
-    /// `nil` when there are no tools so the key is omitted entirely.
-    ///
-    /// Note: some Gemini models reject combining `google_search` with
-    /// `functionDeclarations` in one request. Per the spec decision the gated
-    /// re-issue flow (PR4) ensures a search turn carries no client tools, so the
-    /// two shouldn't co-occur in practice; both are still serialized here rather
-    /// than silently dropping client tools.
+    /// The native-search sentinel becomes google_search; no tools omits the key.
+    /// Some models reject combining search and function declarations. The gated search flow
+    /// separates them; this serializer preserves all advertised tools.
     private func translate(_ tools: [LLMTool]) -> [GeminiTool]? {
         let (clientTools, searchEnabled) = NativeWebSearch.partition(tools)
         var out: [GeminiTool] = []
@@ -412,8 +311,6 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         return out.isEmpty ? nil : out
     }
 
-    /// Coerce any thrown error into an `LLMError`, normalizing cancellation the
-    /// same way the other adapters do.
     private func mapToLLMError(_ error: Error) -> LLMError {
         if Task.isCancelled { return .cancelled }
         if error is CancellationError { return .cancelled }

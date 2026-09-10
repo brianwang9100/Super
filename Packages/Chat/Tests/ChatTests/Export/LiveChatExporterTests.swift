@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Verifies `LiveChatExporter` assembles the archive from the repositories:
-/// excludes soft-deleted and transient conversations, preserves ordering,
-/// groups tool calls under their message, and decodes JSON-string columns
-/// into real nested JSON.
 @Suite("LiveChatExporter")
 struct LiveChatExporterTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -74,7 +70,6 @@ struct LiveChatExporterTests {
 
         let archive = try await s.exporter.export()
 
-        // listActive() orders by updatedAt descending.
         #expect(archive.conversations.map(\.id) == ["newer", "older"])
         let older = try #require(archive.conversations.first { $0.id == "older" })
         #expect(older.messages.map(\.id) == ["m_first", "m_second"])

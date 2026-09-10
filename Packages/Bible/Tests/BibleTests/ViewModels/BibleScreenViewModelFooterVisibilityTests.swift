@@ -2,11 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleScreenViewModel.isChapterFooterVisible` — the flag the
-/// chapter reader drives when its prev / next footer cards scroll into view, so
-/// `BibleScreen` hides the (now-redundant) hovering composer chevrons. Reset by
-/// `resetImmersive()` on a chapter step so a fresh chapter starts with the
-/// chevrons shown.
 @Suite("BibleScreenViewModel footer visibility")
 @MainActor
 struct BibleScreenViewModelFooterVisibilityTests {

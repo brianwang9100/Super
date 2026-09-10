@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Verifies the on-disk archive encoding is stable and round-trips.
 @Suite("ChatArchive encoding")
 struct ChatArchiveTests {
     private func sample() -> ChatArchive {
@@ -45,16 +44,13 @@ struct ChatArchiveTests {
         let data = try sample().encoded()
         let json = String(decoding: data, as: UTF8.self)
 
-        // sortedKeys ⇒ keys are alphabetical: conversations < exportedAt < formatVersion.
         let convIdx = try #require(json.range(of: "\"conversations\""))
         let exportedIdx = try #require(json.range(of: "\"exportedAt\""))
         let formatIdx = try #require(json.range(of: "\"formatVersion\""))
         #expect(convIdx.lowerBound < exportedIdx.lowerBound)
         #expect(exportedIdx.lowerBound < formatIdx.lowerBound)
 
-        // ISO-8601 date rendering, not a bare epoch double.
         #expect(json.contains("2027-01-15T08:00:00Z") || json.contains("2027"))
-        // pretty-printed ⇒ contains newlines and indentation.
         #expect(json.contains("\n"))
     }
 

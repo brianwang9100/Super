@@ -4,9 +4,6 @@ import os
 import Testing
 @testable import Chat
 
-/// Drives `ChatExportController` through its phases with fake exporters,
-/// synchronizing on observable signals (the `_waitForExport()` drain seam and
-/// the gate exporter's entry signal) rather than sleeps or yield polling.
 @Suite("ChatExportController")
 @MainActor
 struct ChatExportControllerTests {
@@ -72,14 +69,11 @@ struct ChatExportControllerTests {
         controller.start()
         #expect(controller.phase == .exporting)
 
-        // Synchronize on the exporter actually entering export() before
-        // cancelling — the cancel lands between start and completion.
+        // Hold the exporter mid-call so cancellation precedes completion.
         await gate.awaitStarted()
         controller.cancel()
         #expect(controller.phase == .idle)
 
-        // Let export() return; the controller's post-export cancellation check
-        // (or its cancelled-task guard) drops the result without writing.
         await gate.release()
         await controller._waitForExport()
 
@@ -87,8 +81,6 @@ struct ChatExportControllerTests {
     }
 }
 
-/// Non-gated fake: returns or throws immediately on the first call,
-/// `fatalError`s on a second (strict — a re-entrant export is a test bug).
 private struct StubExporter: ChatExporter {
     enum Result: Sendable { case success(ChatArchive), failure(any Error & Sendable) }
     private let result: Result
@@ -109,8 +101,7 @@ private struct StubExporter: ChatExporter {
     }
 }
 
-/// Gated fake: signals on entry, then suspends until `release()` so a test can
-/// drive the start→cancel→complete ordering deterministically.
+/// Signals entry, then holds completion until release.
 private actor GateExporter: ChatExporter {
     private let result: ChatArchive
     private var startedContinuation: CheckedContinuation<Void, Never>?
@@ -130,13 +121,11 @@ private actor GateExporter: ChatExporter {
         return result
     }
 
-    /// Resolves once `export()` has been entered.
     func awaitStarted() async {
         if didStart { return }
         await withCheckedContinuation { startedContinuation = $0 }
     }
 
-    /// Allow the suspended `export()` to return.
     func release() {
         didRelease = true
         releaseContinuation?.resume()

@@ -6,18 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `NoteListSheet` — the bottom sheet listing a range's
-/// notes. Variants cover the empty-state hero across all themes, a
-/// single-note list, a many-note scrolling list across all themes, and a
-/// Dynamic Type XXL pass that exercises the nav bar + card reflow.
 @Suite("NoteListSheet snapshots", .serialized)
 @MainActor
 struct NoteListSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let citation = "John 3:16–18"

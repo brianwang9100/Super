@@ -3,26 +3,12 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for the annotation surface on `BibleScreenViewModel`:
-///
-/// - disclaimer-gated `triggerAnnotationGeneration(for:)`
-/// - `acknowledgeAnnotationDisclaimer()` / `discardAnnotationDisclaimer()`
-/// - sheet presentation toggle
-/// - `currentChapterAnnotationSpec` / `selectedAnnotationRanges` derivation
-/// - `citationLabel(for:)` formatting
-/// - `navigateToDeepLink(_:)` routing
-/// - `makeAnnotationReference(_:)` / `annotationVerseText(for:)`
-///
-/// The wider view model is covered by `BibleScreenViewModelTests`; this
-/// suite is annotation-scoped to keep both files readable.
 @Suite("BibleScreenViewModel annotations")
 @MainActor
 struct BibleScreenViewModelAnnotationsTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// Strict in-memory disclaimer-store double. Defaults to
-    /// unacknowledged so each test can opt into the acknowledged path
-    /// via `setAcknowledged(true)` before construction.
+    // Tests access this unchecked Sendable store only on MainActor.
     private final class FakeDisclaimerStore: AnnotationDisclaimerStore, @unchecked Sendable {
         private var value: Bool
         init(initial: Bool = false) { self.value = initial }
@@ -75,8 +61,6 @@ struct BibleScreenViewModelAnnotationsTests {
         viewModel.triggerAnnotationGeneration(for: spec)
         #expect(viewModel.isAnnotationDisclaimerPresented)
         #expect(viewModel.pendingAnnotationIntents == [spec])
-        // The generation stub (toast) does NOT fire while the disclaimer
-        // is up — the queued intent fires on acknowledgement.
         #expect(viewModel.toast == nil)
     }
 
@@ -90,7 +74,6 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(viewModel.isAnnotationDisclaimerPresented == false)
         #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(store.isAcknowledged == true)
-        // Stub generation produces the deferred-dispatch toast.
         #expect(viewModel.toast == "Annotation generation ships in a later update.")
     }
 
@@ -103,14 +86,10 @@ struct BibleScreenViewModelAnnotationsTests {
         let b = BibleAnnotationTargetSpec.verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 5, verseEnd: 5)
         viewModel.triggerAnnotationGeneration(for: a)
         viewModel.triggerAnnotationGeneration(for: b)
-        // Both queued; disclaimer up; no toast yet.
         #expect(viewModel.pendingAnnotationIntents == [a, b])
         #expect(viewModel.isAnnotationDisclaimerPresented)
         #expect(viewModel.toast == nil)
         viewModel.acknowledgeAnnotationDisclaimer()
-        // Both drained; toast reflects the last replay (the stub toast
-        // text is identical per spec — both fired, the last one's toast
-        // is what the user sees, which is fine).
         #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(viewModel.toast == "Annotation generation ships in a later update.")
     }
@@ -128,12 +107,6 @@ struct BibleScreenViewModelAnnotationsTests {
 
     @Test("a generation trigger fired from the action sheet path clears the selection")
     func generationClearsSelection() async {
-        // Reproduces the BibleActionSheet "Annotate" tile path: the user
-        // has verses selected, taps Annotate, the spec is built from the
-        // selection and fired through the gate. After the toast, the
-        // action sheet should dismiss (selectedVerses empty) so it
-        // doesn't compete with the toast for the bottom edge — matches
-        // every other action-sheet action (copy, chat, highlight).
         let store = FakeDisclaimerStore(initial: true)
         let viewModel = makeViewModel(disclaimerStore: store)
         await viewModel.load()
@@ -158,7 +131,6 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(viewModel.isAnnotationDisclaimerPresented == false)
         #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(store.isAcknowledged == false)
-        // No queued intent fires — no toast.
         #expect(viewModel.toast == nil)
     }
 
@@ -202,7 +174,6 @@ struct BibleScreenViewModelAnnotationsTests {
     func currentChapterSpecReflectsPosition() async {
         let viewModel = makeViewModel(at: BiblePosition(bookId: "ROM", chapterNumber: 8))
         await viewModel.load()
-        // This is the spark menu's Annotate target when no verses are selected.
         #expect(viewModel.currentChapterAnnotationSpec == .chapter(bookId: "ROM", chapterNumber: 8))
     }
 
@@ -269,9 +240,7 @@ struct BibleScreenViewModelAnnotationsTests {
     func deepLinkSingleVerseFallsBackToStart() async {
         let viewModel = makeViewModel(at: BiblePosition(bookId: "1PE", chapterNumber: 2))
         await viewModel.load()
-        // `verseEnd` is nil for a single-verse link (`John 1:14`); the
-        // router must fall back to `verseStart` rather than treat the
-        // link as chapter-only.
+        // A single-verse deep link omits verseEnd; it must not degrade to chapter-only navigation.
         viewModel.navigateToDeepLink(
             BibleDeepLink(bookId: "JHN", chapter: 1, verseStart: 14)
         )
@@ -283,7 +252,6 @@ struct BibleScreenViewModelAnnotationsTests {
     func deepLinkChapterOnlyClearsSelection() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // A leftover selection in the current chapter must not survive the hop.
         viewModel.toggleVerse(28)
         viewModel.navigateToDeepLink(BibleDeepLink(bookId: "PSA", chapter: 23))
         #expect(viewModel.position == BiblePosition(bookId: "PSA", chapterNumber: 23))
@@ -308,7 +276,6 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(reference.sourceID == "rec-1")
         #expect(reference.citation == "Romans 8:28-30")
         #expect(reference.displayLabel == "Romans 8:28-30 annotation")
-        // The snapshot is the composer's block: citation heading + summary.
         #expect(reference.snapshot.hasPrefix("## Romans 8:28-30 — annotation"))
         #expect(reference.snapshot.contains("Suffering is the backdrop"))
     }
@@ -336,7 +303,6 @@ struct BibleScreenViewModelAnnotationsTests {
             summary: "Suffering is the backdrop, not the contradiction.",
             source: .user, modelId: "afm-3.0", createdAt: now
         )
-        // The overflow-menu hand-off opens from the presented sheet.
         viewModel.presentAnnotationSheet(for: .verseRange(
             bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30
         ))
@@ -344,10 +310,8 @@ struct BibleScreenViewModelAnnotationsTests {
 
         let reference = viewModel.addAnnotationToChat(record)
 
-        // Same reference the screen publishes on the event bus…
         #expect(reference.sourceID == "rec-1")
         #expect(reference.citation == "Romans 8:28-30")
-        // …and the sheet is now dismissed (the regression).
         #expect(viewModel.presentedAnnotationTarget == nil)
     }
 
@@ -393,8 +357,6 @@ struct BibleScreenViewModelAnnotationsTests {
     func verseTextNilOnEmptyRange() async {
         let viewModel = makeViewModel(textLoader: FixtureBibleTextLoader())
         await viewModel.load()
-        // Verses past the fixture chapter's end — the slice is empty, so the
-        // card degrades to summary-only rather than quoting an empty string.
         let text = viewModel.annotationVerseText(
             for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 40, verseEnd: 41)
         )
@@ -402,9 +364,6 @@ struct BibleScreenViewModelAnnotationsTests {
     }
 }
 
-/// A `BibleTextLoader` serving one fixed Romans 8 fragment with known verse
-/// texts, so `annotationVerseText` assertions are exact rather than coupled
-/// to the bundled WEB translation.
 private struct FixtureBibleTextLoader: BibleTextLoader {
     func loadChapter(
         bookId: String, chapterNumber: Int, translation: BibleTranslation

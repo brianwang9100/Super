@@ -1,14 +1,5 @@
 import SwiftUI
 
-/// Code-block chrome matching `.design-tmp/chat/project/src/message-parts.jsx`
-/// — a dark surface with a small lang label + copy pill in the header,
-/// rounded corners, and a horizontally-scrollable monospaced body painted
-/// by ``SplashHighlighter``.
-///
-/// Wired via `Theme.codeBlock` in `markdownTheme()` so every fenced block
-/// inside a ``MarkdownText`` picks up the chrome automatically. The copy
-/// state machine lives in ``CodeBlockCopyController`` so its timing and
-/// cancellation behavior can be tested without rendering this view.
 struct CodeBlock: View {
     let language: String?
     let code: String
@@ -29,10 +20,7 @@ struct CodeBlock: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onAppear {
-            // Swap the controller's pasteboard to the env-injected one
-            // now that the environment is readable. Tests inject a
-            // recording double via `.environment(\.pasteboardClient, ...)`
-            // and rely on this swap to redirect copy() to it.
+            // Environment values are available here, after the State controller's construction.
             copyController.pasteboard = pasteboard
         }
         .accessibilityElement(children: .contain)
@@ -53,9 +41,6 @@ struct CodeBlock: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .overlay(alignment: .bottom) {
-            // The 1pt hairline divider matches the design's `border-bottom`
-            // on the header row. Painted from the code foreground at low
-            // opacity so it blends the same in light/dark/sepia.
             Rectangle()
                 .fill(superTheme.codeForeground.opacity(0.08))
                 .frame(height: 1)
@@ -77,8 +62,6 @@ struct CodeBlock: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(copied ? "Copied" : "Copy code")
-        // VoiceOver announces the value change when state flips so the
-        // user gets the same feedback the visible icon swap provides.
         .accessibilityValue(copied ? "Copied to clipboard" : "")
     }
 

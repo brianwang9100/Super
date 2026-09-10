@@ -6,16 +6,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `WebSearchCallCell` — the tool-call-style cell announcing a
-/// web search above the grounded answer. Collapsed pins the header ("Web
-/// search" + done badge + chevron); expanded pins the SYSTEM / QUERY / RESULTS
-/// detail panels. Light / dark / sepia cover the themes; a Dynamic Type XXL
-/// case pins reflow. Shares header typography with `ToolCallBlock` /
-/// `SourceCitationsPill` (the cells deliberately read identically).
-///
-/// `.serialized` for the same `__Snapshots__/` PNG-write TOCTOU reason as the
-/// other snapshot suites. Reduce Motion is not a separate variant — the cell
-/// toggles `isExpanded` via a plain `Button` with no animation.
 @Suite("WebSearchCallCell snapshots", .serialized)
 @MainActor
 struct WebSearchCallCellSnapshotTests {

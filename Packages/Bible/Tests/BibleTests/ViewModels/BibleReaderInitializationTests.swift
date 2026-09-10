@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Verifies one-time restoration and navigation winning asynchronous startup races.
 @Suite("Bible reader initialization")
 @MainActor
 struct BibleReaderInitializationTests {
@@ -140,7 +139,6 @@ struct BibleReaderInitializationTests {
     }
 }
 
-/// A deterministic repository suspension used to exercise reader startup races.
 private actor GatedReadingPositionRepository: BibleReadingPositionRepository {
     let record: BibleReadingPositionRecord
     var isGated: Bool

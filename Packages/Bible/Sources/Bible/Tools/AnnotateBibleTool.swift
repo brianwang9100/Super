@@ -1,23 +1,10 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that writes one markdown study summary per target into
-/// the `bibleAnnotation` table.
-///
-/// One tool, three callers — single-target taps in the UI, in-chat tool
-/// calls, and the bulk runner — all dispatch through this same
-/// executor. The provenance fields (`source`, `modelId`) come from an
-/// injected `BibleAnnotationStampProvider` so the bulk path can stamp
-/// `.userBulk` without a separate tool, and tests substitute fakes.
-///
-/// Validation rejects inputs softly: a missing required field returns a
-/// `ToolResult` with `isError: true` and a remediation message instead of
-/// throwing, so the LLM (Large Language Model) sees the failure and can
-/// retry with a correct payload rather than tearing down the whole turn.
+/// Shares one executor across interactive and bulk generation. Injected stamps
+/// supply provenance rather than trusting tool input. Invalid arguments return
+/// correctable error results so the model can retry within its turn.
 public struct AnnotateBibleTool: ToolExecutor {
-    /// Dotted form namespaces the tool under its applet, matching the
-    /// convention started by `time.now` (Chat) and inherited by future
-    /// applets (`todo.create`, `recipe.find`, …).
     public static let toolID = "bible.annotate"
 
     public static let appletID = "bible"
@@ -138,8 +125,6 @@ public struct AnnotateBibleTool: ToolExecutor {
         summary: "Writes a markdown study summary for a passage."
     )
 
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in each app's bootstrap.
     public static func registration(
         repository: any BibleAnnotationRepository,
         stampProvider: any BibleAnnotationStampProvider,
@@ -181,8 +166,6 @@ public struct AnnotateBibleTool: ToolExecutor {
         )
 
         do {
-            // `replace` clears the target's prior rows first, so re-annotating
-            // converges on the intended one-row-per-target steady state.
             try await repository.replace(
                 target: parsed.target,
                 bookId: parsed.bookId,
@@ -233,12 +216,8 @@ public struct AnnotateBibleTool: ToolExecutor {
         let rawVerseStart = BibleToolJSON.optionalInt(input, key: "verseStart")
         let rawVerseEnd = BibleToolJSON.optionalInt(input, key: "verseEnd")
 
-        // `target` is the authoritative discriminator. We enforce the fields
-        // the unit *requires*, then coerce away any position fields it doesn't
-        // use rather than rejecting the call — a model that stamps a stray
-        // `verseStart` on a chapter has still declared chapter intent. The
-        // coerced (nilled) fields are what get stored and queried back, so a
-        // chapter row stays addressable as `verseStart IS NULL`.
+        // Target is authoritative: discard extraneous positions instead of rejecting valid
+        // intent, keeping stored chapter/book rows addressable through nullable positions.
         let chapterNumber: Int?
         let verseStart: Int?
         let verseEnd: Int?

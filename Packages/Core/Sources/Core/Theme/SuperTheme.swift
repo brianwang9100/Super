@@ -1,29 +1,8 @@
 import SwiftUI
 
-/// Resolved palette for one of Super's four "historical study bible" theme
-/// families — **Vellum**, **Lapis**, **Scriptorium**, **Slate** — each with a
-/// light and a dark variant (8 concrete variants). Vellum Light is the
-/// default; Lapis is the lone cool (indigo) family.
-///
-/// Token values are transcribed verbatim from the design artifact
-/// `docs/design/palettes.jsx` (the `oklch(L C H)` triplets use the same
-/// `L∈0–1` / absolute-chroma / degrees-hue convention as `OKLCH`, so they
-/// drop straight into `OKLCH(L, C, H, alpha:)`). Construction resolves every
-/// triplet once via `OKLCH.color`, so views read plain `Color` values per
-/// render — there's no per-frame matrix math.
-///
-/// A handful of tokens the design file doesn't carry (`accentDark`,
-/// `glassTint`, the fenced-code slab, the error reds) are *derived* per
-/// variant from the transcribed palette — see `assemble(id:palette:accentHue:)`.
-///
-/// The accent hue is parameterized rather than baked. `make(_:accentHue:)`
-/// seeds each variant with its design accent hue but accepts an override so a
-/// future hue control can rebuild the active theme with a new `accentHue`
-/// (today only `accent`/`accentDark` track it; the washes stay at their
-/// designed hues).
+/// Resolves palettes from docs/design/palettes.jsx once at construction. Tokens
+/// absent from that artifact are derived in assemble; views read resolved Colors.
 public struct SuperTheme: Sendable, Equatable {
-    /// Logical theme identity — one of four families × light/dark. Drives the
-    /// system `colorScheme` adoption and the in-Settings selection state.
     public enum Identifier: String, Sendable, CaseIterable, Codable {
         case vellumLight
         case vellumDark
@@ -34,8 +13,6 @@ public struct SuperTheme: Sendable, Equatable {
         case slateLight
         case slateDark
 
-        /// The four theme families. Settings groups its variant cards under
-        /// these as section headers; each family supplies a Light + Dark card.
         public enum Family: String, Sendable, CaseIterable, Codable {
             case vellum
             case lapis
@@ -52,8 +29,6 @@ public struct SuperTheme: Sendable, Equatable {
             }
         }
 
-        /// Which family this variant belongs to — used for Settings grouping
-        /// and the theme's `displayName`.
         public var family: Family {
             switch self {
             case .vellumLight, .vellumDark: .vellum
@@ -63,7 +38,6 @@ public struct SuperTheme: Sendable, Equatable {
             }
         }
 
-        /// Whether this variant is the dark mode of its family.
         public var isDark: Bool {
             switch self {
             case .vellumDark, .lapisDark, .scriptoriumDark, .slateDark: true
@@ -71,78 +45,52 @@ public struct SuperTheme: Sendable, Equatable {
             }
         }
 
-        /// The mode label shown on a Settings card beneath the family header.
         public var modeName: String { isDark ? "Dark" : "Light" }
     }
 
     public let id: Identifier
-    /// The family name ("Vellum" / "Lapis" / "Scriptorium" / "Slate"). The
-    /// Settings card shows the mode ("Light"/"Dark") separately via
-    /// `id.modeName`.
+    /// Family name; modeName supplies the separate Light/Dark label.
     public let displayName: String
-    /// Whether the system should treat this as a dark color scheme — used
-    /// by views that ask SwiftUI to pin `.preferredColorScheme(...)` so
-    /// the iOS status bar adopts the matching style.
     public let isDark: Bool
-    /// The accent hue (0–360°) this theme was built with — each variant's
-    /// design baseline unless overridden via `make(_:accentHue:)`. Surfaced so
-    /// derived washes (e.g. the Bible selection tint) can track the accent
-    /// without re-deriving it from a resolved `Color`.
+    /// Accent hue in degrees, 0...360.
     public let accentHue: Double
 
-    // Surfaces
     public let background: Color
     public let backgroundRaised: Color
     public let backgroundSunken: Color
     public let sidebar: Color
 
-    // Ink (foreground)
     public let ink: Color
     public let inkSoft: Color
     public let inkFaint: Color
     public let inkMute: Color
 
-    // Accent
     public let accent: Color
     public let accentInk: Color
     public let accentSoft: Color
-    /// A deep, saturated accent for high-contrast marks (e.g. the splash
-    /// spark glyph on the warm-light field). Tracks `accentHue` so a future
-    /// hue control carries it; per mode it picks a lightness that stays
-    /// legible against `background` (deep in light, mid in dark).
+    /// High-contrast accent mark color adjusted for background brightness.
     public let accentDark: Color
 
-    // Borders
     public let border: Color
     public let borderFaint: Color
 
-    /// Low-alpha tint biasing the frosted Liquid Glass on chrome and sheets
-    /// toward this theme's character — the chromatic cast the system glass
-    /// (which only tracks light/dark) would otherwise drop: the warmth of the
-    /// warm families and, for Lapis, its cool indigo. The alpha is deliberately
-    /// low: the tint nudges the glass, it does not paint it. Read by
-    /// `superGlassButton`/`superGlassSurface`.
+    /// Low-alpha color bias for frosted glass; tints the material without painting over it.
     public let glassTint: Color
 
-    // Code
     public let codeBackground: Color
     public let codeForeground: Color
     public let codeInlineBackground: Color
     public let codeInlineForeground: Color
 
-    // Bubble
     public let bubbleUser: Color
     public let bubbleInk: Color
 
-    // Error banner. The design uses a fixed warm-red (hue 30) across families;
-    // we mirror that, picking the light or dark red set by mode.
     public let errorBackground: Color
     public let errorBorder: Color
     public let errorInk: Color
     public let errorAccent: Color
 
-    /// Build a theme by id, optionally overriding the accent hue.
-    /// `accentHue` defaults to the variant's design accent hue.
+    /// Nil accentHue uses the variant's design default; only derived accent tokens follow overrides.
     public static func make(_ id: Identifier, accentHue: Double? = nil) -> SuperTheme {
         let p = palette(for: id)
         return assemble(id: id, palette: p, accentHue: accentHue ?? p.accent.h)
@@ -150,10 +98,6 @@ public struct SuperTheme: Sendable, Equatable {
 
     // MARK: - Palette transcription
 
-    /// The raw, design-file token values for one variant. Everything here is
-    /// transcribed 1:1 from `docs/design/palettes.jsx`; the derived tokens
-    /// (`accentDark`, `glassTint`, code slab, error reds) are computed from
-    /// these in `assemble`.
     private struct Palette {
         let bg, bgRaised, bgSunken, sidebar: OKLCH
         let ink, inkSoft, inkFaint, inkMute: OKLCH
@@ -164,8 +108,7 @@ public struct SuperTheme: Sendable, Equatable {
         let isDark: Bool
     }
 
-    /// The four warm-red error tokens for one mode. Not in `palettes.jsx`; the
-    /// design uses a single fixed red set per mode across all families.
+    // Error colors use one warm-red set per mode across all families.
     private struct ErrorPalette {
         let background, border, ink, accent: OKLCH
     }
@@ -184,15 +127,6 @@ public struct SuperTheme: Sendable, Equatable {
         accent: OKLCH(0.65, 0.14, 30)
     )
 
-    /// Resolve the transcribed palette into a `SuperTheme`, deriving the
-    /// tokens the design file omits:
-    /// - `accentDark` — accent chroma/hue at a deeper (light) / mid (dark)
-    ///   lightness for high-contrast marks.
-    /// - `glassTint` — the variant's `bgRaised` at a low alpha (lighter in
-    ///   light mode, slightly stronger in dark).
-    /// - fenced-code slab — a dark slab keyed to the variant's bg hue (so it
-    ///   stays warm for the warm families and cool for Lapis).
-    /// - error reds — the fixed light/dark warm-red set for this mode.
     private static func assemble(id: Identifier, palette p: Palette, accentHue h: Double) -> SuperTheme {
         let darkMode = p.isDark
         let err = darkMode ? darkError : lightError
@@ -244,8 +178,6 @@ public struct SuperTheme: Sendable, Equatable {
         }
     }
 
-    /// Vellum — warm parchment cream, foxed at the edges; the brightest,
-    /// softest reading surface. Clay accent (~hue 52).
     private static let vellumLight = Palette(
         bg: OKLCH(0.957, 0.018, 85), bgRaised: OKLCH(0.978, 0.012, 85),
         bgSunken: OKLCH(0.936, 0.022, 84), sidebar: OKLCH(0.946, 0.020, 85),
@@ -272,9 +204,6 @@ public struct SuperTheme: Sendable, Equatable {
         isDark: true
     )
 
-    /// Lapis — lapis and gold, the illuminated manuscript: a cool indigo ground
-    /// (hue ~255–262) lit by antique gilt. The only cool family and the most
-    /// nocturnal. Gold accent (~hue 75).
     private static let lapisLight = Palette(
         bg: OKLCH(0.945, 0.012, 255), bgRaised: OKLCH(0.972, 0.009, 255),
         bgSunken: OKLCH(0.922, 0.017, 255), sidebar: OKLCH(0.934, 0.014, 255),
@@ -301,9 +230,6 @@ public struct SuperTheme: Sendable, Equatable {
         isDark: true
     )
 
-    /// Scriptorium — "your green, taken to seminary": a muted study sage with
-    /// a moss-olive accent (~hue 128). The explicit replacement for the old
-    /// green theme.
     private static let scriptoriumLight = Palette(
         bg: OKLCH(0.956, 0.012, 135), bgRaised: OKLCH(0.976, 0.008, 135),
         bgSunken: OKLCH(0.935, 0.016, 134), sidebar: OKLCH(0.945, 0.014, 135),
@@ -330,8 +256,6 @@ public struct SuperTheme: Sendable, Equatable {
         isDark: true
     )
 
-    /// Slate — monastic stone and pewter; a near-neutral warm grey that lets a
-    /// single clay accent (~hue 48) do the talking. The most restrained family.
     private static let slateLight = Palette(
         bg: OKLCH(0.957, 0.004, 80), bgRaised: OKLCH(0.979, 0.003, 80),
         bgSunken: OKLCH(0.936, 0.005, 80), sidebar: OKLCH(0.946, 0.005, 80),
@@ -359,9 +283,6 @@ public struct SuperTheme: Sendable, Equatable {
     )
 }
 
-/// Environment slot for the active theme. Views read it via
-/// `@Environment(\.superTheme)` and SwiftUI rebuilds them when the value
-/// changes (e.g. theme switch in Settings).
 public struct SuperThemeKey: EnvironmentKey {
     public static let defaultValue: SuperTheme = .make(.vellumLight)
 }
@@ -374,9 +295,7 @@ public extension EnvironmentValues {
 }
 
 public extension View {
-    /// Inject a theme into the SwiftUI environment for this subtree, and
-    /// pin the matching `colorScheme` so system chrome (status bar, native
-    /// pickers, blur effects) adopts the right light/dark variant.
+    /// Also pins the preferred color scheme so native chrome follows the theme.
     func superTheme(_ theme: SuperTheme) -> some View {
         environment(\.superTheme, theme)
             .preferredColorScheme(theme.isDark ? .dark : .light)

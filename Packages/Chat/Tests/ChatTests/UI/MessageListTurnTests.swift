@@ -1,7 +1,6 @@
 import Testing
 @testable import Chat
 
-/// Turn grouping retains row order and stable identity as responses grow.
 @Suite("MessageList turns")
 struct MessageListTurnTests {
     @Test("each user starts a stable turn; assistant and banner rows remain in order")

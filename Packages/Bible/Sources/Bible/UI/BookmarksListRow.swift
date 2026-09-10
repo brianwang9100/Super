@@ -1,23 +1,14 @@
 import Core
 import SwiftUI
 
-/// One row in the Bookmarks applet's list: a filled ribbon (or a pale wash of
-/// the colour when empty), the colour name, and the chapter it marks — or a muted
-/// "Empty slot" when unassigned. An assigned row is a tappable button that
-/// opens the chapter; an empty row is inert text with no tap target.
 struct BookmarksListRow: View {
     let color: BibleBookmarkColor
-    /// The marked chapter's citation (`"John 3"`), or `nil` for an empty slot.
     let citation: String?
-    /// Fires when an assigned row is tapped; `nil` for an empty slot, which
-    /// renders without a button so it can't be activated.
+    /// Nil renders an inert row rather than a button.
     let onTap: (() -> Void)?
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    // Row title + subtitle bases, declared via `@ScaledMetric` so they
-    // compose OS Dynamic Type on top of the app font-scale slider that
-    // `typography.font(size:)` folds in — the dual-axis pattern.
     @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 15
     @ScaledMetric(relativeTo: .footnote) private var citationSize: CGFloat = 13
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 22
@@ -59,7 +50,6 @@ struct BookmarksListRow: View {
         .padding(.vertical, 13)
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
-            // Hairline divider — 0.5pt at native scale, matching ChatsListRow.
             Rectangle()
                 .fill(theme.borderFaint)
                 .frame(height: 0.5)

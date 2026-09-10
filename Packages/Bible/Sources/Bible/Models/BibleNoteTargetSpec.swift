@@ -1,27 +1,11 @@
 import Foundation
 
-/// A fully-specified note target: which book, which chapter (when relevant),
-/// which verse range (when relevant).
-///
-/// Pairs the polymorphic `BibleNoteTarget` discriminator with the IDs needed
-/// to address one specific range group. Used as the identity for the note
-/// list sheet's `.sheet(item:)`, by the chapter reader when grouping rows for
-/// trailing note glyphs, by the book picker and chapter title when a glyph is
-/// tapped, and by `BibleScreenViewModel` when it presents the list or composes
-/// a new note.
-///
-/// Deliberately separate from `BibleAnnotationTargetSpec` even though the
-/// cases match — notes and annotations are decoupled features, and coupling
-/// their specs would let a change to one silently reshape the other (the same
-/// rationale `BibleNoteTarget` follows against `BibleAnnotationTarget`).
+/// Kept separate from annotation targets so note presentation can evolve independently.
 public enum BibleNoteTargetSpec: Sendable, Equatable, Hashable, Identifiable {
     case book(bookId: String)
     case chapter(bookId: String, chapterNumber: Int)
     case verseRange(bookId: String, chapterNumber: Int, verseStart: Int, verseEnd: Int)
 
-    /// Stable string identity for `.sheet(item:)` and `ForEach` diffing.
-    /// Encodes the case discriminator plus its associated values so two
-    /// adjacent verse ranges in the same chapter don't collapse.
     public var id: String {
         switch self {
         case .book(let bookId):
@@ -33,7 +17,6 @@ public enum BibleNoteTargetSpec: Sendable, Equatable, Hashable, Identifiable {
         }
     }
 
-    /// The corresponding polymorphic-table discriminator.
     public var target: BibleNoteTarget {
         switch self {
         case .book: return .book
@@ -69,27 +52,13 @@ public enum BibleNoteTargetSpec: Sendable, Equatable, Hashable, Identifiable {
     }
 }
 
-/// A request to present the note list sheet for one range.
-///
-/// Carries the target range plus whether the editor should open in create
-/// mode the instant the list mounts. `autoCompose` distinguishes the two ways
-/// a list is opened: a note glyph (filled or outline) means "browse this
-/// range's notes" (`false`); the verse-selection "Add note" tile means "write
-/// a note here" (`true`), where the list mounts behind the editor so a saved
-/// note lands the user on the populated list. Identity is the spec's id so
-/// `.sheet(item:)` treats two presentations of the same range as the same
-/// sheet.
+/// autoCompose opens the editor over the list, returning to that list after saving.
 public struct BibleNoteListPresentation: Sendable, Equatable, Identifiable {
     public let spec: BibleNoteTargetSpec
     public let autoCompose: Bool
 
-    /// Identity folds in `autoCompose` so `.sheet(item:)` re-presents when the
-    /// same range is re-requested in a *different* mode — issuing
-    /// `composeNote(for:)` for a range whose list is already showing in browse
-    /// mode swaps to a fresh presentation that opens the editor, rather than
-    /// SwiftUI seeing no identity change and silently leaving the editor shut.
-    /// Re-presenting the identical (range, mode) pair is still a no-op, so
-    /// there's no flicker on a repeat of the same request.
+    /// Include mode so requesting compose while the same range is being browsed
+    /// presents a fresh sheet; repeating the same range and mode remains a no-op.
     public var id: String { "\(spec.id)|\(autoCompose)" }
 
     public init(spec: BibleNoteTargetSpec, autoCompose: Bool) {

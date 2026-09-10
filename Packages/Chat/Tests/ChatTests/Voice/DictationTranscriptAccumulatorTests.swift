@@ -1,7 +1,6 @@
 import Testing
 @testable import Chat
 
-/// Current-utterance revisions and exactly-once phrase draining, without audio I/O.
 @Suite("DictationTranscriptAccumulator")
 struct DictationTranscriptAccumulatorTests {
     @Test("nonempty hypotheses may refine only the pending phrase")

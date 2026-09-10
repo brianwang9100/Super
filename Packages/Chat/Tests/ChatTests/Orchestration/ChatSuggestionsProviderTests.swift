@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for the AFM-first suggestion generator and its static fallback. Drives
-/// generation through the strict `FakeLLMProvider` so no on-device model is
-/// touched; covers parse/clean/validate, every fallback path, and the
-/// context-safety token bound on the generated prompt.
 @Suite("ChatSuggestionsProvider")
 struct ChatSuggestionsProviderTests {
     private let model = LLMModel(
@@ -120,8 +116,7 @@ struct ChatSuggestionsProviderTests {
     }
 }
 
-/// An `LLMProvider` whose stream never yields until cancelled — drives the
-/// generation-timeout race so a fast timeout returns the fallback.
+/// Holds generation until cancellation to exercise timeout fallback.
 private struct HangingLLMProvider: LLMProvider {
     let id = "hang"
     let displayName = "Hang"

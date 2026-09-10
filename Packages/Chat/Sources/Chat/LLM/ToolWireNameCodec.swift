@@ -1,13 +1,7 @@
 import Core
 import Foundation
 
-/// Sanitizer for providers whose APIs restrict function-tool names to
-/// `[A-Za-z0-9_-]` — OpenAI (`Invalid 'tools[0].name': string does not match
-/// pattern`) and Anthropic (`tools.0.custom.name: String should match
-/// pattern`). Super's tool IDs are dot-namespaced (`time.now`, `bible.read`),
-/// so the strict adapters put the sanitized *wire* name on requests and
-/// restore the original registry name on decode via ``ToolWireNameMap``.
-/// Gemini permits dots and bypasses this entirely.
+/// Encodes dot-namespaced tool IDs for providers limited to `[A-Za-z0-9_-]`.
 enum ToolWireNameCodec {
     /// Replace every character outside `[A-Za-z0-9_-]` with `_`
     /// (`time.now` → `time_now`). Identity for already-legal names.

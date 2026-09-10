@@ -3,10 +3,7 @@ import Foundation
 
 @testable import Bible
 
-/// FIFO test double for `BibleAnnotateGenerating`: each `generate` call pops the
-/// next scripted outcome and returns immediately. Strict — `fatalError`s if the
-/// runner asks for more generations than were scripted, so a miswired test fails
-/// loudly rather than hanging (mirrors Chat's `FakeLLMProvider`).
+/// Consumes scripted outcomes FIFO; an unscripted extra call fails immediately.
 @MainActor
 final class ScriptedBibleAnnotateGenerator: BibleAnnotateGenerating {
     private(set) var receivedReferences: [RecordReference] = []
@@ -29,19 +26,12 @@ final class ScriptedBibleAnnotateGenerator: BibleAnnotateGenerating {
     }
 }
 
-/// Manual-release test double: each `generate` call suspends until the test calls
-/// `releaseNext(_:)`. Lets a test hold a unit "in flight" and land a
-/// pause/cancel mid-generation deterministically, with no sleeps. `awaitCall()`
-/// suspends until a generation is actually in flight so the test never races the
-/// runner's driver.
+/// Holds generation until releaseNext; awaitCall establishes an in-flight call
+/// before a test injects pause/cancellation.
 @MainActor
 final class GatedBibleAnnotateGenerator: BibleAnnotateGenerating {
     private(set) var receivedReferences: [RecordReference] = []
-    /// High-water mark of concurrently in-flight `generate` calls, recorded
-    /// synchronously as each call arrives. A single-flight engine keeps this at
-    /// 1; a second concurrent work loop would push it to 2 — so a test can prove
-    /// "never two loops at once" with a passive end-of-run assertion rather than
-    /// polling.
+    /// Peak concurrent calls; detects overlapping runner loops without polling.
     private(set) var maxInFlight = 0
     private var pending: [CheckedContinuation<BibleAnnotateOutcome, Never>] = []
     private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
@@ -51,15 +41,13 @@ final class GatedBibleAnnotateGenerator: BibleAnnotateGenerating {
         return await withCheckedContinuation { continuation in
             pending.append(continuation)
             maxInFlight = max(maxInFlight, pending.count)
-            // Wake anyone awaiting a call now that one is in flight.
             let waiters = arrivalWaiters
             arrivalWaiters.removeAll()
             for waiter in waiters { waiter.resume() }
         }
     }
 
-    /// Suspend until at least one `generate` is in flight (returns immediately if
-    /// one already is).
+    /// Returns immediately if a generation is already in flight.
     func awaitCall() async {
         if !pending.isEmpty { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -67,7 +55,7 @@ final class GatedBibleAnnotateGenerator: BibleAnnotateGenerating {
         }
     }
 
-    /// Complete the oldest in-flight `generate` with `outcome`.
+    /// Completes the oldest in-flight generation.
     func releaseNext(_ outcome: BibleAnnotateOutcome) {
         guard !pending.isEmpty else {
             fatalError("GatedBibleAnnotateGenerator: releaseNext with no in-flight generate")
@@ -78,9 +66,7 @@ final class GatedBibleAnnotateGenerator: BibleAnnotateGenerating {
     var inFlightCount: Int { pending.count }
 }
 
-/// Manual-release stand-in for the runner's `currentModelID` closure: `value()`
-/// suspends until the test calls `release(_:)`, so a test can land a `cancel()`
-/// while the engine is suspended resolving the active model at run kickoff.
+/// Gates model resolution so tests can cancel during asynchronous run setup.
 @MainActor
 final class GatedModelID {
     private var pending: CheckedContinuation<String, Never>?
@@ -94,7 +80,6 @@ final class GatedModelID {
         }
     }
 
-    /// Suspend until `value()` is awaiting a result.
     func awaitCall() async {
         if pending != nil { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

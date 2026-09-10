@@ -4,7 +4,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Dedicated narration key failures retain durable cleanup ownership without changing the active credential.
 @Suite("Narration key staging")
 @MainActor
 struct NarrationKeyStagingTests {
@@ -293,7 +292,6 @@ private struct KeyStagingFixture {
     }
 }
 
-/// Delegates durable storage to GRDB while failing only the requested persistence stage.
 private actor FaultingNarrationSettingsRepository: NarrationSettingsRepository {
     let base: GRDBNarrationSettingsRepository
     private var saveFails = false
@@ -319,7 +317,6 @@ private actor FaultingNarrationSettingsRepository: NarrationSettingsRepository {
     }
 }
 
-/// In-memory secrets with deterministic failure injection; never calls the system Keychain.
 private actor FaultingNarrationKeychain: KeychainClient {
     enum Failure: Error, Sendable { case write, deletion }
     private var values = ["borrowed-ref": "original"]

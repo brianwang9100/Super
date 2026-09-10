@@ -6,33 +6,22 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of the bulk-annotation surfaces — the Annotations hub (idle +
-/// running), the Generate sheet (book/chapter picker + estimate), and per-book
-/// progress (mid-run + partial failure). Covered across vellum light / dark,
-/// with a Dynamic Type XXL reflow pass on the text-heavy surfaces.
-///
-/// Glass controls render through the deterministic solid fallback inside the
-/// test process (see `SuperGlass`); real glass is verified on-device.
+/// Glass uses SuperGlass's deterministic test fallback; real glass needs device verification.
 @Suite("BulkAnnotation snapshots", .serialized)
 @MainActor
 struct BulkAnnotationSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let coverage = AnnotationCoverage(books: 3, chapters: 38, verses: 1_204)
 
-    /// A mid-run Romans: chapters 1–7 done, 8 generating, the rest queued.
     private static func midRun() -> BulkRunSnapshot {
         BulkRunSnapshot(books: [romans(doneCount: 7, failAt: nil)], isRunning: true)
     }
 
-    /// A partial-failure Romans: 9 done, chapter 6 failed.
     private static func failedRun() -> BulkRunSnapshot {
         BulkRunSnapshot(books: [romans(doneCount: 9, failAt: 6)], isRunning: true)
     }
 
-    /// A preserve-mode Romans: chapters 1–3 skipped (already annotated), 4–9
-    /// done, 10 generating, the rest queued — exercises the `.skipped` row.
     private static func skippedRun() -> BulkRunSnapshot {
         let notes = [9, 14, 11, 16, 12, 8, 13, 18, 10, 15, 7, 12, 9, 11, 14, 6]
         var chapters: [BulkChapterProgress] = []
@@ -100,8 +89,7 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
-    /// One clean completion and one halted run — exercises both row variants
-    /// (dismiss-only vs. dismiss + Retry, with a halt reason).
+    // Include dismiss-only and retryable history rows.
     private static let finishedRuns: [FinishedRunSummary] = [
         FinishedRunSummary(
             runID: "r1", status: .completed, haltReason: nil,

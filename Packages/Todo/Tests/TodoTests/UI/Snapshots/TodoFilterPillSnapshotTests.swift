@@ -6,8 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoFilterPill` across Vellum light and dark plus a larger
-/// Dynamic Type size.
 @Suite("TodoFilterPill snapshots", .serialized)
 @MainActor
 struct TodoFilterPillSnapshotTests {

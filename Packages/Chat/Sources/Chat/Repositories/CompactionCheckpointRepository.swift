@@ -1,28 +1,17 @@
 import Foundation
 import GRDB
 
-/// Persistence boundary for `CompactionCheckpointRecord`.
 public protocol CompactionCheckpointRepository: Sendable {
-    /// The currently live checkpoint for `conversationId`, or nil if the
-    /// conversation hasn't been compacted yet.
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord?
-    /// Every checkpoint ever recorded for `conversationId`, newest first.
+    /// Newest checkpoint first.
     func all(for conversationId: String) async throws -> [CompactionCheckpointRecord]
-    /// Save a new checkpoint, atomically demoting the prior live one (if
-    /// any) for the same conversation to `isLive == false` in the same
-    /// write transaction.
+    /// Atomically demote the previous live checkpoint for this conversation and save the new one.
     func save(_ record: CompactionCheckpointRecord) async throws
-    /// Delete the checkpoints with the given ids in a single statement.
-    /// Used by Regenerate to drop checkpoints whose `uptoMessageId`
-    /// anchor was trimmed away (otherwise `ContextAssembler` would
-    /// prepend a stale summary covering deleted messages). Empty `ids`
-    /// is a no-op.
+    /// Delete in one statement; empty IDs are a no-op. Remove checkpoints when
+    /// trimming their anchors or future prompts will retain stale summaries.
     func delete(ids: [String]) async throws
 }
 
-/// GRDB-backed `CompactionCheckpointRepository`. The "one live checkpoint
-/// per conversation" invariant is enforced inside the `save(_:)`
-/// transaction.
 public struct GRDBCompactionCheckpointRepository: CompactionCheckpointRepository {
     private let queue: DatabaseQueue
 

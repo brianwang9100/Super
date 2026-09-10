@@ -2,7 +2,6 @@ import Foundation
 
 /// The versioned JSON boundary for navigation history stored on the reader row.
 public enum BibleNavigationHistoryPayload {
-    /// Encodes a history in the current version 1 envelope.
     public static func encode(_ history: BibleNavigationHistory) throws -> String {
         let envelope = Envelope(
             version: 1,
@@ -12,7 +11,7 @@ public enum BibleNavigationHistoryPayload {
         return String(decoding: try JSONEncoder().encode(envelope), as: UTF8.self)
     }
 
-    /// Restores valid history or seeds a new history from the saved position.
+    /// Restores a v1 history only when every entry is valid and its cursor matches `position`; otherwise seeds a single-entry fallback.
     public static func restore(
         from json: String?,
         position: BiblePosition,

@@ -8,30 +8,12 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `NoteListSheetContainer` — the Region that wraps the stateless
-/// `NoteListSheet` with its live `@Query` against `NotesForRangeRequest`.
-///
-/// The sheet chrome itself is covered by `NoteListSheetSnapshotTests` (PR2,
-/// stateless input). This suite covers the *container*'s own responsibilities:
-/// projecting `BibleNoteRecord`s into `NoteListSheet.Item`s, the
-/// `author(for:)` provenance derivation (user → no footer; assistant →
-/// `modelId`, falling back to `"AI"`), and the empty vs populated list driven
-/// by the real `@Query` with an attached database context.
-///
-/// The `autoCompose` editor-presentation path is *not* snapshotted: it opens a
-/// nested `.sheet`, which a fixed-layout host doesn't render into the captured
-/// image. The editor itself is covered in isolation by `NoteEditorSnapshotTests`,
-/// and the view model's `autoCompose` flag is unit-covered in
-/// `BibleScreenViewModelNotesTests`; the container's one-shot `didAutoCompose`
-/// latch is left to manual verification per AGENTS.md §3.
+/// Covers database-backed projection; NoteListSheetSnapshotTests owns sheet chrome.
+/// The nested autoCompose sheet is absent from fixed-layout captures: editor content
+/// and view-model flags have separate coverage, but the one-shot latch needs manual verification.
 @Suite("NoteListSheetContainer snapshots", .serialized)
 @MainActor
 struct NoteListSheetContainerSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -71,9 +53,6 @@ struct NoteListSheetContainerSnapshotTests {
 
     // MARK: - Fixtures
 
-    /// One assistant note (provenance footer) and one user note (no footer),
-    /// newest-first like the request's ordering. The assistant row carries a
-    /// `modelId` so the footer reads "Written by Claude".
     private var populatedRows: [BibleNoteRecord] {
         [
             BibleNoteRecord(

@@ -1,7 +1,6 @@
 import Testing
 @testable import Core
 
-/// Exercises complete-action ordering across suspension and synchronous callbacks.
 @Suite("SerialActionQueue")
 @MainActor
 struct SerialActionQueueTests {

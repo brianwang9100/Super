@@ -3,16 +3,11 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Coverage for `makeLLMProvider` — the single per-kind provider factory
-/// shared by the launch path (`AppBootstrapSupport.hydrateProviders`) and the
-/// Settings path (`SettingsViewModel.registerProvider`). The two used to
-/// duplicate the switch; this pins the contract so they can't drift.
 @Suite("makeLLMProvider")
 struct LLMProviderFactoryTests {
     private let http = FakeHTTPClient(chunks: [])
     private let toolRegistry = ToolRegistry()
-    // Fixed unavailable AFM so the test doesn't pick up host state; none of
-    // these cases reach the `.appleFoundation` arm anyway.
+    // Fix availability to avoid depending on the test host.
     private let afmUnavailable: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
 
     private func record(kind: LLMProviderKind, baseURL: URL? = URL(string: "https://api.openai.com/v1")) -> ModelConfigurationRecord {
@@ -70,9 +65,8 @@ struct LLMProviderFactoryTests {
 
     @Test("returns nil (no crash) for a network kind whose row is missing baseURL")
     func returnsNilForNilBaseURL() {
-        // A nullable column: a corrupt/synced row could carry a network kind
-        // with nil baseURL. The factory must skip it, not hit the init's
-        // preconditionFailure (which would crash on every launch).
+        // Synced or corrupt rows may lack a URL; skip them before the initializer
+        // precondition can crash every launch.
         #expect(make(record(kind: .openAIResponses, baseURL: nil)) == nil)
         #expect(make(record(kind: .openAICompatible, baseURL: nil)) == nil)
         #expect(make(record(kind: .anthropicNative, baseURL: nil)) == nil)
@@ -103,17 +97,11 @@ struct LLMProviderFactoryTests {
         #expect(make(debugRow(modelId: DebugAnnotateLLMProvider.modelID)) is DebugAnnotateLLMProvider)
         #expect(make(debugRow(modelId: DebugNoteLLMProvider.modelID)) is DebugNoteLLMProvider)
         #expect(make(debugRow(modelId: DebugHighlightLLMProvider.modelID)) is DebugHighlightLLMProvider)
-        // Any other (or the canned) modelId falls through to the stream provider.
         #expect(make(debugRow(modelId: DebugLLMProvider.modelID)) is DebugLLMProvider)
         #expect(make(debugRow(modelId: "anything-else")) is DebugLLMProvider)
     }
 
-    /// Regression: the two `DebugLLMProvider`-backed rows ("Debug (canned)" and
-    /// "Debug (mock search)") share `modelId`, so they used to vend an
-    /// identical static model id + label — the picker showed two "Debug
-    /// stream" entries and the old model-id provider scan always resolved to the
-    /// first, leaving the mock-search row unselectable. The vended model now
-    /// carries the per-row provider id and the row's `name`.
+    /// Rows sharing modelId need distinct picker identities and labels.
     @Test("two debug rows sharing modelId vend distinct picker entries")
     func debugRowsVendDistinctModels() {
         func cannedRow(id: String, name: String, searchBackend: String? = nil) -> ModelConfigurationRecord {
@@ -129,11 +117,8 @@ struct LLMProviderFactoryTests {
 
         let cannedModel = canned?.supportedModels.first
         let mockModel = mock?.supportedModels.first
-        // Distinct ids so any context that still surfaces the vended model id
-        // can tell the two rows apart (selection itself keys on the record id).
         #expect(cannedModel?.id == "debug-canned")
         #expect(mockModel?.id == "debug-mock-search")
-        // Labels mirror the seeded row names rather than one shared static.
         #expect(cannedModel?.displayName == "Debug (canned)")
         #expect(mockModel?.displayName == "Debug (mock search)")
     }

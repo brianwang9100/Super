@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleChapter.coalescedVerses()` — the fragment-joining that turns
-/// a chapter's paragraphs into one entry per verse number.
 @Suite("BibleChapter.coalescedVerses")
 struct BibleChapterCoalescedVersesTests {
     @Test("fragments of the same verse across paragraphs join into one entry")

@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Tests for `ActiveConversationsRequest` — the Chats list's reactive
-/// feed. Covers the `kind` filter added alongside the headless dispatch
-/// pipeline so transient conversations never bleed into the sidebar.
 @Suite("ActiveConversationsRequest")
 struct ActiveConversationsRequestTests {
     @Test("user-kind conversations appear, transient-kind conversations are filtered out")

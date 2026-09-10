@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A selection label with independent actions to reopen its controls or clear
-/// the selection. An optional disclosure symbol points toward those controls.
 public struct SelectionPill: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

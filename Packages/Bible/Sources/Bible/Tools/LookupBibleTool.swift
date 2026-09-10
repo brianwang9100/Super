@@ -1,23 +1,9 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that fronts both scripture-retrieval paths behind a single
-/// `action` discriminator: `read` fetches exact passages by reference, `search`
-/// finds verses by content. One tool instead of two keeps the schema the model
-/// pays for on every turn smaller — the shared `translation` parameter and the
-/// surrounding "ground every quote" guidance are declared once rather than
-/// duplicated across `bible.read` and `bible.search`. On the compact tier this
-/// is the difference between two full tool schemas and one.
-///
-/// Execution is pure delegation: the two paths keep their own executors
-/// (`ReadBibleTool` / `SearchBibleTool`) — with all their per-reference
-/// partial-success handling, translation resolution, and book scoping intact —
-/// and this tool only routes by `action` and re-stamps the result with its own
-/// `toolID`. Like its delegates it rejects bad input *softly*, so the model can
-/// correct an action or a missing field rather than tearing down the turn.
+/// One descriptor shares translation and grounding guidance across read/search,
+/// reducing per-turn schema size. Delegates retain validation and partial-success semantics.
 public struct LookupBibleTool: ToolExecutor {
-    /// Dotted form namespaces the tool under its applet, matching `bible.note`
-    /// and `bible.annotate`. Replaces the former `bible.read` + `bible.search`.
     public static let toolID = "bible.lookup"
 
     public static let appletID = "bible"
@@ -163,8 +149,6 @@ public struct LookupBibleTool: ToolExecutor {
         """
     )
 
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in each app's bootstrap.
     public static func registration(
         textLoader: any BibleTextLoader,
         searcher: any BibleTextSearching,
@@ -184,9 +168,6 @@ public struct LookupBibleTool: ToolExecutor {
     }
 
     public func execute(input: [String: JSONValue]) async throws -> ToolResult {
-        // `action` is the discriminator. The delegates only read their own
-        // keys, so the rest of `input` forwards verbatim — they ignore the
-        // stray `action` entry.
         guard case .string(let actionRaw)? = input["action"] else {
             return Self.errorResult("action is required. Use 'read' to fetch exact passages by reference, or 'search' to find verses by topic.")
         }
@@ -200,8 +181,7 @@ public struct LookupBibleTool: ToolExecutor {
         }
     }
 
-    /// Re-stamp a delegate's result with this tool's id so the orchestrator
-    /// pairs it with the `bible.lookup` call rather than the delegate's old id.
+    // Correlate delegate results with the advertised lookup tool, not its internal executor IDs.
     private static func restamp(_ result: ToolResult) -> ToolResult {
         ToolResult(
             toolID: LookupBibleTool.toolID,

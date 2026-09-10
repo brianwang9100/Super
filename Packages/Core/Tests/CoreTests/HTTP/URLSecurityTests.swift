@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for `isCleartextSafeForCredentials` — the HTTPS-or-loopback gate
-/// every credential-attaching call site goes through.
 @Suite("URLSecurity")
 struct URLSecurityTests {
     @Test func httpsIsAlwaysSafe() {

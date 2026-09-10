@@ -6,24 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-// Serial execution guards recording writes to the shared snapshot directory.
-/// Snapshot matrix for `ComposerAccessoryFlank` — the leading / trailing
-/// hovering glass buttons rendered beside the chat composer pill (today the
-/// Bible reader's previous / next chapter chevrons). Covers both-enabled in the
-/// default light / dark themes plus the canon-end disabled states (leading
-/// dimmed at the start, trailing dimmed at the end), plus persistent disclosure
-/// selection controls, independently hidden edges, long labels, and larger text.
-/// Reduce Motion changes only transitions, so settled pixels are identical;
-/// its read-only environment value is exercised manually in the simulator.
-/// The host's fade-on-expand
-/// and vertical placement live in the shell layer, not this view, so they're
-/// verified manually in the sim.
 @Suite("ComposerAccessoryFlank snapshots", .serialized)
 @MainActor
 struct ComposerAccessoryFlankSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite is
-    /// order-independent in the shared test process (the xctest host never runs
-    /// the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private func chevrons(

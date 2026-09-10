@@ -1,10 +1,6 @@
 import Core
 
-/// The production bulk-annotation wiring `BibleApplet.makeBulkAnnotationWiring(…)`
-/// hands back: the Settings hub contribution and the background scheduler, both
-/// driving one shared `BulkAnnotationRunner`. The composition root drops the
-/// contribution into the shell's settings and holds the scheduler for the app's
-/// scene-phase glue.
+/// Both consumers share one runner; retain the scheduler for app lifecycle forwarding.
 @MainActor
 public struct BulkAnnotationWiring {
     public let settingsContribution: AppletSettingsContribution

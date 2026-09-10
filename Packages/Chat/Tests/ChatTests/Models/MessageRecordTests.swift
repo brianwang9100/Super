@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `MessageRecord`'s structured-attachment accessors — the
-/// `attachments` decode and the `encode(_:)` writer that backs the
-/// `attachmentsJSON` column.
 @Suite("MessageRecord attachments")
 struct MessageRecordTests {
     private func reference() -> RecordReference {

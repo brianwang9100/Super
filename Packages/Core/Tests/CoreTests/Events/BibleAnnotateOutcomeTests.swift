@@ -2,11 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for `BibleAnnotateOutcome` — the rich generator result and its
-/// `asResult` flattening to the bus/UI-facing `BibleAnnotateResult`. The
-/// flattening is load-bearing: it keeps the `bibleAnnotateCompleted` event
-/// payload unchanged while the classification feeds the bulk runner's circuit
-/// breaker.
 @Suite("BibleAnnotateOutcome")
 struct BibleAnnotateOutcomeTests {
     @Test("success flattens to a success result with the same count")

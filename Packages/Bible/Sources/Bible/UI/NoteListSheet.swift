@@ -1,28 +1,10 @@
 import Core
 import SwiftUI
 
-/// The bottom sheet that lists every note on one scripture range.
-///
-/// Anatomy (top to bottom), per `notes/sheet.jsx`:
-///
-/// - **Drag handle** — the standard 36×4 capsule the other Bible sheets use.
-/// - **Its own navigation bar** — a serif verse-range citation title, a
-///   mono "{n} Note(s)" subtitle, and a round `accent` **+** button that
-///   composes a new note on this range.
-/// - **Body** — a scroll of `NoteCard` rows (tap a card to edit, swipe to
-///   delete), or the empty-state hero when the range has no notes yet.
-///
-/// Stateless: it owns no GRDB `@Query`, view model, or event-bus publish.
-/// The PR3 container supplies the projected `items` from the live
-/// `NotesForRangeRequest` and closes the three callbacks onto the editor,
-/// the repository, and (for compose) the editor's create path.
 struct NoteListSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// One projected note row. The container maps each `BibleNoteRecord`
-    /// into an `Item`, formatting the date and deriving the assistant
-    /// `author` from `source`/`modelId` before constructing it.
     struct Item: Sendable, Identifiable, Equatable {
         let id: String
         let dateWritten: String
@@ -37,19 +19,15 @@ struct NoteListSheet: View {
         }
     }
 
-    /// Display citation in the nav bar, e.g. `"John 3:16–18"`.
     let citation: String
     let items: [Item]
-    /// Extra bottom padding so the last card clears the shell's minimized
-    /// chat pill; `0` in standalone (snapshot) contexts.
+    /// Reserve for the minimized chat pill; zero in standalone contexts.
     let bottomInset: CGFloat
-    /// Dismisses the sheet from the nav bar's leading close button.
     let onClose: () -> Void
     let onCompose: () -> Void
     let onSelect: (Item.ID) -> Void
     let onDelete: (Item.ID) -> Void
 
-    /// `.medium`/`.large` list sheet — same detents the book picker uses.
     private let sizing = SheetSizing.expandable
 
     init(
@@ -93,9 +71,6 @@ struct NoteListSheet: View {
         .sheetPresentation(sizing)
     }
 
-    /// Round **+** that composes a new note, hosted in the nav bar's trailing
-    /// slot. Accent-tinted call-to-action glass (vs. the leading close button's
-    /// neutral glass) so the primary "write a note" action reads as primary.
     private var composeButton: some View {
         Button(action: onCompose) {
             Image(systemName: "plus")
@@ -123,12 +98,7 @@ struct NoteListSheet: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
-                // `allowsFullSwipe: false` so a full swipe reveals the Delete
-                // action instead of firing on the swipe itself — deletion
-                // takes a deliberate tap on the revealed button, not a single
-                // gesture. This is the lighter, list-conventional path; the
-                // editor's in-place delete adds a `.confirmationDialog` on top
-                // (the two paths are intentionally not identical).
+                // Require a deliberate delete-button tap; a full swipe only reveals the action.
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
                         onDelete(item.id)
@@ -137,9 +107,7 @@ struct NoteListSheet: View {
                     }
                 }
             }
-            // Bottom spacer so the last card clears the shell's chat pill.
-            // 19 + the last row's 5pt bottom inset = the design's 24pt
-            // scroll-container bottom pad; `bottomInset` adds the pill clearance.
+            // Combine with the last row's 5pt inset for 24pt spacing, then add pill clearance.
             Color.clear
                 .frame(height: 19 + bottomInset)
                 .listRowSeparator(.hidden)
@@ -172,8 +140,7 @@ struct NoteListSheet: View {
     }
 
     private func accessibilityLabel(for item: Item) -> String {
-        // Include the note body so VoiceOver users hear the content, not
-        // just "Note from <date>" — the row's whole purpose is the text.
+        // Include content in the spoken label, not only its date.
         let origin = item.author.map { "Note written by \($0) on \(item.dateWritten)" }
             ?? "Note from \(item.dateWritten)"
         return "\(origin): \(item.text)"

@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// Create / edit sheet for a single task: title, notes, priority, due date,
-/// labels — plus a state row and delete button in edit mode. Mirrors
-/// `TaskModal` in the Todo design source's `sheets.jsx`.
-///
 /// Each editable field binds through its *own* two-way binding rather than
 /// one shared `Binding<TaskDraft>`. That isolation is load-bearing: the two
 /// multiline `TextField`s commit their text late, and a single whole-draft
@@ -64,12 +60,6 @@ struct TodoTaskEditorSheet: View {
         .background(theme.background)
     }
 
-    /// Shared sheet nav bar: leading neutral-glass cancel (✕), centered title,
-    /// and the accent-tinted call-to-action **save** (✓) in the trailing slot —
-    /// the same close/save pairing as the Bible note editor, with the matching
-    /// `.fitsContent` zero top inset (the grabber is hidden, so there's nothing
-    /// to clear; the body's top padding handles the rounded-corner breathing
-    /// room). Replaces the old bespoke tinted-disc title bar.
     private var titleBar: some View {
         SheetNavBar(
             title: mode == .create ? "New task" : "Edit task",
@@ -80,9 +70,6 @@ struct TodoTaskEditorSheet: View {
         }
     }
 
-    /// ✓ that commits the draft, hosted in the nav bar's trailing slot;
-    /// disabled + dimmed until the title has non-whitespace content. Accent
-    /// call-to-action glass, mirroring `NoteEditor`'s save button.
     private var saveButton: some View {
         Button {
             Task { await onSave() }
@@ -102,8 +89,6 @@ struct TodoTaskEditorSheet: View {
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("What needs to happen?", text: $title, axis: .vertical)
-                // Brand italic display face (EB Garamond Italic); `display`
-                // folds the app font-scale slider in, Dynamic-Type inert.
                 .font(typography.display(22, relativeTo: nil))
                 .foregroundStyle(theme.ink)
             TextField("Notes (optional)", text: $notes, axis: .vertical)
@@ -269,8 +254,6 @@ struct TodoTaskEditorSheet: View {
         showingDatePicker = false
     }
 
-    /// The "Pick…" pill's label: the chosen date once a custom (non-preset)
-    /// due date is set, otherwise the neutral "Pick…" prompt.
     private var pickPillTitle: String {
         guard isCustomDate, let due = dueAt else { return "Pick…" }
         return due.formatted(.dateTime.month(.abbreviated).day())

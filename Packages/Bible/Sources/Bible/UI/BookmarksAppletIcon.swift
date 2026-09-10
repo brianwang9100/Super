@@ -1,12 +1,6 @@
 import SwiftUI
 
-/// Stroked ribbon-bookmark glyph for the Bookmarks mini-applet's sidebar
-/// rail icon. Shares the ribbon silhouette of `BookmarkGlyph` (the reader's
-/// chapter-title mark) so the rail row and the in-reader affordance read as
-/// the same object, but renders as a clean outline — the rail convention the
-/// `BibleAppletIcon` book glyph follows.
-///
-/// Strokes `Color.primary` by default; callers tint via `.foregroundStyle`.
+/// Matches BookmarkGlyph's silhouette; callers tint through foregroundStyle.
 public struct BookmarksAppletIcon: View {
     public let size: CGFloat
 
@@ -25,14 +19,8 @@ public struct BookmarksAppletIcon: View {
     }
 }
 
-/// Path shape extracted so the icon can be reused as a mask or recoloured
-/// per theme without re-creating the view hierarchy — mirrors
-/// `BibleAppletIconShape`.
 struct BookmarksAppletIconShape: Shape {
     func path(in rect: CGRect) -> Path {
-        // 24-unit canvas → caller-supplied rect scale. The ribbon matches
-        // `BookmarkGlyph.ribbonPath`'s grid: rounded top corners (radius 2),
-        // straight sides, a bottom notch rising to the centre.
         func at(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(
                 x: rect.minX + x / 24 * rect.width,

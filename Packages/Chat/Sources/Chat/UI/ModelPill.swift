@@ -1,15 +1,8 @@
 import Core
 import SwiftUI
 
-/// Composer footer pill that opens a Menu of available models. Reflects the
-/// active model's record id; emits the picked record id via `onSelect`.
-///
-/// Mirrors `ModelPill` in `.design-tmp/chat/project/src/chat-view.jsx`.
-/// Native `Menu` replaces the React popover so users get the system's
-/// affordances (haptic, accessibility) for free.
 public struct ModelPill: View {
-    /// One row in the dropdown. `id` is the model's unique **record id**
-    /// (`ModelConfigurationRecord.id`), not the shared upstream `LLMModel.id`.
+    /// id is ModelConfigurationRecord.id, not the shared upstream model ID.
     public struct Option: Identifiable, Sendable, Equatable {
         public let id: String
         public let displayName: String
@@ -25,9 +18,6 @@ public struct ModelPill: View {
     public let options: [Option]
     public let selectedId: String?
     public let onSelect: (String) -> Void
-    /// Tapped when the user picks the trailing "Manage models…" entry.
-    /// The host opens the Settings sheet routed to the Models pane so
-    /// the user can add a new endpoint without leaving the composer.
     public let onManageModels: () -> Void
 
     public init(
@@ -66,8 +56,6 @@ public struct ModelPill: View {
                     }
                 }
             }
-            // Sectioned divider keeps the management entry visually separate
-            // from the model picks, so a careless tap doesn't switch models.
             Divider()
             Button {
                 onManageModels()
@@ -85,18 +73,12 @@ public struct ModelPill: View {
     }
 }
 
-/// Visual treatment for composer-footer pills. A frosted glass capsule with
-/// soft ink and a trailing chevron — matches `footerPill` in `chat-view.jsx`,
-/// brought onto the same Liquid Glass surface as the nav-bar pills.
 struct FooterPillLabel: View {
     let text: String
     let theme: SuperTheme
     @Environment(\.superTypography) private var typography
 
     var body: some View {
-        // The pill body uses `.caption2` (11pt at default DT) so the pill
-        // scales with Dynamic Type. The chevron stays at a fixed point
-        // size — it's decorative and would look broken at XXL.
         HStack(spacing: 4) {
             Text(text)
                 .font(typography.font(.caption2))
@@ -107,10 +89,7 @@ struct FooterPillLabel: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        // Passive glass surface replaces the old hairline-stroked capsule.
-        // Glass collapses the hit region to the glyph (see `SuperGlass`), and
-        // the hosting `Menu` owns the tap — so re-assert the full capsule as
-        // the contentShape, or the frosted padding goes dead to taps.
+        // Restore the capsule hit target after passive glass; otherwise its padding stops receiving Menu taps.
         .superGlassSurface(in: Capsule())
         .contentShape(Capsule())
     }

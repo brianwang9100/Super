@@ -2,20 +2,12 @@ import Chat
 import Core
 import SwiftUI
 
-/// Shell-level hamburger button. Lives in the top-left of the viewport,
-/// outside the chat surface — it survives every `ChatPresentationState`
-/// transition unchanged. A 44 × 44pt Liquid Glass circle that floats over the
-/// chat surface; the glass supplies its own edge and elevation, so it carries
-/// no fill, border, or drop shadow of its own.
 struct FixedHamburgerButton: View {
     let onTap: () -> Void
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Glyph size, declared via `@ScaledMetric` so the icon honors OS Dynamic
-    /// Type the way the `.body` text style it replaces did. `tracksFontScale:
-    /// false` keeps it independent of the app font-scale slider — this is a
-    /// fixed nav affordance, not reading content.
+    /// Tracks Dynamic Type while keeping this navigation glyph independent of the app slider.
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 17
 
     var body: some View {

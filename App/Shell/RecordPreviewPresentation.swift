@@ -40,8 +40,7 @@ final class RecordPreviewPresentation {
         }
     }
 
-    /// SwiftUI writes nil on an interactive dismissal. Retaining the phase
-    /// through onDismiss also suppresses taps during programmatic dismissal.
+    /// Keeps dismissal active through `onDismiss`, including interactive dismissal.
     var binding: Binding<Item?> {
         Binding(get: { self.item }, set: { value in
             guard value == nil, let item = self.item else { return }
@@ -71,12 +70,10 @@ final class RecordPreviewPresentation {
         }
     }
 
-    /// Authoritative intent wins even after a preview queued Open/Add to chat.
-    /// Called directly from bus receipt so an intervening onDismiss cannot emit it.
+    /// Authoritative navigation invalidates any queued preview completion.
     func invalidateCompletion() {
         switch phase {
-        // A newer bus event may arrive before its visible transition is routed.
-        // Cancel preview completion without dropping earlier ordered navigation.
+        // Preserve already queued authoritative navigation.
         case .presenting(_, .navigation), .dismissing(_, .navigation): break
         case .idle: break
         case .presenting(let item, _): phase = .presenting(item, .completion(.cancel))
@@ -85,8 +82,7 @@ final class RecordPreviewPresentation {
         }
     }
 
-    /// Retain only the shell transition: the receiving applet already consumed
-    /// any authoritative openRecord event, so it must never be replayed.
+    /// Defers only the shell transition; the receiving applet already consumed the event.
     func deferNavigation(_ navigation: ShellNavigation) -> Bool {
         switch phase {
         case .idle: return false
@@ -120,7 +116,6 @@ final class RecordPreviewPresentation {
         }
     }
 
-    /// This is called exclusively by the native outer sheet's onDismiss.
     func didDismiss() -> AfterDismissal? {
         let action: AfterDismissal?
         switch phase {
@@ -132,7 +127,6 @@ final class RecordPreviewPresentation {
     }
 }
 
-/// Shell-owned transitions, dispatched by a fresh body to honor live Reduce Motion.
 enum ShellNavigation: Equatable, Sendable {
     case openConversation(id: String)
     case newConversation
@@ -142,7 +136,6 @@ enum ShellNavigation: Equatable, Sendable {
     case sidebar
 }
 
-/// An ordered bus inbox avoids coalescing preview and authoritative navigation.
 enum ShellRequest: Equatable, Sendable {
     case preview(RecordReference)
     case navigation(ShellNavigation)

@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `HighlightBibleTool` — the read/search/set/clear action dispatch,
-/// per-action input validation, book-name resolution, range looping, and the
-/// result text contract.
 @Suite("HighlightBibleTool")
 struct HighlightBibleToolTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -192,7 +189,6 @@ struct HighlightBibleToolTests {
         ])
         #expect(result.isError == true)
         #expect(result.content.contains("spans"))
-        // No writes attempted — the cap is enforced before the loop.
         #expect(await repo.sets.isEmpty)
     }
 
@@ -265,9 +261,7 @@ struct HighlightBibleToolTests {
         #expect(result.content.contains("John 3:16-18"))
         #expect(result.content.contains("yellow 16"))
         #expect(result.content.contains("green 17"))
-        // Verse 30 is outside the requested range and must not appear.
         #expect(!result.content.contains("blue 30"))
-        // The spy was asked for the chapter, not the per-verse colour map.
         #expect(await repo.chapterQueryCount == 1)
     }
 
@@ -317,11 +311,9 @@ struct HighlightBibleToolTests {
         #expect(result.isError == false)
         #expect(result.content.contains("Romans 8:28"))
         #expect(result.content.contains("1 Peter 2:9"))
-        // Romans (canonical #45) precedes 1 Peter (#60).
         let romans = try #require(result.content.range(of: "Romans 8:28"))
         let peter = try #require(result.content.range(of: "1 Peter 2:9"))
         #expect(romans.lowerBound < peter.lowerBound)
-        // Whole-bible search passes no book scope.
         #expect(await repo.lastColorQuery?.bookId == nil)
         #expect(await repo.lastColorQuery?.color == .yellow)
     }
@@ -401,8 +393,6 @@ struct HighlightBibleToolTests {
     }
 }
 
-/// Registration plumbing — the `bible.highlight` tool lands in a `ToolRegistry`
-/// enabled, with its descriptor intact.
 @Suite("HighlightBibleTool registration")
 struct HighlightBibleToolRegistrationTests {
     @Test("registration adds bible.highlight to the registry, enabled")
@@ -421,9 +411,7 @@ struct HighlightBibleToolRegistrationTests {
 
 // MARK: - Doubles
 
-/// Strict spy recording each write and the read queries. Scripted return values
-/// are passed at init; `activeHighlightColors` `fatalError`s because the tool
-/// path never uses the per-verse colour map (it reads whole chapters).
+/// The tool reads whole chapters; per-verse color-map queries must fail this spy.
 private actor SpyBibleHighlightRepository: BibleHighlightRepository {
     struct SetCall: Sendable {
         let bookId: String

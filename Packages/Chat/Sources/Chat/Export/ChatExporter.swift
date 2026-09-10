@@ -1,19 +1,11 @@
 import Core
 import Foundation
 
-/// Assembles a ``ChatArchive`` from persisted conversations. Protocol-typed
-/// so the export controller depends on a seam the tests can fake (per
-/// AGENTS.md §Testing §1), not a concrete repository graph.
 public protocol ChatExporter: Sendable {
-    /// Build the full "chats only" archive. Honors task cancellation —
-    /// callers run this inside a cancellable `Task`.
+    /// Exports user-visible chats and honors task cancellation.
     func export() async throws -> ChatArchive
 }
 
-/// Inert ``ChatExporter`` that yields an empty archive. Used as the export
-/// seam for view-model fixtures (snapshots, previews) constructed without the
-/// message/tool-call repositories — those render the phase directly via the
-/// controller's snapshot seam, so the exporter is never actually run.
 struct EmptyChatExporter: ChatExporter {
     let clock: Clock
     func export() async throws -> ChatArchive {
@@ -21,9 +13,6 @@ struct EmptyChatExporter: ChatExporter {
     }
 }
 
-/// Repository-backed ``ChatExporter``. Reads through the same repositories
-/// the rest of Chat uses rather than touching GRDB directly, so soft-delete
-/// and ordering semantics stay in one place.
 public struct LiveChatExporter: ChatExporter {
     private let conversationRepository: any ConversationRepository
     private let messageRepository: any MessageRepository
@@ -43,9 +32,6 @@ public struct LiveChatExporter: ChatExporter {
     }
 
     public func export() async throws -> ChatArchive {
-        // `listActive()` already drops soft-deleted rows; filter to `.user`
-        // so transient dispatcher conversations (bible.annotate) never leak
-        // into the export.
         let conversations = try await conversationRepository.listActive()
             .filter { $0.kind == .user }
 
@@ -56,8 +42,6 @@ public struct LiveChatExporter: ChatExporter {
             try Task.checkCancellation()
 
             let messages = try await messageRepository.fetchAll(conversationId: conversation.id)
-            // One fetch per conversation, grouped by message, instead of a
-            // fetch per message.
             let toolCalls = try await toolCallRepository.fetchByConversation(conversation.id)
             var toolCallsByMessage: [String: [ToolCallRecord]] = [:]
             for call in toolCalls {
@@ -89,10 +73,7 @@ public struct LiveChatExporter: ChatExporter {
         return ChatArchive(exportedAt: clock.now(), conversations: exported)
     }
 
-    /// Map a stored tool call into its archive form, decoding the
-    /// `parameters`/`result` JSON-string columns into real nested JSON. A
-    /// column that fails to decode (corrupt row) falls back to a string
-    /// value so one bad row never sinks the whole export.
+    // Preserve corrupt JSON as a string so one bad column cannot sink the export.
     private static func exportToolCall(_ record: ToolCallRecord) -> ChatArchive.ToolCall {
         let parameters = (try? record.decodedParameters()) ?? .string(record.parameters)
         let result: JSONValue? = record.result.map { raw in

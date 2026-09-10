@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Round-trip and edge-case coverage for `MessageAttachments` JSON coding
-/// through `MessageRecord.attachmentsJSON`, including web-search citations and
-/// backward compatibility with rows written before the citation fields existed.
 @Suite("MessageAttachments coding")
 struct MessageAttachmentsTests {
     private func sampleReference() -> RecordReference {
@@ -94,8 +91,7 @@ struct MessageAttachmentsTests {
 
     @Test("Search-metadata-only attachments are non-empty and persist")
     func searchMetadataOnlyPersists() {
-        // A turn could carry a query/system without sources (a search that
-        // returned nothing); the metadata alone must keep the sidecar non-empty.
+        // A search with no results still has metadata worth persisting.
         let attachments = MessageAttachments(searchQuery: "q", searchSystem: "Native search")
         #expect(attachments.isEmpty == false)
         #expect(MessageRecord.encode(attachments) != nil)
@@ -112,7 +108,6 @@ struct MessageAttachmentsTests {
 
     @Test("Legacy attachments JSON (no sources keys) still decodes")
     func legacyDecodes() throws {
-        // A row written before the sources/searchSuggestionsHTML fields existed.
         let legacyJSON = """
         {"references":[{"appletID":"bible","kind":"verseRange","sourceID":"WEB/JHN/3/16",\
         "id":"r1","displayLabel":"John 3:16","citation":"John 3:16 (WEB)","snapshot":"…"}]}
@@ -129,10 +124,7 @@ struct MessageAttachmentsTests {
 
     @Test("Malformed sources element degrades to [] without nuking references")
     func malformedSourcesDoesNotEraseReferences() throws {
-        // `sources` is present but an element is invalid (URL missing). The bad
-        // sources array must degrade to [] rather than throwing and taking the
-        // whole sidecar — including the Bible `references` — down via the `try?`
-        // in `MessageRecord.attachments`.
+        // Malformed sources must not discard the whole sidecar and its Bible references.
         let badJSON = """
         {"references":[{"appletID":"bible","kind":"verseRange","sourceID":"WEB/JHN/3/16",\
         "id":"r1","displayLabel":"John 3:16","citation":"John 3:16 (WEB)","snapshot":"…"}],\

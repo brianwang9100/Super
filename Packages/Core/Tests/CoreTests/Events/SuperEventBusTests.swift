@@ -1,13 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `SuperEventBus`'s broadcast fan-out: every active subscriber
-/// receives a published event, events published before a subscriber
-/// attaches are missed (the gap a registered receiver
-/// must account for), and delivery
-/// survives a sibling subscriber being dropped.
-///
-/// Synchronization is by `await` on the stream iterator — never `sleep`.
 @Suite("SuperEventBus")
 struct SuperEventBusTests {
     private func reference(_ id: String) -> RecordReference {

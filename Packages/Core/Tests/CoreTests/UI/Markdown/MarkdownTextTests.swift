@@ -2,13 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for ``MarkdownText``'s opt-in partial-input path — when
-/// constructed with `treatAsPartial: true`, the text handed to the
-/// underlying MarkdownUI view must pass through ``MarkdownAutocloser``
-/// so an in-flight streaming string with a dangling fence/link/emphasis
-/// renders cleanly. Default construction (`treatAsPartial: false`) must
-/// leave the input verbatim so the persisted ``AssistantMessage`` path
-/// keeps its current byte-for-byte rendering.
 @Suite("MarkdownText")
 @MainActor
 struct MarkdownTextTests {
@@ -32,10 +25,7 @@ struct MarkdownTextTests {
 
     @Test("partial path routes through autocloser for trailing emphasis with whitespace")
     func partialPathTrimsTrailingEmphasis() {
-        // EOF markers are preserved (see MarkdownAutocloserTests for
-        // the rationale); only when whitespace follows the marker do
-        // we trim. Picking the whitespace-followed shape gives the
-        // best signal that the wiring routes through the autocloser.
+        // Only whitespace-followed markers are removed; choose that shape to prove cleanup runs.
         let view = MarkdownText("this is ** ", treatAsPartial: true)
         #expect(view._resolvedText == "this is")
     }
@@ -48,13 +38,9 @@ struct MarkdownTextTests {
 
     @Test("verse references in the streaming partial path are linkified")
     func partialPathLinkifiesVerseReferenceAfterAutoclose() {
-        // Streaming tail with both a verse reference and a dangling
-        // emphasis: the autocloser strips the trailing marker, then the
-        // linkifier wraps the verse — both passes run.
         let view = MarkdownText("Genesis 1:1 says ** ", treatAsPartial: true)
         let resolved = view._resolvedText
         #expect(resolved.contains("[Genesis 1:1](super://bible/verse?book=GEN&chapter=1&verses=1)"))
-        // Trailing whitespace-emphasis is gone via the autocloser.
         #expect(!resolved.contains("** "))
     }
 }

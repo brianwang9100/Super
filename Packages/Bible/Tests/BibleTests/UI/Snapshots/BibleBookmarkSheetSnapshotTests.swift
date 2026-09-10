@@ -7,20 +7,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleBookmarkSheet` — the 2×3 colour-slot grid presented
-/// from the chapter title. Covered states:
-///
-/// - **empty** — all six slots free (a fresh install), light + dark
-/// - **mixed** — the presented chapter holding one ribbon, two others
-///   assigned elsewhere, three free; light + dark, plus a Dynamic Type XXL
-///   pass (the colour names + citations reflow)
-///
-/// The sheet binds `AllBookmarksRequest` itself, so each render seeds an
-/// in-memory database and injects it via `.databaseContext`.
 @Suite("BibleBookmarkSheet snapshots", .serialized)
 @MainActor
 struct BibleBookmarkSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("all six slots render empty in the light theme")
@@ -51,9 +40,7 @@ struct BibleBookmarkSheetSnapshotTests {
         )
     }
 
-    /// Clay on the presented chapter (John 3), gold + lapis assigned
-    /// elsewhere — covers the filled-current, filled-elsewhere, and empty
-    /// card looks in one render.
+    // Cover current-chapter, other-chapter, and empty slots in one render.
     private static let mixedSeed: [(BibleBookmarkColor, String, Int)] = [
         (.clay, "JHN", 3),
         (.gold, "ROM", 8),

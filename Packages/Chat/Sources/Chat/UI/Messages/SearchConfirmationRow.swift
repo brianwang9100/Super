@@ -1,17 +1,5 @@
 import SwiftUI
 
-/// Inline cost-gate prompt for the native web-search proposal
-/// (`request_web_search`). When the model asks to search and the "Ask before
-/// each search" gate is ON, the proposal parks at `.awaitingConfirmation`
-/// and this row offers **Search** / **Skip** beneath the assistant turn that
-/// requested it. After the user decides, the same row collapses to a compact
-/// one-line summary (searched / skipped) so the transcript keeps a record of
-/// the decision without the leaky generic tool-call card.
-///
-/// Reads the proposed query + reason from the parked call's stored
-/// parameters JSON via ``NativeWebSearch``. The `onSearch` / `onSkip`
-/// closures route up through `MessageList` to the view model's
-/// `confirmSearch(id:)` / `skipSearch(id:)`.
 struct SearchConfirmationRow: View {
     let call: MessageList.ToolCallItem
     var onSearch: () -> Void = {}
@@ -19,8 +7,6 @@ struct SearchConfirmationRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Decoded once per render and threaded into the subviews — the proposal
-    /// JSON is parsed a single time instead of once per `query`/`reason` read.
     private var fields: (query: String, reason: String) {
         NativeWebSearch.proposedFields(fromParametersJSON: call.parametersJSON)
     }
@@ -28,28 +14,17 @@ struct SearchConfirmationRow: View {
     var body: some View {
         switch call.status {
         case .awaitingConfirmation, .running:
-            // `.running` is the brief window after `.toolCallStarted` but
-            // before `awaitSearchDecision` flips the status to
-            // `.awaitingConfirmation` and stores the continuation. We render
-            // the same prompt so the buttons don't flicker in; a tap landing
-            // in that sub-millisecond window routes to `confirmToolCall`/
-            // `skipToolCall`, which no-op until the continuation exists — the
-            // user simply taps again once it's parked. Harmless, not a dropped
-            // action of consequence.
+            // Keep the prompt stable during the brief running-to-awaiting transition.
+            // A tap before the continuation is installed is ignored.
             prompt(fields: fields)
         case .success:
-            // Approved: the answer turn renders the `WebSearchCallCell` (shown
-            // whenever the turn searched, even with zero results), so a resolved
-            // summary here would duplicate it.
+            // The answer's WebSearchCallCell records approved searches, including zero-result searches.
             EmptyView()
         case .failed:
-            // Skipped: no search ran and the answer carries no sources, so this
-            // is the only record that the model declined to search.
+            // A skipped search has no answer metadata; preserve its record here.
             summary(icon: "minus.circle", text: "Web search skipped.", tint: theme.inkFaint)
         }
     }
-
-    // MARK: - Awaiting decision
 
     private func prompt(fields: (query: String, reason: String)) -> some View {
         let query = fields.query
@@ -117,16 +92,12 @@ struct SearchConfirmationRow: View {
         .accessibilityLabel(query.isEmpty ? "Search the web?" : "Search the web for \(query)?")
     }
 
-    // MARK: - Resolved summary
-
     private func summary(icon: String, text: String, tint: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(typography.font(.callout))
                 .foregroundStyle(tint)
             Text(text)
-                // Matches the chat body size (the answer it summarizes) rather
-                // than the old caption — routed through SuperTypography.
                 .font(typography.font(.body))
                 .foregroundStyle(tint)
                 .fixedSize(horizontal: false, vertical: true)

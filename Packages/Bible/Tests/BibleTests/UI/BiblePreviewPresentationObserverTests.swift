@@ -4,7 +4,6 @@ import Testing
 import UIKit
 @testable import Bible
 
-/// Native appearance readiness survives rejected transition registration without duplicate callbacks.
 @Suite("Bible preview presentation observer", .serialized)
 @MainActor
 struct BiblePreviewPresentationObserverTests {

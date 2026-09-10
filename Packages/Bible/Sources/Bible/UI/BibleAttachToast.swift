@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// A reader message with optional dismissal and a separate recovery action.
 /// Unresolved read failures keep Retry visible; ordinary messages dismiss on tap.
 struct BibleAttachToast: View {
     @Environment(\.superTypography) private var typography

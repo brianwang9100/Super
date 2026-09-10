@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for `GRDBTaskRepository`: active-row filtering and ordering,
-/// state transitions, and the soft- vs hard-delete distinction.
 @Suite("GRDBTaskRepository")
 struct TaskRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

@@ -1,21 +1,8 @@
 import Core
 import Foundation
 
-// Wire-level Codable shapes for the OpenAI Responses API (Application
-// Programming Interface) — `POST /v1/responses`. Internal; every public
-// surface stays on `OpenAIResponsesLLMProvider`.
-//
-// The Responses API differs from Chat Completions in three ways this file
-// encodes: the system prompt rides a top-level `instructions` string (not a
-// `system` message), the conversation is an `input` array of typed items
-// (messages, function calls, function-call outputs), and `web_search` is a
-// first-class server tool (`{"type":"web_search"}`) rather than a `function`.
-// Request keys are written explicitly (no snake-case strategy) because the
-// heterogeneous `input`/`tools` items hand-roll `encode(to:)`.
-
 // MARK: - Request
 
-/// Request body for `POST {baseURL}/responses`.
 struct OpenAIResponsesRequest: Encodable {
     let model: String
     let input: [OpenAIResponsesInputItem]
@@ -24,9 +11,7 @@ struct OpenAIResponsesRequest: Encodable {
     let stream: Bool
     let temperature: Double
     let tools: [OpenAIResponsesTool]?
-    /// Optional `prompt_cache_key` cache-routing affinity key. Host-gated to
-    /// OpenAI by the provider — `nil` (so omitted via `encodeIfPresent`) for
-    /// any other host. See ``CacheRoutingKey``.
+    /// Host-gated to OpenAI because compatible endpoints may reject unknown fields.
     let promptCacheKey: String?
 
     enum CodingKeys: String, CodingKey {
@@ -35,23 +20,10 @@ struct OpenAIResponsesRequest: Encodable {
     }
 }
 
-/// One item in the Responses `input` array. The API models a turn as a
-/// sequence of typed items rather than role-tagged messages, so tool calls
-/// and their outputs are first-class siblings of plain messages.
 enum OpenAIResponsesInputItem: Encodable {
-    /// A user or assistant text message.
     case message(role: String, text: String)
-    /// An assistant-issued function (client tool) call, echoed back into
-    /// history. `argumentsJSON` is a JSON string per the API. Only `call_id`
-    /// is carried for correlation — the server-assigned item `id` (`fc_…`) is
-    /// intentionally omitted: it's optional on input replay in the stateless
-    /// (`store: false`) mode this adapter uses, and we don't persist it.
-    /// ⚠️ PR4: tool-use through the Responses adapter only becomes reachable
-    /// once the `__native_web_search__` sentinel is emitted — validate this
-    /// multi-turn replay shape against the live API then (a missing required
-    /// `id` would surface as an HTTP 400 on the second turn).
+    /// Stateless replay correlates by `call_id`; the server item ID is not persisted.
     case functionCall(callID: String, name: String, argumentsJSON: String)
-    /// The result of a prior function call, correlated by `callID`.
     case functionCallOutput(callID: String, output: String)
 
     private enum CodingKeys: String, CodingKey {
@@ -113,27 +85,16 @@ enum OpenAIResponsesTool: Encodable {
 
 // MARK: - Stream
 
-/// One decoded Responses streaming event. The Responses stream is a typed SSE
-/// (Server-Sent Events) sequence — each frame's JSON carries a `type` string
-/// (mirroring the SSE `event:` name) plus a payload that varies by type. All
-/// payload fields are optional; the reducer keys on `type` and reads only the
-/// fields that type populates. Decoded with `.convertFromSnakeCase`, so
-/// `item_id`/`start_index`/`input_tokens` arrive as camelCase.
+/// Typed SSE event whose optional payload is interpreted by `type`.
 struct OpenAIResponsesStreamEvent: Decodable {
     let type: String
-    /// Text/reasoning delta payload (`response.output_text.delta`,
-    /// `response.reasoning_summary_text.delta`, function-argument deltas).
     let delta: String?
     /// References the streaming item a delta belongs to — the `output_item`'s
     /// own id, used to key the function-call argument accumulator.
     let itemId: String?
-    /// Present on `response.output_item.added`.
     let item: Item?
-    /// Present on `response.output_text.annotation.added`.
     let annotation: Annotation?
-    /// Present on `response.created` / `response.completed`.
     let response: ResponseEnvelope?
-    /// Error payload (`response.error` / `error`).
     let code: String?
     let message: String?
 
@@ -151,12 +112,7 @@ struct OpenAIResponsesStreamEvent: Decodable {
         }
     }
 
-    /// A citation annotation attached to a span of output text. `url` is a
-    /// raw `String` (not a decoded `URL`) on purpose: `URL.init(from:)` *throws*
-    /// on an RFC-3986-invalid string rather than nil-filling, and the
-    /// reducer's `try?` would then discard the whole SSE event — losing every
-    /// sibling field. As a string it always decodes; the reducer constructs
-    /// the `URL` itself and skips just that one citation when it's malformed.
+    /// Kept as a string so one malformed URL cannot discard the entire SSE event.
     struct Annotation: Decodable {
         let type: String?
         let url: String?
@@ -165,7 +121,6 @@ struct OpenAIResponsesStreamEvent: Decodable {
         let endIndex: Int?
     }
 
-    /// The response object on `created` (id/model) and `completed` (usage).
     struct ResponseEnvelope: Decodable {
         let status: String?
         let id: String?

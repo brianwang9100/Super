@@ -72,8 +72,7 @@ def coalesce_chapter(paragraphs):
 def iter_books(resources_dir):
     """Yield the decoded `(translation, bookId, book)` for every bundled `<CODE>-<bookID>.json`."""
     for json_path in sorted(resources_dir.glob("*-*.json")):
-        # `<CODE>-<bookID>.json`, e.g. `KJV-1PE.json`. The bookId itself can
-        # contain a hyphen-free 3-char code, so split only on the first hyphen.
+        # Filenames are <translation>-<bookID>.json.
         translation = json_path.stem.split("-", 1)[0]
         book = json.loads(json_path.read_text(encoding="utf-8"))
         yield translation, book["id"], book
@@ -136,8 +135,7 @@ def build(resources_dir: Path, output_path: Path):
         connection.execute(
             "INSERT INTO verse_fts(rowid, text) SELECT id, text FROM verse"
         )
-        # Compact the FTS index and reclaim the slack from the dropped rowids so
-        # the committed artifact is as small as it can be.
+        # Compact the FTS index to reduce the committed database size.
         connection.execute("INSERT INTO verse_fts(verse_fts) VALUES('optimize')")
         connection.commit()
         connection.execute("VACUUM")

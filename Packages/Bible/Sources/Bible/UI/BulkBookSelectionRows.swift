@@ -1,9 +1,6 @@
 import Core
 import SwiftUI
 
-/// A selectable book in the Generate sheet. The checkbox toggles selection of
-/// the whole book; tapping the rest of the row expands it to reveal chapters.
-/// A fully-annotated book shows a "Done" badge; a mixed one shows "partial".
 struct BulkBookSelectionRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -62,8 +59,6 @@ struct BulkBookSelectionRow: View {
     }
 }
 
-/// An indented chapter line revealed under an expanded book. Shares the book
-/// cells' background; a fully-annotated chapter shows a "Done" badge.
 struct BulkChapterSelectionRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

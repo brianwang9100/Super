@@ -2,8 +2,6 @@ import SwiftUI
 import Testing
 @testable import Core
 
-/// Tests for `SuggestedChatAction.merged` (the shell's applet-fan-in helper)
-/// and the `MiniApplet` no-actions default.
 @Suite("SuggestedChatAction")
 struct SuggestedChatActionTests {
     @Test("merged flattens per-applet lists in registration order")

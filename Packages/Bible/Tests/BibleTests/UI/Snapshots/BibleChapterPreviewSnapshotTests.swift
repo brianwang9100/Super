@@ -6,7 +6,6 @@ import Testing
 import VisualTestSupport
 @testable import Bible
 
-/// Modal chapter content only; native sheet stacking and readiness use simulator QA.
 @Suite("Bible chapter preview snapshots", .serialized)
 @MainActor
 struct BibleChapterPreviewSnapshotTests {

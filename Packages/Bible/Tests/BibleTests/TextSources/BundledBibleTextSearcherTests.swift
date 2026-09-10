@@ -2,16 +2,7 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BundledBibleTextSearcher` — the FTS5 query path: term matching, the
-/// three match modes (`any` OR / `all` AND / `phrase` contiguous), translation
-/// and book scoping, the result limit, BM25 ranking, porter stemming, and the
-/// FTS-operator sanitization that keeps arbitrary input from producing a
-/// malformed MATCH.
-///
-/// Runs against `BibleTextDatabase.makeInMemory(verses:)` — the same schema the
-/// shipped artifact uses — so the suite is fast and independent of the 30 MB
-/// bundled file (the bundled artifact itself is guarded by
-/// `BibleTextDatabaseTests`).
+/// Uses the shipped schema in memory; BibleTextDatabaseTests covers the bundled artifact.
 @Suite("BundledBibleTextSearcher")
 struct BundledBibleTextSearcherTests {
     private func makeSearcher(_ verses: [BibleTextDatabase.Row]) throws -> BundledBibleTextSearcher {
@@ -27,7 +18,6 @@ struct BundledBibleTextSearcherTests {
               text: "The LORD is my shepherd; I shall not want."),
         .init(translation: .kjv, bookId: "ROM", chapter: 8, verse: 28,
               text: "All things work together for good to them that love God."),
-        // Same unique term under a different translation, to prove the filter.
         .init(translation: .asv, bookId: "PSA", chapter: 23, verse: 1,
               text: "Jehovah is my shepherd; I shall not want."),
     ]
@@ -45,8 +35,6 @@ struct BundledBibleTextSearcherTests {
     @Test("match .all ANDs the terms — all must be present")
     func multiTermAll() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // "loved" and "world" co-occur only in John 3:16. John 3:17 has "world"
-        // but not "loved", so .all excludes it.
         let hits = try await searcher.search(query: "loved world", translation: .kjv, bookId: nil, mode: .all, limit: 20)
         #expect(hits.count == 1)
         #expect(hits.first?.verse == 16)
@@ -55,15 +43,10 @@ struct BundledBibleTextSearcherTests {
     @Test("match .any ORs the terms — widens beyond .all, best-matching verse ranks first")
     func multiTermAny() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // "loved world" under .all matches only John 3:16 (both words). Under .any
-        // it also pulls in John 3:17 (just "world") and Romans 8:28 (its "love"
-        // stems to "loved") — the verses .all excludes. John 3:16, matching both
-        // terms including the rarer "loved", still ranks first.
+        // Porter stemming admits Romans through love/loved; John matches both terms and ranks first.
         let hits = try await searcher.search(query: "loved world", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         let verses = Set(hits.map(\.verse))
         #expect(verses.isSuperset(of: [16, 17]))
-        // Romans 8:28 ("...that love God") rides in on the "love"→"loved" stem —
-        // a hit .all would exclude, proving .any widened the result set.
         #expect(hits.contains { $0.bookId == "ROM" })
         #expect(hits.first?.verse == 16)
     }
@@ -71,10 +54,8 @@ struct BundledBibleTextSearcherTests {
     @Test("match .phrase requires the words contiguous and in order")
     func phraseRequiresContiguity() async throws {
         let verses = [
-            // Adjacent, in order — the phrase matches.
             BibleTextDatabase.Row(translation: .kjv, bookId: "MAT", chapter: 5, verse: 44,
                                   text: "Love your enemies, bless them that curse you."),
-            // Both words present but not adjacent — the phrase must NOT match.
             BibleTextDatabase.Row(translation: .kjv, bookId: "LUK", chapter: 6, verse: 27,
                                   text: "Love them, and pray for your enemies."),
         ]
@@ -83,8 +64,7 @@ struct BundledBibleTextSearcherTests {
         let phrase = try await searcher.search(query: "love your enemies", translation: .kjv, bookId: nil, mode: .phrase, limit: 20)
         #expect(phrase.map(\.verse) == [44])
 
-        // The same words under .any match both verses — proof the phrase mode is
-        // what excludes the non-contiguous Luke verse, not the corpus.
+        // A mode change must admit both rows, proving phrase filtering caused the exclusion.
         let any = try await searcher.search(query: "love your enemies", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         #expect(Set(any.map(\.verse)) == [44, 27])
     }
@@ -92,14 +72,10 @@ struct BundledBibleTextSearcherTests {
     @Test("the translation filter isolates results to one translation")
     func translationFilter() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // "shepherd" appears in both KJV and ASV Psalm 23:1; each translation
-        // sees only its own row, never the other's near-duplicate.
         let kjv = try await searcher.search(query: "shepherd", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         let asv = try await searcher.search(query: "shepherd", translation: .asv, bookId: nil, mode: .any, limit: 20)
         #expect(kjv.count == 1)
         #expect(asv.count == 1)
-        // Same coordinates, but the KJV text mentions "LORD" and the ASV
-        // "Jehovah" — proof each came from its own translation's row.
         #expect(kjv.first?.text.contains("LORD") == true)
         #expect(asv.first?.text.contains("Jehovah") == true)
     }
@@ -107,8 +83,6 @@ struct BundledBibleTextSearcherTests {
     @Test("the book scope limits the search to one book")
     func bookScope() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // "God" appears in John 3:16, 3:17, and Romans 8:28; scoping to John
-        // drops the Romans hit.
         let all = try await searcher.search(query: "God", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         let john = try await searcher.search(query: "God", translation: .kjv, bookId: "JHN", mode: .any, limit: 20)
         #expect(all.contains { $0.bookId == "ROM" })
@@ -140,16 +114,14 @@ struct BundledBibleTextSearcherTests {
         let searcher = try makeSearcher(verses)
         let hits = try await searcher.search(query: "grace", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         #expect(hits.count == 2)
-        // Verse 1 packs three "grace" tokens into a short verse — BM25 ranks it
-        // above the longer, single-mention verse 2.
+        // BM25 favors repeated grace in a short verse over one mention in a longer verse.
         #expect(hits.first?.verse == 1)
     }
 
     @Test("porter stemming matches inflected forms")
     func stemming() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // The fixture has "loved", never the bare "love" — porter stemming finds
-        // it anyway.
+        // The fixture contains loved, not love, so this requires stemming.
         let hits = try await searcher.search(query: "love", translation: .kjv, bookId: nil, mode: .any, limit: 20)
         #expect(hits.contains { $0.verse == 16 })
     }
@@ -164,16 +136,12 @@ struct BundledBibleTextSearcherTests {
     @Test("FTS operators in the raw query are neutralized, never throw")
     func ftsOperatorsSanitized() async throws {
         let searcher = try makeSearcher(Self.fixture)
-        // Bare `"`, `*`, `(`, `)`, `,`, `!` would each break or change a raw
-        // FTS5 MATCH; sanitization strips them, leaving the searchable words
-        // `world` and `loved`, both present in John 3:16.
+        // Raw punctuation could break/change FTS MATCH; sanitization must retain searchable words.
         let hits = try await searcher.search(
             query: "  \"world\", (loved)! *", translation: .kjv, bookId: nil, mode: .any, limit: 20
         )
         #expect(hits.contains { $0.verse == 16 })
 
-        // A query made entirely of operators / words absent from the corpus must
-        // still complete without throwing a malformed-MATCH error.
         let safe = try await searcher.search(
             query: "OR AND NEAR( -: *", translation: .kjv, bookId: nil, mode: .any, limit: 20
         )
@@ -189,16 +157,13 @@ struct BundledBibleTextSearcherTests {
 
     @Test("the FTS match builder rejects empty input and joins terms per mode")
     func ftsMatchBuilder() {
-        // Empty / operator-only input yields no terms, regardless of mode.
         #expect(BundledBibleTextSearcher.ftsMatch(for: "  ", mode: .any) == nil)
         #expect(BundledBibleTextSearcher.ftsMatch(for: "!!!", mode: .all) == nil)
 
-        // Each mode joins the quoted terms differently.
         #expect(BundledBibleTextSearcher.ftsMatch(for: "love grace", mode: .any) == "\"love\" OR \"grace\"")
         #expect(BundledBibleTextSearcher.ftsMatch(for: "love grace", mode: .all) == "\"love\" \"grace\"")
         #expect(BundledBibleTextSearcher.ftsMatch(for: "love grace", mode: .phrase) == "\"love grace\"")
 
-        // FTS5 operators are stripped to bare words before joining.
         #expect(BundledBibleTextSearcher.ftsMatch(for: "\"love\" OR (x*", mode: .all) == "\"love\" \"OR\" \"x\"")
     }
 }

@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Preview readers isolate navigation while preserving accepted study writes and exact handoffs.
 @Suite("Bible chapter preview")
 @MainActor
 struct BibleChapterPreviewTests {

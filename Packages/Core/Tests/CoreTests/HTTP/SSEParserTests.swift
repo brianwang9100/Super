@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `SSEParser`'s framing across chunk boundaries and across
-/// LF / CRLF separators, plus the `[DONE]` sentinel and field-line parsing.
 @Suite("SSEParser")
 struct SSEParserTests {
     @Test func parsesSingleCompleteEvent() {

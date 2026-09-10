@@ -1,19 +1,8 @@
 import Foundation
 
-/// In-process broadcast bus for cross-applet `SuperEvent`s. Built once at
-/// the composition root and injected into every applet via SwiftUI
-/// `@Environment`. Bidirectional by shape — any applet may publish and any
-/// may subscribe — though only the record-to-chat hand-off is wired today.
-///
-/// Delivery is fire-and-forget: an event published before a subscriber
-/// calls `events()` is not buffered for it. A receiver that must not miss
-/// an event keeps a long-lived subscriber and buffers pending payloads
-/// itself. The shell uses one subscriber and an `OrderedInbox` so reference
-/// handoffs and conversation navigation retain their shared bus order.
-///
-/// The fan-out mirrors `ChatSession`'s per-turn subscriber map: a
-/// `[UUID: Continuation]` dictionary, with `onTermination` removing a
-/// subscriber once its stream iterator is released.
+/// Broadcasts only to active subscribers; events sent before events() are not buffered.
+/// Long-lived receivers buffer pending work themselves. The shell uses one subscriber
+/// and OrderedInbox to preserve order across reference handoffs and navigation.
 public actor SuperEventBus {
     private var continuations: [UUID: AsyncStream<SuperEvent>.Continuation] = [:]
 

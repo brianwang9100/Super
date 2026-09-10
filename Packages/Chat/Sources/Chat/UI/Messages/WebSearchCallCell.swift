@@ -1,24 +1,13 @@
 import SwiftUI
 
-/// Tool-call-style cell announcing that the assistant performed a web search,
-/// shown above the grounded answer it produced. Mirrors `ToolCallBlock`'s card
-/// chrome, header typography, and "done" status so a web search reads like any
-/// other tool invocation — and, like a tool call, expands to reveal the search
-/// system, the query, and how many results came back. Rendered whenever an
-/// assistant turn cited sources.
 struct WebSearchCallCell: View {
-    /// Human label for the search engine ("Debug (mock)", "Native search", …),
-    /// or `nil` when unknown.
     let system: String?
-    /// The query the assistant searched for, or `nil` when not captured.
     let query: String?
-    /// Number of cited sources, shown as the RESULTS line.
     let sourceCount: Int
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @State private var isExpanded: Bool
 
-    /// Production initializer — starts collapsed; user taps to expand.
     init(system: String?, query: String?, sourceCount: Int) {
         self.system = system
         self.query = query
@@ -26,8 +15,7 @@ struct WebSearchCallCell: View {
         self._isExpanded = State(initialValue: false)
     }
 
-    /// Test-only seam that seeds `isExpanded` so snapshot tests can pin the
-    /// expanded baseline without driving a tap.
+    /// Snapshot seam for expanded state.
     init(system: String?, query: String?, sourceCount: Int, _isExpanded: Bool) {
         self.system = system
         self.query = query
@@ -62,10 +50,6 @@ struct WebSearchCallCell: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Mirror `ToolCallBlock`'s expanded body exactly: a plain
-                    // monospace line for the identifier (SYSTEM ≈ FUNCTION), and
-                    // bordered monospace code blocks for QUERY/RESULTS (≈
-                    // INPUT/RESULT).
                     if let system, !system.isEmpty {
                         sectionLabel("SYSTEM")
                         Text(system)
@@ -101,10 +85,6 @@ struct WebSearchCallCell: View {
         sourceCount == 1 ? "1 source" : "\(sourceCount) sources"
     }
 
-    /// Matches `ToolCallBlock`'s `.success` badge (checkmark + "done"): by the
-    /// time a persisted turn renders, its citations have already arrived, so the
-    /// search is complete. A live "searching…" state would need a streaming
-    /// signal (deferred).
     private var statusBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: "checkmark")
@@ -116,7 +96,6 @@ struct WebSearchCallCell: View {
         }
     }
 
-    /// Small-caps section label, identical to `ToolCallBlock`'s.
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(typography.font(.caption2, weight: .medium))
@@ -124,9 +103,6 @@ struct WebSearchCallCell: View {
             .foregroundStyle(theme.inkFaint)
     }
 
-    /// Bordered, horizontally-scrolling monospace code block — identical to
-    /// `ToolCallBlock`'s INPUT/RESULT panel, so the query and results read like
-    /// a tool call's input/output.
     private func monospaceBlock(_ text: String) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(text)

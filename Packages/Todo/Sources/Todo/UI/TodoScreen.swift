@@ -2,11 +2,6 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// Root surface of the Todo applet: the "Tasks" header with state counts,
-/// the filter pill, the grouped task list (or empty state), a floating
-/// add button, and the toast layer. Task and label data bind reactively
-/// via `@Query` so edits from other applets appear without a manual reload.
-/// Mirrors `TodoApp` in the Todo design source's `app.jsx`.
 public struct TodoScreen: View {
     @Query(ActiveTasksRequest()) private var tasks: [TaskWithLabels]
     @Query(ActiveLabelsRequest()) private var labels: [LabelRecord]
@@ -98,8 +93,6 @@ public struct TodoScreen: View {
         let counts = stateCounts
         return VStack(alignment: .leading, spacing: 5) {
             Text("Tasks")
-                // Brand italic display face (EB Garamond Italic); `display`
-                // folds the app font-scale slider in, Dynamic-Type inert.
                 .font(typography.display(36, relativeTo: nil))
                 .foregroundStyle(theme.ink)
             HStack(spacing: 6) {
@@ -125,11 +118,7 @@ public struct TodoScreen: View {
             Image(systemName: "plus")
                 .font(typography.font(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
-                // 36×36 mirrors the shell's hamburger button; the 4pt top
-                // offset puts it on the same baseline (safe-area top + 4).
-                // Accent-tinted call-to-action glass (the primary "add task"
-                // action) — glass supplies its own edge and elevation, so the
-                // old accent fill + drop shadow are gone.
+                // Aligns with the shell's 36-point hamburger button.
                 .frame(width: 36, height: 36)
                 .superGlassCTAButton(in: Circle())
         }
@@ -191,8 +180,6 @@ public struct TodoScreen: View {
 
     // MARK: Derived state
 
-    /// Tasks after the active filter — the single definition both the
-    /// empty-state check and `groupedTasks` derive from.
     private var filteredTasks: [TaskWithLabels] {
         applyFilter(viewModel.filter, to: tasks, now: viewModel.now, calendar: viewModel.calendar)
     }

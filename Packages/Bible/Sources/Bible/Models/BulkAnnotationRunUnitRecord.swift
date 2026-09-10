@@ -1,31 +1,17 @@
 import Foundation
 import GRDB
 
-/// What scripture unit one ledger row generates for.
-///
-/// A selected chapter yields a `chapter` unit; a whole-book selection adds a
-/// single `bookPrologue` unit ahead of its chapters. `bookPrologue` rows carry
-/// no `chapterNumber`. When the run opts into notable verses, each chapter also
-/// gets a `chapterVerses` unit (right after its `chapter` unit) — one dispatch
-/// turn in which the model ranks the chapter's most significant verse ranges and
-/// annotates each as a `.verse` target. `chapterVerses` rows carry the same
-/// `chapterNumber` as the `chapter` they follow.
+/// Whole-book selections prepend a bookPrologue with nil chapterNumber. Notable-verse
+/// generation adds a chapterVerses unit after each chapter, sharing its number and
+/// generating selected verse ranges in one dispatch.
 public enum BulkRunUnitKind: String, Codable, Sendable, Equatable, CaseIterable {
     case chapter
     case bookPrologue
     case chapterVerses
 }
 
-/// One unit of work inside a run, persisted in `bulkAnnotationRunUnit` (FK to
-/// `bulkAnnotationRun`, `ON DELETE CASCADE`). Ordered within its run by
-/// `ordinal`; the engine walks them in that order, one at a time.
-///
-/// `state` reuses `BulkUnitState` (`queued · generating · done · failed`) so the
-/// ledger, the `BulkRunSnapshot`, and the reader's chapter-row share one
-/// vocabulary. `attemptCount` drives the per-unit retry tier; `producedCount` is
-/// the number of annotations written once `.done`; `errorMessage` holds the last
-/// failure reason for a `.failed` row's Retry affordance. `bookName` is
-/// denormalized so a run renders its title without a catalog lookup.
+/// Units execute serially by ordinal. producedCount counts saved annotations;
+/// bookName is denormalized so history needs no catalog lookup.
 public struct BulkAnnotationRunUnitRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bulkAnnotationRunUnit"
 

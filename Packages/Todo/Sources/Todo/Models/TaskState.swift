@@ -8,7 +8,6 @@ public enum TaskState: String, Codable, Sendable, CaseIterable, Equatable {
     case done
     case cancelled
 
-    /// Human-readable label rendered in the filter sheet and edit modal.
     public var displayName: String {
         switch self {
         case .open:      "Open"
@@ -17,8 +16,6 @@ public enum TaskState: String, Codable, Sendable, CaseIterable, Equatable {
         }
     }
 
-    /// Whether the row should render with muted styling (line-through for
-    /// cancelled, dimmed accent stripe for done).
     public var isTerminal: Bool {
         self != .open
     }

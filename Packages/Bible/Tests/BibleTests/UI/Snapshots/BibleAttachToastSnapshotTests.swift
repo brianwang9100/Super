@@ -6,11 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Light/dark galleries of dismissible reader messages and persistent read-error recovery.
 @Suite("BibleAttachToast snapshots", .serialized)
 @MainActor
 struct BibleAttachToastSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the toast renders over a light page")

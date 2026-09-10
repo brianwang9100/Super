@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `RemoteHTTPToolExecutor`'s request shape, optional bearer-token
-/// attachment, and JSON-decode error handling.
 @Suite("RemoteHTTPToolExecutor")
 struct RemoteHTTPToolExecutorTests {
     private func makeExecutor(

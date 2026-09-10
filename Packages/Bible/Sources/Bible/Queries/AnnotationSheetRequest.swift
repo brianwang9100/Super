@@ -10,7 +10,7 @@ struct AnnotationSheetSnapshot: Sendable, Equatable {
     let completedRequestID: String?
 }
 
-/// Refreshes the sheet after a completed write, distinguishing unloaded from empty results.
+/// The completion token changes query identity, forcing a fresh read and distinguishing unloaded from authoritatively empty.
 struct AnnotationSheetRequest: ValueObservationQueryable {
     static var defaultValue: AnnotationSheetSnapshot? { nil }
 

@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Fetch tests for the two bookmark GRDBQuery requests — the whole-table
-/// `AllBookmarksRequest` (sheet grid, book picker, Bookmarks screen) and the
-/// per-chapter `ChapterBookmarkRequest` (reader title glyph).
 @Suite("Bookmark queries")
 struct BookmarkQueriesTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -21,8 +18,7 @@ struct BookmarkQueriesTests {
         }
     }
 
-    // `defaultValue` is MainActor-isolated by `ValueObservationQueryable`,
-    // so the two tests asserting it run on the main actor.
+    // ValueObservationQueryable isolates defaultValue to MainActor.
     @Test("AllBookmarksRequest defaults to empty and fetches every row ordered")
     @MainActor
     func allBookmarksFetchesOrdered() throws {

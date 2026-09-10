@@ -1,7 +1,7 @@
 import Core
 import Foundation
 
-/// Streams a foreground study note, then saves only the complete response.
+/// Streams a foreground study note and saves only after successful terminal completion and EOF.
 struct BibleAnnotationStreamGenerator: Sendable {
     let providerRegistry: LLMProviderRegistry
     let toolRegistry: ToolRegistry
@@ -102,7 +102,7 @@ struct BibleAnnotationStreamGenerator: Sendable {
     }
 }
 
-/// Foreground preparation and completion failures that must leave saved notes intact.
+/// Preparation and generation failures leave existing saved notes intact.
 enum BibleAnnotationStreamError: Error, Sendable, Equatable, LocalizedError {
     case invalidTarget, unavailableWriter, noProvider, incomplete, empty, unexpectedTool
 

@@ -4,10 +4,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `GRDBBibleBookmarkRepository` against an in-memory
-/// database — the single `toggle` covers assign, unassign, move-across-
-/// chapters, and replace-on-chapter, and the two UNIQUE indexes hold the
-/// 1:1 invariants in both directions.
 @Suite("GRDBBibleBookmarkRepository")
 struct BibleBookmarkRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -72,7 +68,6 @@ struct BibleBookmarkRepositoryTests {
         let rows = try await repository.allBookmarks()
         #expect(rows.count == 1)
         #expect(rows.first?.color == .gold)
-        // …and clay is free to land on another chapter without conflict.
         try await repository.toggle(color: .clay, bookId: "ROM", chapterNumber: 8, at: later)
         let after = try await repository.allBookmarks()
         #expect(after.count == 2)
@@ -83,7 +78,7 @@ struct BibleBookmarkRepositoryTests {
         let (repository, _) = try makeFixture()
         try await repository.toggle(color: .clay, bookId: "JHN", chapterNumber: 3, at: now)
         try await repository.toggle(color: .gold, bookId: "ROM", chapterNumber: 8, at: now)
-        // Clay leaves JHN 3 *and* evicts gold from ROM 8 in one toggle.
+        // One toggle must resolve both the color and chapter uniqueness conflicts.
         try await repository.toggle(color: .clay, bookId: "ROM", chapterNumber: 8, at: later)
         let rows = try await repository.allBookmarks()
         #expect(rows.count == 1)

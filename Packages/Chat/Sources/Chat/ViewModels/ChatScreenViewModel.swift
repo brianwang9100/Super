@@ -5,60 +5,30 @@ import SwiftUI
 import UIKit
 #endif
 
-/// View model backing `ChatScreen`. Owns the composer's text buffer, the
-/// resolved transcript items, the in-flight streaming buffers, and the
-/// last error. SwiftUI re-renders via `@Observable`; the model itself is
-/// `@MainActor` so all state mutations are serialized on the main actor
-/// without needing locks.
-///
-/// `send(_:)` runs on the main actor, drives the underlying
-/// `ChatSession.send(text:model:)` `AsyncStream<ChatEvent>`, and folds
-/// each event back into observable state. Tests substitute a fake
-/// `ChatSession` via `ChatSessionDriver`.
 @MainActor
 @Observable
 public final class ChatScreenViewModel {
     public let conversationId: String
 
-    /// Transcript items projected from persisted records. Re-resolved on
-    /// every `userMessageSaved` / `assistantMessageSaved` /
-    /// `compactionCompleted` event so the view sees post-write state.
     public private(set) var items: [MessageList.Item] = []
-    /// Explicit send/retry intent, emitted only when its user row is available.
     public private(set) var scrollRequest: MessageList.ScrollRequest?
     /// Partial output retained in memory after interruption; never a persisted row.
     public private(set) var interruptedResponse: MessageList.StreamingState?
     private var pendingScrollMessageID: String?
     private let clock: any Clock
 
-    /// Resolved empty-state starter actions. Populated once per conversation by
-    /// `loadSuggestionsIfNeeded(fallback:)` — the AFM-generated set when Apple
-    /// Intelligence is available, otherwise the static applet fallback. Empty
-    /// until resolved (the buttons fade in when it lands).
     public private(set) var suggestions: [SuggestedChatAction] = []
 
-    /// Live streaming overlay (in-flight assistant text/thinking). nil
-    /// when no turn is mid-flight.
     public private(set) var streamingTail: MessageList.StreamingState?
 
-    /// Last terminal error from a turn. Cleared when the user retries or
-    /// sends a new message.
     public private(set) var error: MessageList.ErrorState?
 
-    /// Composer text. Two-way bound from the view.
     public var composerText: String = ""
 
-    /// Verse-reference pills attached in the composer, pending send.
-    /// Delivered explicitly by the shell and folded into the outgoing message
-    /// by `send(_:)`.
+    /// References belong to this composer and are persisted with its next send.
     public private(set) var pendingReferences: [RecordReference] = []
 
-    /// Record id (`SelectableModel.recordId` == `ModelConfigurationRecord.id`)
-    /// of the model selected in the pill. Falls back to the first available
-    /// model if nil. The didSet hook fires `onModelSelected` so the host can
-    /// promote that exact provider to "active" in `LLMProviderRegistry` —
-    /// without that wiring, the picker would be decorative (chat would always
-    /// route to whatever provider was registered first).
+    /// The selected configuration record ID, distinct from its upstream model ID.
     public var selectedModelId: String? {
         didSet {
             guard oldValue != selectedModelId, let id = selectedModelId else { return }
@@ -66,59 +36,29 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Optional callback the host installs to promote a provider to active
-    /// when the user picks a different model in the composer. Receives the
-    /// picked **record id** (the unique `ModelConfigurationRecord.id`, not the
-    /// shared upstream model string) so the host resolves exactly one provider
-    /// via `setActive(id:)` with no scan.
+    /// Receives a configuration record ID, not the provider's model ID.
     public var onModelSelected: (@MainActor (String) -> Void)?
 
-    /// Active verbosity used by `MessageList` to expand or collapse
-    /// thinking and tool-call blocks. Mutated only through the init
-    /// argument or `applyExternalVerbosity(_:)`.
     public private(set) var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
-    /// Selectable models for the composer, each pairing the unique record id
-    /// with the provider's vended descriptor. Selection keys on `recordId`.
     public private(set) var availableModels: [SelectableModel]
 
-    /// Cumulative used tokens for the active conversation. Refreshed from
-    /// the saved assistant rows; the streaming tail does not contribute
-    /// until it persists.
+    /// Excludes the unpersisted streaming tail.
     public private(set) var usedTokens: Int = 0
 
-    /// `true` while a turn is in flight (composer disables submit, swaps
-    /// the trailing button to a stop affordance).
     public private(set) var isStreaming: Bool = false
 
-    /// True while the transient "Copied!" pill should be visible above the
-    /// composer. Flipped on by `confirmCopy()` and auto-cleared by an
-    /// internal dismissal `Task` after a short window.
     public private(set) var showCopyConfirmation: Bool = false
 
-    /// ID of the assistant message the user tapped Regenerate on, or `nil`
-    /// when no confirmation dialog is showing. `ChatScreen` binds the
-    /// dialog's presentation to this being non-nil.
     public private(set) var pendingRegenerationTargetID: String?
 
-    /// Count of transcript rows (target + everything after) that
-    /// `confirmRegeneration()` will delete. Drives the dialog's wording
-    /// — "Regenerate this response?" at 1, "… N later message(s) will be
-    /// deleted." otherwise. Compaction banners are excluded from the
-    /// count because they aren't deleted with the messages.
     public private(set) var pendingRegenerationDeleteCount: Int = 0
 
-    /// Title shown in the chat header. Initialized from the persisted
-    /// `ConversationRecord.title`; mutated when the auto-titler finishes
-    /// summarizing the first exchange. Stored (not computed) so SwiftUI
-    /// repaints the header through `@Observable` when the title lands.
     public private(set) var headerTitle: String
 
-    /// Independent voice component; its ordered updates append to this model's draft.
     public let voice: VoiceInputController
 
-    /// State projected after consuming every preceding voice addition.
     public private(set) var voiceState: VoiceInputController.State = .idle
     /// Provisional speech rendered separately from the append-only composer draft.
     public private(set) var voicePreview = ""
@@ -131,18 +71,8 @@ public final class ChatScreenViewModel {
         composerText + Self.voiceSuffix(voicePreview, after: composerText)
     }
 
-    /// Optional callback the host installs to react to a freshly
-    /// generated title — typically `await sidebarViewModel.refresh()` so
-    /// the sidebar's "New chat" placeholder flips to the real title.
     public var onTitleGenerated: (@MainActor (String) -> Void)?
 
-    /// Optional callback the host installs to present the "Add Model"
-    /// flow when the user taps the action button on the no-model error
-    /// banner. The host typically deep-links the Settings sheet to
-    /// `.modelDetail(id: nil)`. Kept separate from `onManageModels` (the
-    /// composer's "Manage models…" entry) so the no-model fast path can
-    /// land directly on the Add form instead of the Models list — there
-    /// is by definition no list to browse in this state.
     public var onAddModelRequested: (@MainActor @Sendable () -> Void)?
 
     private let driver: any ChatSessionDriver
@@ -152,63 +82,27 @@ public final class ChatScreenViewModel {
     private let conversationRepository: (any ConversationRepository)?
     private let titleGenerator: TitleGenerator?
 
-    /// Tool function-name → friendly display name, resolved from the tool
-    /// registry at the composition root. Used to label tool-call cards in the
-    /// transcript; an unmapped name falls back to itself.
     private let toolDisplayNames: [String: String]
 
-    /// Resolves the empty-state suggestions (AFM-first, static fallback).
-    /// Defaults to `StaticChatSuggestionsProvider` so previews, snapshot tests,
-    /// and view-model unit tests that don't wire one keep PR1's static behavior.
     private let suggestionsProvider: any ChatSuggestionsProvider
-    /// Shared app-wide haptics engine. Fires `.selection` on send,
-    /// `.streamingTick` per visible repaint, and `.streamCompleted` at
-    /// turn end. Defaults to a no-op so fixtures/tests stay silent.
     private let hapticsEngine: any HapticsEngine
 
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
-    /// The fire-and-forget `Task` that resolves `suggestions`. Held only so
-    /// tests can await it via `_waitForPendingSuggestionsTask()`.
     private var suggestionsTask: Task<Void, Never>?
-    /// Guards `loadSuggestionsIfNeeded` so the (possibly on-device) generation
-    /// runs at most once per view-model lifetime (i.e. once per conversation).
     private var didRequestSuggestions = false
-    /// Decouples the per-SSE delta rate from the rate at which
-    /// `streamingTail.text` repaints — `StreamingTail` renders MarkdownUI,
-    /// so reparsing the AST on every delta would compound. Owned here
-    /// because the view model owns the visible `streamingTail`. The
-    /// callback is wired in `init` once all stored properties are set.
+    /// Coalesces deltas so MarkdownUI does not reparse on every SSE event.
     private let streamingCoalescer: StreamingTextCoalescer
-    /// The fire-and-forget cancel `Task` spawned by `cancelStreaming()`.
-    /// Held only so tests can deterministically await it via
-    /// `_waitForPendingCancelTask()` — production never reads it.
     private var cancelTask: Task<Void, Never>?
-    /// The auto-dismissal `Task` for `showCopyConfirmation`. Cancelled on
-    /// each fresh `confirmCopy()` so a rapid second copy resets the timer
-    /// instead of letting the prior task race the new one.
+    /// Replaced on each copy so an older dismissal cannot hide a newer confirmation.
     private var copyDismissalTask: Task<Void, Never>?
     private let copyConfirmationSleep: @Sendable (Duration) async throws -> Void
-    /// The fire-and-forget regenerate `Task` spawned by
-    /// `confirmRegeneration()`. Held so the test seam can await its
-    /// completion deterministically.
     private var regenerationTask: Task<Void, Never>?
-    /// Set once `detachFromLiveTurn()` has been called. Gates `handle(_:)`
-    /// and `consume`'s final-cleanup writes so events already buffered in
-    /// this view model's subscription (`AsyncStream` delivers them even
-    /// after iteration is cancelled, until the iterator observes the
-    /// cancel on its next call) cannot mutate observable state or kick
-    /// off side effects like a title-generation LLM call for a chat the
-    /// user has just navigated away from.
+    /// Drops buffered events that can arrive after subscription cancellation.
     private var isDetached: Bool = false
-    /// Set after the first successful title-generation attempt so a
-    /// subsequent `.assistantMessageSaved` doesn't rerun the LLM call. We
-    /// don't reset this — once a chat has a generated title, the user
-    /// owns it and renaming is manual.
+    /// Prevents generated or user-owned titles from being replaced.
     private var hasGeneratedTitle: Bool = false
-    /// Set once the truncated-user-message fallback has been written, so
-    /// a *second* user-send doesn't replace a (possibly-already-LLM-
-    /// generated) title with a fresh truncation of the new prompt.
+    /// Prevents later sends from replacing the initial fallback title.
     private var hasFallbackTitle: Bool = false
 
     public init(
@@ -256,23 +150,13 @@ public final class ChatScreenViewModel {
         }
         self.selectedModelId = selectedModelId ?? availableModels.first?.recordId
         self.verbosity = verbosity
-        // A conversation that already has a real title (anything other
-        // than the placeholder) is treated as already auto-titled so we
-        // don't re-summarize on a return visit's first message; a real
-        // title also implies the fallback step is no-op for the rest of
-        // this view-model's lifetime.
+        // Existing titles are user-owned and must not be regenerated on revisit.
         let alreadyTitled = !Self.titleNeedsGeneration(conversationTitle)
         self.hasGeneratedTitle = alreadyTitled
         self.hasFallbackTitle = alreadyTitled
-        // Default to a controller backed by `PlaceholderVoiceInputService`
-        // so callers that don't care about voice (snapshot tests,
-        // previews, view-model unit tests) keep working without wiring a
-        // fake. Production wires `SpeechRecognizerVoiceInputService` from
-        // the shared shell in `App/Shell/AppShell.swift`.
         self.voice = voice ?? VoiceInputController(service: PlaceholderVoiceInputService())
         self.voiceState = self.voice.state
-        // Register synchronously before capture can start. The subscription buffers
-        // all additions; a weak owner avoids keeping a dismissed chat alive forever.
+        // Register before capture; the weak owner permits dismissed chats to deallocate.
         let voiceUpdates = self.voice.updates()
         self.voiceTask = Task { [weak self] in
             for await update in voiceUpdates {
@@ -280,9 +164,6 @@ public final class ChatScreenViewModel {
                 self.consumeVoiceUpdate(update)
             }
         }
-        // Wired after all stored props are set so the closure can
-        // legally capture `self`. The coalescer publishes drained
-        // chunks back into `streamingTail.text`.
         self.streamingCoalescer.onFlush = { [weak self] chunk in
             self?.publishStreamingChunk(chunk)
         }
@@ -295,14 +176,7 @@ public final class ChatScreenViewModel {
         return availableModels.first?.model
     }
 
-    /// Resolves the initial `selectedModelId` (a **record id**) for a new chat
-    /// view model from a persisted "last selected" id and the currently-
-    /// available model list. Returns the persisted id when it still names a
-    /// registered record. As a backward-compatibility shim it also accepts a
-    /// legacy persisted *model id* (`LLMModel.id`, how this was stored before
-    /// the record-id convergence), mapping it to that row's record id; the
-    /// value re-persists as a record id on the next selection. Falls back to
-    /// the first available model, or nil when the list is empty.
+    /// Accepts legacy persisted model IDs, but returns a configuration record ID.
     public static func resolveInitialModelId(
         persisted: String?,
         available: [SelectableModel]
@@ -321,40 +195,20 @@ public final class ChatScreenViewModel {
         activeModel?.maxContextTokens ?? 0
     }
 
-    /// Initial load of persisted messages + checkpoint. Called from
-    /// `ChatScreen.task { await viewModel.load() }`. After refreshing the
-    /// on-disk transcript, attaches to any turn the underlying session
-    /// has in flight so a re-mounted screen picks up the live response
-    /// from where it currently is — see `attachToLiveTurnIfAny()`.
     public func load() async {
         interruptedResponse = nil
         await refreshTranscript()
         await attachToLiveTurnIfAny()
     }
 
-    /// If the underlying session is mid-turn, subscribe to its event
-    /// feed and hydrate `streamingTail` from the snapshot so the user
-    /// immediately sees the in-progress text/thinking. No-op when no turn
-    /// is in flight — the returned stream finishes immediately.
     private func attachToLiveTurnIfAny() async {
-        // Bail early if we're already consuming a live turn for this
-        // view model. A `.task(id: viewModel.conversationId)` re-fire
-        // (the chat surface remounting during a chat-presentation-state
-        // transition like expanded → semi-expanded) would otherwise
-        // call `driver.subscribe()` a second time, opening a parallel
-        // `AsyncStream` over the same in-flight turn. Both subscribers
-        // then append every text/thinking event to `streamingTail` and
-        // the transcript, producing visible character duplication in
-        // the live response.
+        // Surface remounts must not add a second subscriber and duplicate streamed text.
         if isStreaming, streamTask != nil {
             return
         }
         let (snapshot, stream) = await driver.subscribe()
         guard let snapshot else { return }
-        // `thinkingStartedAt` rides on the snapshot so the elapsed-time
-        // label survives detach + re-attach. Without this the "Thought
-        // for Xs" counter would visibly reset whenever a user navigated
-        // away from a thinking chat and came back.
+        // Preserve elapsed-thinking time across detach and reattach.
         streamingTail = MessageList.StreamingState(
             thinking: snapshot.accumulatedThinking,
             thinkingStartedAt: snapshot.thinkingStartedAt,
@@ -369,12 +223,7 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Resolve the empty-state starter suggestions, at most once per
-    /// view-model lifetime (so the possibly on-device generation runs once per
-    /// conversation). Spawns the work off the render path; `suggestions`
-    /// updates when it lands, and is only surfaced while the conversation is
-    /// still empty. `fallback` is the static applet-contributed list shown when
-    /// generation is unavailable, errors, or times out.
+    /// Generates empty-state suggestions at most once per view-model lifetime.
     public func loadSuggestionsIfNeeded(fallback: [SuggestedChatAction]) {
         // Set the once-only flag only when we actually proceed, so a call made
         // while the conversation already has messages doesn't permanently latch
@@ -389,11 +238,6 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Inject pre-baked transcript state for snapshot tests and SwiftUI
-    /// previews. Production callers should never invoke this — `load()`
-    /// is the canonical entry point. The seam is internal so test targets
-    /// (`@testable import Chat`) can prime the view model without
-    /// widening the SDK contract.
     func _setSnapshotState(
         items: [MessageList.Item],
         usedTokens: Int = 0,
@@ -402,12 +246,7 @@ public final class ChatScreenViewModel {
         isStreaming: Bool = false,
         showCopyConfirmation: Bool = false
     ) {
-        // The view-model invariant — `streamingTail != nil ⇔ isStreaming
-        // == true` — is what `ChatScreen`'s empty-state guard relies on
-        // (it reads `isStreaming` to decide whether to show the greeting
-        // vs. the transcript). Pin the pair here so a fixture that primes
-        // a live tail without flipping `isStreaming` fails fast instead
-        // of silently rendering the empty state during a streaming turn.
+        // ChatScreen relies on `streamingTail != nil` iff `isStreaming`.
         precondition(
             (streamingTail != nil) == isStreaming,
             "streamingTail and isStreaming must agree; got tail=\(streamingTail != nil), isStreaming=\(isStreaming)"
@@ -420,82 +259,37 @@ public final class ChatScreenViewModel {
         self.showCopyConfirmation = showCopyConfirmation
     }
 
-    /// Inject resolved suggestions directly for snapshot tests/previews,
-    /// bypassing `loadSuggestionsIfNeeded`'s async generation so the empty
-    /// state renders deterministically.
     func _setSnapshotSuggestions(_ suggestions: [SuggestedChatAction]) {
         self.suggestions = suggestions
     }
 
-    /// Test seam: await the in-flight auto-title `Task` so a test can
-    /// guarantee no background LLM call outlives the test body. Without
-    /// this, the fire-and-forget `titleTask` can race the next test's
-    /// scheduling under parallel execution and trip
-    /// `FakeLLMProvider`'s strict empty-queue `fatalError`. Returns
-    /// immediately when no title task is in flight.
+    /// Drains fire-and-forget title work so parallel tests cannot outlive their fixtures.
     func _waitForPendingTitleTask() async {
         await titleTask?.value
     }
 
-    /// Test seam: await the in-flight stream iteration `Task` so a test
-    /// can deterministically synchronize on "this view model has
-    /// finished draining its subscription" without polling
-    /// `isStreaming`. Same rationale as `_waitForPendingTitleTask()` —
-    /// see AGENTS.md "Make async tests deterministic" for why polling
-    /// loops are race amplifiers. Returns immediately when no stream
-    /// task is in flight.
+    /// Drains stream iteration for deterministic async tests.
     func _waitForPendingStreamTask() async {
         await streamTask?.value
     }
 
-    /// Test seam: await the fire-and-forget cancel `Task` spawned by
-    /// `cancelStreaming()` so a test can deterministically assert the
-    /// driver was actually invoked.
     func _waitForPendingCancelTask() async {
         await cancelTask?.value
     }
 
-    /// Test seam: await the auto-dismissal `Task` for the copy
-    /// confirmation pill so a test can synchronize on "the pill has
-    /// finished its dwell" without polling `showCopyConfirmation`.
     func _waitForPendingCopyDismissalTask() async {
         await copyDismissalTask?.value
     }
 
-    /// Test seam: await the in-flight regeneration `Task` so a test can
-    /// synchronize on "the trim + retry have actually run" without
-    /// polling `pendingRegenerationTargetID` or `isStreaming`.
     func _waitForPendingRegenerationTask() async {
         await regenerationTask?.value
     }
 
-    /// Test seam: await the in-flight suggestion-resolution `Task` so a test
-    /// can deterministically assert `suggestions` without polling — drains the
-    /// fire-and-forget work `loadSuggestionsIfNeeded` spawns.
     func _waitForPendingSuggestionsTask() async {
         await suggestionsTask?.value
     }
 
-    /// Submit the current composer text. Silently no-ops when the text
-    /// trims to empty or a turn is already in flight (both are routine
-    /// user-driven states, not errors). When `activeModel` is `nil`
-    /// (fresh build with zero configured model endpoints, since
-    /// ``activeModel`` falls back to `availableModels.first`), surfaces
-    /// a ``MessageList/ErrorState/noModelConfigured(onAddModel:)`` banner
-    /// instead of dropping the tap on the floor — the user-typed text
-    /// stays in the composer so they can resend after adding a model.
-    ///
-    /// Slash commands (e.g. `/compact`) also keep the composer text
-    /// intact — unconditionally, not just on rejection. Two reasons:
-    /// (1) a synchronous reject (manual `/compact` below the minimum
-    /// context ratio) would otherwise vanish the user's typed command,
-    /// forcing a re-type to retry; (2) even on success, a slash command
-    /// is not written as a user bubble — leaving the text in place gives
-    /// the user a consistent "your input persists until you clear it"
-    /// model for command-style submissions. Regular (non-slash)
-    /// submissions still clear immediately because the typed text gets
-    /// rendered as its own user bubble below. If a future slash command
-    /// has a different ergonomic, special-case it here.
+    /// Slash-command text remains in the composer because it never becomes a user bubble.
     public func send(_ rawText: String) {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isStreaming, !voiceState.isRecording, !voice.state.isRecording,
@@ -518,7 +312,6 @@ public final class ChatScreenViewModel {
             pendingReferences = []
         }
         error = nil
-        // A real send is committed (non-empty / pills attached, model present).
         hapticsEngine.play(.selection)
         startStreaming(text: text, references: references, model: model)
     }
@@ -526,62 +319,37 @@ public final class ChatScreenViewModel {
     /// Attach a batch addressed to this composer, deduplicating reference ids.
     public func addReferences(_ references: [RecordReference]) {
         var seenIDs = Set(pendingReferences.map(\.id))
-        // `insert(_:).inserted` dedupes against both the already-attached
-        // pills and repeats within this batch.
         for reference in references where seenIDs.insert(reference.id).inserted {
             pendingReferences.append(reference)
         }
     }
 
-    /// Remove an attached verse pill (composer × button) before send.
     public func removeReference(id: String) {
         pendingReferences.removeAll { $0.id == id }
     }
 
-    /// Cancel the in-flight turn (composer stop button). Routes through
-    /// the driver so the underlying session's task is cancelled — not
-    /// just this view model's iteration. Dropping the iteration alone
-    /// would leave the LLM call running in the background, charging
-    /// tokens for output the user can't see.
+    /// Cancels the session task; ending only this subscription would leave generation running.
     public func cancelStreaming() {
         cancelTask = Task { [driver] in
             await driver.cancel()
         }
     }
 
-    /// Approve the parked `request_web_search` proposal (inline confirm
-    /// row's "Search" button). Resumes the suspended turn with native
-    /// search enabled. Fire-and-forget: the resulting search + answer
-    /// stream back through the already-attached event stream.
     public func confirmSearch(id: String) {
         Task { [driver] in
             await driver.confirmToolCall(id: id)
         }
     }
 
-    /// Decline the parked `request_web_search` proposal (inline confirm
-    /// row's "Skip" button). Resumes the turn so the model answers without
-    /// searching.
     public func skipSearch(id: String) {
         Task { [driver] in
             await driver.skipToolCall(id: id)
         }
     }
 
-    /// User tapped Copy on an assistant message: flip the pill state on
-    /// and schedule its auto-dismissal. A fresh tap mid-dwell cancels the
-    /// prior dismissal `Task` and restarts the timer — without the cancel
-    /// the old task would fire after the new tap and clip the pill early.
-    /// The pasteboard write itself stays at the call site so the
-    /// `PasteboardClient` environment injection point doesn't move into
-    /// the view model.
     public func confirmCopy() {
         showCopyConfirmation = true
-        // The visible pill is a sighted-only affordance — VoiceOver
-        // users never get focus on it, since it appears for ~1.2 s and
-        // is `.allowsHitTesting(false)`. Posting an Announcement makes
-        // the same confirmation perceivable to VoiceOver in lockstep
-        // with the pill animating in.
+        // The transient, noninteractive pill otherwise has no VoiceOver focus.
         AccessibilityNotification.Announcement("Copied to clipboard").post()
         copyDismissalTask?.cancel()
         copyDismissalTask = Task { [weak self, copyConfirmationSleep] in
@@ -589,29 +357,14 @@ public final class ChatScreenViewModel {
                 try await copyConfirmationSleep(.seconds(1.2))
                 self?.showCopyConfirmation = false
             } catch {
-                // Cancelled by a subsequent confirmCopy() — leave state unchanged.
+                // Cancellation preserves the newer copy confirmation.
             }
         }
     }
 
-    /// User tapped Regenerate on an assistant message. Stages the
-    /// confirmation dialog by recording the target id and how many
-    /// transcript rows would be deleted on confirm — `ChatScreen` reads
-    /// these to present a `.confirmationDialog` with copy adapted to the
-    /// count. No-ops while a turn is mid-stream (matches the existing
-    /// `send`/`retry` streaming guards) and when the target id isn't in
-    /// the current items.
     public func requestRegeneration(fromAssistantMessageID id: String) {
         guard !isStreaming else { return }
-        // Hard-pin the target to an assistant row. The production caller
-        // (the Regenerate button under each assistant bubble) already
-        // satisfies this, but the guard keeps the contract enforceable
-        // against future callers — passing a user-bubble id would trim
-        // a user turn off the persisted transcript and break the LLM
-        // history contract that `MessageRepository.delete(ids:)` warns
-        // about ("contiguous tail of rows ending at the conversation's
-        // latest message"), since the immediate predecessor would no
-        // longer be a user message.
+        // Trimming from a user row would leave an invalid provider history boundary.
         guard let targetIndex = items.firstIndex(where: { $0.id == id }),
               case .assistantText = items[targetIndex] else { return }
         let deletableCount = items[targetIndex...].reduce(into: 0) { acc, item in
@@ -619,9 +372,6 @@ public final class ChatScreenViewModel {
             case .userBubble, .assistantText:
                 acc += 1
             case .compactionBanner:
-                // Compaction banners project from `CompactionCheckpointRecord`,
-                // not `MessageRecord`, so they aren't deleted by the trim
-                // and shouldn't inflate the count shown to the user.
                 break
             }
         }
@@ -629,20 +379,11 @@ public final class ChatScreenViewModel {
         pendingRegenerationDeleteCount = deletableCount
     }
 
-    /// User dismissed the regenerate confirmation dialog without
-    /// confirming. Clears the pending state with no other side effects.
     public func cancelRegeneration() {
         pendingRegenerationTargetID = nil
         pendingRegenerationDeleteCount = 0
     }
 
-    /// User confirmed the regenerate dialog. Spawns a background `Task`
-    /// that trims the target assistant message and every persisted row
-    /// after it, refreshes the transcript, then drives the existing
-    /// `retry()` path. Tool-call rows cascade with their parent message
-    /// via the `toolCall.messageId` foreign key, so deleting messages is
-    /// sufficient. The pending dialog state clears synchronously so the
-    /// dialog dismisses immediately.
     public func confirmRegeneration() {
         guard !isStreaming else { return }
         guard let targetID = pendingRegenerationTargetID else { return }
@@ -653,35 +394,14 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Trim → refresh → retry. Pulled into its own method so
-    /// `confirmRegeneration()` can stay synchronous (clearing the dialog
-    /// state in the same tick the button is tapped) while the async work
-    /// runs in the spawned `Task`. A throw on either delete or on the
-    /// fetch sets the standard error banner with a Retry pill, matching
-    /// the post-LLM-error path the user is already familiar with.
     private func performRegeneration(targetID: String) async {
         do {
             let all = try await messageRepository.fetchAll(conversationId: conversationId)
             guard let targetIndex = all.firstIndex(where: { $0.id == targetID }) else { return }
             let trimmedIDs = all[targetIndex...].map(\.id)
             guard !trimmedIDs.isEmpty else { return }
-            // Collect stale checkpoints — any `CompactionCheckpointRecord`
-            // whose `uptoMessageId` anchor lands in the trim range. If
-            // they survived, `ContextAssembler` would prepend a summary
-            // covering messages that no longer exist.
-            //
-            // Delete order: checkpoints *first*, then messages. The two
-            // writes can't be a single transaction without coupling the
-            // two repos through a shared `DatabaseQueue` handle, so a
-            // throw between them leaves the DB partially trimmed. With
-            // this order, the failure mode of a thrown second delete is
-            // "messages survived their anchored checkpoint" — `Context-
-            // Assembler.messagesAfterCheckpoint`'s missing-anchor branch
-            // doesn't apply (no checkpoint to apply it to) and the prior
-            // turns get re-sent as normal history. The reverse order
-            // would leave a checkpoint whose `uptoMessageId` points at a
-            // deleted message, which is exactly the bug this cleanup is
-            // meant to prevent.
+            // Delete checkpoints first: a partial failure may resend surviving history,
+            // but can never leave a checkpoint anchored to a deleted message.
             let trimmedIDSet = Set(trimmedIDs)
             let staleCheckpointIDs = try await checkpointRepository
                 .all(for: conversationId)
@@ -690,55 +410,27 @@ public final class ChatScreenViewModel {
             try await checkpointRepository.delete(ids: staleCheckpointIDs)
             try await messageRepository.delete(ids: trimmedIDs)
             await refreshTranscript()
-            // `retry()` runs its own guards (no model, no user bubble,
-            // already streaming) and is the canonical entry into the
-            // LLM loop against the persisted transcript — calling it
-            // keeps the streaming-tail/error-state plumbing consistent
-            // with the error-banner Retry path.
             retry()
         } catch {
-            // Surface the failure so the user knows the regenerate didn't
-            // land — without this the dialog dismissed (synchronously in
-            // `confirmRegeneration`) and the user saw no change, with no
-            // signal that anything went wrong. The error banner offers
-            // the same `Retry` affordance as the post-LLM-error path,
-            // which then re-runs against whatever state survived.
             self.error = MessageList.ErrorState(
                 message: "Could not regenerate. Try again."
             )
         }
     }
 
-    /// Detach this view model from the in-flight turn without cancelling
-    /// the underlying session. Called by the host when swapping this
-    /// view model out (the user picked a different conversation). The
-    /// stream iterator drops, the actor's subscriber list shrinks by
-    /// one, and the turn keeps running for any other subscriber (or
-    /// just to persist the final `MessageRecord`).
-    ///
-    /// Sets `isDetached = true` before cancelling so any event already
-    /// buffered in this view model's subscription (delivered before the
-    /// iterator observes the cancel) is dropped by `handle(_:)` rather
-    /// than mutating observable state or firing background work.
+    /// Leaves the actor-owned turn running while rejecting buffered events.
     public func detachFromLiveTurn() {
         isDetached = true
-        // The outgoing composer must release microphone ownership, including
-        // a pending permission request, before the shell installs another one.
+        // Release microphone ownership before the shell installs another composer.
         voice.stop()
-        // Cancel the deferred flush so it doesn't wake into a torn-down
-        // view model and re-emit characters into a tail that will never
-        // be observed.
         streamingCoalescer.reset()
         streamTask?.cancel()
     }
 
-    /// Starts or stops the independent microphone component without snapshotting text.
     public func handleMicTap() async {
         await voice.toggle()
     }
 
-    /// Stops capture; the subscribed terminal update appends pending speech before
-    /// its idle state makes the send control available.
     public func handleStopRecording() {
         voice.stop()
     }
@@ -762,7 +454,7 @@ public final class ChatScreenViewModel {
         return separator + phrase
     }
 
-    /// Waits until the subscriber has consumed all voice updates published so far.
+    /// Drains published voice updates for deterministic tests.
     func _waitForVoiceUpdates() async {
         await voice._waitForPendingStop()
         let revision = voice.revision
@@ -776,12 +468,7 @@ public final class ChatScreenViewModel {
         for (_, continuation) in voiceUpdateWaiters { continuation.resume() }
     }
 
-    /// Translate terminal voice-controller states into the existing
-    /// error-banner surface. Delivered from
-    /// the ordered voice subscription. `.unavailable` is reflected
-    /// through the dimmed mic, not a banner; `.idle` and `.listening`
-    /// don't touch the banner so an unrelated upstream error stays
-    /// visible across a quick mic toggle.
+    /// Idle transitions preserve unrelated errors; voice failures suppress the LLM Retry action.
     public func handleVoiceStateChange(_ state: VoiceInputController.State) {
         switch state {
         case .denied:
@@ -791,11 +478,6 @@ public final class ChatScreenViewModel {
                 action: { Self.openSystemSettings() }
             )
         case .failed(let reason):
-            // Voice failures aren't retryable through the parent's
-            // `onRetry` (that re-sends the last LLM message, not the
-            // voice attempt). Suppress the Retry pill so the banner
-            // can't trigger an unrelated resend; the user dismisses by
-            // sending a message or tapping the mic again.
             error = MessageList.ErrorState(
                 message: Self.voiceFailureMessage(for: reason),
                 showsRetry: false
@@ -805,13 +487,7 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Translate the raw voice-controller failure reason into a banner
-    /// message the user can act on. The recognizer surfaces
-    /// `kLSRErrorDomain` (Local Speech Recognition) errors when the
-    /// on-device dictation model isn't available — e.g. on the iOS
-    /// simulator (officially unsupported on iOS 17+) or when the user
-    /// has dictation switched off. Surface a hint that names both root
-    /// causes rather than echoing the raw domain code.
+    /// `kLSRErrorDomain` commonly means unsupported Simulator dictation or disabled Dictation.
     private static func voiceFailureMessage(for reason: String) -> String {
         if reason.contains("kLSRErrorDomain") {
             return "Voice input doesn't work on the iOS Simulator — test on a real device, and ensure Dictation is enabled under Settings → General → Keyboard."
@@ -819,9 +495,6 @@ public final class ChatScreenViewModel {
         return "Voice input failed: \(reason)"
     }
 
-    /// Open the iOS Settings app at the Super entry. Routed through a
-    /// nonisolated `@MainActor`-safe helper so the banner closure can
-    /// stay `Sendable`.
     @MainActor
     private static func openSystemSettings() {
         #if canImport(UIKit) && os(iOS)
@@ -830,16 +503,7 @@ public final class ChatScreenViewModel {
         #endif
     }
 
-    /// Replace the picker's model list. Called by the host when
-    /// `SettingsViewModel.onModelsChanged` fires so newly added or
-    /// renamed models appear in the composer without an app restart. If
-    /// the previously selected id disappears, falls back to the first
-    /// available model.
-    ///
-    /// Also clears a `noModelConfigured` error banner the moment any
-    /// model becomes available — the underlying condition is resolved,
-    /// so the banner shouldn't linger. Unrelated `generic` errors are
-    /// left untouched.
+    /// Falls back when selection disappears and clears a resolved no-model error.
     public func setAvailableModels(_ models: [SelectableModel]) {
         availableModels = models
         modelOptions = models.map {
@@ -860,29 +524,12 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Apply a new verbosity from an external source. `nil` is a no-op
-    /// so an optional-binding observable (`ChatVerbosity?`) can pass
-    /// straight through during the bootstrap window without an extra
-    /// guard at the call site.
     public func applyExternalVerbosity(_ newValue: ChatVerbosity?) {
         guard let newValue else { return }
         verbosity = newValue
     }
 
-    /// Retry after an error: re-run the LLM loop against the
-    /// already-persisted transcript. The failed user `MessageRecord` is
-    /// still on disk from the failed turn, so retry must not write a
-    /// second one — that's why this calls `driver.retry(...)` instead of
-    /// the normal `send(...)` path. If no model is active, just clear
-    /// the error. Mirrors `send`'s `!isStreaming` guard so a double-tap
-    /// while a turn is already in flight cannot spawn a second `consume`
-    /// task racing the first over the same observable state.
-    ///
-    /// Synchronously checks `items` for a user bubble before touching
-    /// any streaming flags — if there's nothing to retry (brand-new
-    /// conversation, transcript wiped) we want to no-op without flashing
-    /// the streaming UI on and back off. `ChatSession.runRetry` has the
-    /// same guard against the persisted transcript as defense-in-depth.
+    /// Retries the persisted user turn without inserting a duplicate user row.
     public func retry() {
         guard !isStreaming else { return }
         guard let model = activeModel else {
@@ -912,10 +559,6 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Shared scaffold for kicking off a streaming turn: flip the
-    /// observable streaming flags, install a fresh `streamingTail`, and
-    /// spawn the `consume(stream:)` task on `streamTask`. Callers supply
-    /// the closure that produces the event stream (`send` vs `retry`).
     private func beginStream(_ make: @escaping @Sendable () async -> AsyncStream<ChatEvent>) {
         // Defensive: a prior turn that finished cleanly already drained
         // its buffer via the `consume` end-of-stream flush, but a turn
@@ -937,22 +580,12 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Iterate a session event stream — used by both the initial `send`
-    /// path and the re-attach path in `attachToLiveTurnIfAny`. Drains
-    /// every event through `handle(_:)`, then refreshes the transcript
-    /// one last time and clears the streaming UI. Skips the final
-    /// cleanup if `detachFromLiveTurn()` was called — at that point the
-    /// host has already replaced this view model, so its observable
-    /// state and any GRDB round-trip would be wasted.
     private func consume(stream: AsyncStream<ChatEvent>) async {
         for await event in stream {
             await handle(event)
         }
         if isDetached { return }
-        // Stream-end may arrive with characters still in the coalescer
-        // buffer (cancel, error, or a turn that finished without a
-        // closing whitespace). Drain before tearing down the overlay so
-        // a later timer fire can't write into a nil `streamingTail`.
+        // Drain buffered characters before clearing the tail at stream end.
         streamingCoalescer.flush()
         await refreshTranscript()
         if let tail = streamingTail, !tail.text.isEmpty || !tail.thinking.isEmpty {
@@ -967,19 +600,11 @@ public final class ChatScreenViewModel {
         streamingTail = nil
         isStreaming = false
         streamTask = nil
-        // The turn has ended — clean finish, error, or user stop all land
-        // here. One completion buzz regardless (per the product decision).
         hapticsEngine.play(.streamCompleted)
     }
 
     private func handle(_ event: ChatEvent) async {
-        // Drop any event delivered after the host detached this view
-        // model. `AsyncStream` can return events already in its buffer
-        // even after the iteration task is cancelled, so without this
-        // gate a detached view model could still mutate observable
-        // state, refresh from GRDB, or — most expensively — fire a
-        // title-generation LLM call on the user's behalf for a chat
-        // they've already navigated away from.
+        // AsyncStream may deliver already-buffered events after cancellation.
         if isDetached { return }
         switch event {
         case .userMessageSaved(let userMessage):
@@ -993,21 +618,12 @@ public final class ChatScreenViewModel {
         case .toolCallStarted, .toolCallCompleted, .toolCallFailed:
             await refreshTranscript()
         case .toolCallAwaitingConfirmation:
-            // The parked proposal is persisted with status
-            // `.awaitingConfirmation`; project it from GRDB so the inline
-            // confirm row renders. The session stays suspended until the
-            // user taps Search/Skip (→ `confirmSearch`/`skipSearch`).
             await refreshTranscript()
             AccessibilityNotification.Announcement("Web search needs your approval").post()
         case .assistantMessageSaved(let assistantMessage):
-            // Drain any buffered coalescer characters into the visible
-            // tail before clearing — keeps the overlay byte-for-byte
-            // identical to what the persisted assistant row will render
-            // a moment later through `refreshTranscript()`.
+            // Match the live tail to the persisted row before replacing it.
             streamingCoalescer.flush()
-            // Keep the live text visible during repository reads. Publish its
-            // replacement and clear it together so a deep reader never sees
-            // an intermediate collapsed transcript.
+            // Keep live text visible until its persisted replacement is ready.
             await refreshTranscript(replacingStreamingTailWith: assistantMessage)
             maybeGenerateTitle(from: assistantMessage)
         case .compactionStarted:
@@ -1026,10 +642,7 @@ public final class ChatScreenViewModel {
             )
             await refreshTranscript()
         case .error(let llmError):
-            // `.cancelled` is only ever surfaced when the user taps the
-            // stop affordance — that's a clean stop, not a failure, so
-            // suppress the banner. Other errors get the human-readable
-            // banner copy.
+            // User cancellation is a clean stop and needs no error banner.
             if case .cancelled = llmError {
                 error = nil
             } else {
@@ -1038,10 +651,7 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Coalescer callback: append a drained chunk to the visible tail.
-    /// Discards silently if the tail has already been torn down — a
-    /// timer that fires just after `streamingTail = nil` would
-    /// otherwise revive a stale overlay.
+    /// Never lets a late timer revive a torn-down streaming tail.
     private func publishStreamingChunk(_ chunk: String) {
         guard let current = streamingTail else { return }
         streamingTail = MessageList.StreamingState(
@@ -1050,19 +660,11 @@ public final class ChatScreenViewModel {
             text: current.text + chunk,
             isCompacting: current.isCompacting
         )
-        // A subtle tick per visible repaint — the coalescer already gates
-        // these to word boundaries / a ~100ms ceiling, so this is the
-        // natural "text is flowing" cadence.
         hapticsEngine.play(.streamingTick)
     }
 
     private func appendStreamingThinking(_ chunk: String) {
-        // Discard rather than revive — symmetric with
-        // `publishStreamingChunk`. A `.thinkingDelta` that arrives
-        // after the overlay was torn down (a late event surfaced as
-        // `consume` exited) must not re-create a streaming state, or
-        // the empty-state guard in `ChatScreen` would silently re-show
-        // the overlay against the now-persisted assistant row.
+        // A late thinking delta must not revive a detached streaming state.
         guard let current = streamingTail else { return }
         streamingTail = MessageList.StreamingState(
             thinking: current.thinking + chunk,
@@ -1072,17 +674,7 @@ public final class ChatScreenViewModel {
         )
     }
 
-    /// Stamp a truncated-user-message fallback title the moment the
-    /// user's first message persists, so the header and sidebar carry
-    /// *something* recognizable while the LLM-backed summarizer is still
-    /// running (or in case it errors out and never produces one). The
-    /// LLM-generated title overwrites this when it lands; if the LLM
-    /// path never succeeds, the truncation is the final title.
-    ///
-    /// Skipped when a repository wasn't injected, when the LLM-titler has
-    /// already committed (so a successful auto-title doesn't get reverted
-    /// by a *second* user message), or when the conversation already has
-    /// a real (non-placeholder) title.
+    /// Writes a recognizable fallback while the generated title is pending or unavailable.
     private func applyFallbackTitleIfNeeded(userText: String) async {
         guard !hasGeneratedTitle,
               !hasFallbackTitle,
@@ -1098,10 +690,6 @@ public final class ChatScreenViewModel {
         )
     }
 
-    /// Truncate to `maxLength` characters with a trailing ellipsis when
-    /// trimming actually shortens the string. Returns `nil` for an empty
-    /// or whitespace-only message so the caller can leave the placeholder
-    /// alone.
     nonisolated static func truncatedFallback(for userText: String, maxLength: Int = 20) -> String? {
         let trimmed = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -1111,21 +699,9 @@ public final class ChatScreenViewModel {
         return head + "…"
     }
 
-    /// Kick off the auto-title call after the first usable assistant
-    /// message lands. Skipped when a generator/repository wasn't injected
-    /// (snapshot tests, previews), when the title is already set by the
-    /// user, when this view-model instance has already fired generation, or
-    /// when the assistant message has no text yet (tool-only turn). The
-    /// summarizer model is resolved inside `TitleGenerator` from settings —
-    /// independent of the conversation's active model — so this no longer
-    /// gates on `activeModel`. Runs detached so the composer re-enables
-    /// without waiting on the title round-trip.
+    /// Runs once after the first text response; tool-only turns cannot supply title context.
     private func maybeGenerateTitle(from assistantMessage: MessageRecord) {
-        // We gate solely on `hasGeneratedTitle` (set true at init when
-        // the conversation already had a real title, or after a
-        // successful generation). The current `headerTitle` may be the
-        // truncation fallback we wrote on user-send, which we *do* want
-        // the LLM-generated title to overwrite.
+        // A generated title may replace the provisional truncation fallback.
         guard !hasGeneratedTitle,
               let titleGenerator,
               let conversationRepository else { return }
@@ -1133,10 +709,7 @@ public final class ChatScreenViewModel {
         guard !assistantText.isEmpty else { return }
         guard let userText = lastPersistedUserText() else { return }
 
-        // Mark synchronously so a rapid second `.assistantMessageSaved`
-        // (e.g. a tool-loop turn that completes shortly after) doesn't
-        // race a duplicate generation before the first task writes the
-        // row.
+        // Mark before spawning so a fast tool loop cannot race a duplicate generation.
         hasGeneratedTitle = true
         let conversationId = self.conversationId
 
@@ -1147,9 +720,6 @@ public final class ChatScreenViewModel {
             )
             guard let self else { return }
             guard let title else {
-                // Generation failed or returned empty — clear the flag
-                // so a future first message retries and a one-off network
-                // blip doesn't permanently leave the chat as "New chat".
                 self.hasGeneratedTitle = false
                 return
             }
@@ -1172,18 +742,12 @@ public final class ChatScreenViewModel {
             record.updatedAt = Date()
             try await repository.save(record)
         } catch {
-            // Title write failed; keep the in-memory header update so the
-            // user sees something rather than silently doing nothing, and
-            // let the next launch reseed from the (still-placeholder) DB
-            // row.
+            // Keep and publish the in-memory title even if persistence fails.
         }
         headerTitle = title
         onTitleGenerated?(title)
     }
 
-    /// Returns the most recent persisted user-bubble text from the
-    /// projected items. Used to feed the title generator with the user's
-    /// half of the first exchange.
     private func lastPersistedUserText() -> String? {
         for item in items.reversed() {
             if case .userBubble(_, let text, _) = item { return text }
@@ -1191,10 +755,6 @@ public final class ChatScreenViewModel {
         return nil
     }
 
-    /// Whether a stored title looks like the placeholder (so the
-    /// auto-titler should overwrite it). Treats nil, empty, and the two
-    /// known placeholders ("New chat", "New Chat") as needing generation.
-    /// Anything else is considered user-owned and left alone.
     nonisolated static func titleNeedsGeneration(_ title: String?) -> Bool {
         guard let title else { return true }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1241,19 +801,8 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Project on-disk records into `MessageList.Item`s. Pure
-    /// (`nonisolated`) so callers in any context — snapshot tests,
-    /// previews, future async pipelines — can run it directly without an
-    /// actor hop.
-    ///
-    /// Compaction banner placement: walk `messages` in order; once we
-    /// pass the message whose id matches `checkpoint.uptoMessageId` (the
-    /// inclusive cutoff from `ContextAssembler`) we *arm* the banner and
-    /// emit it before the next renderable row. If the cutoff is also the
-    /// last persisted message, we emit it at the tail. This handles the
-    /// cases the previous "compare to last item" heuristic missed —
-    /// notably when the cutoff lands on a `.system` or `.tool` row that
-    /// the projection drops, or when the cutoff is the final message.
+    /// Places the compaction banner after its inclusive cutoff, even when that
+    /// row is hidden from the transcript or is the final persisted message.
     public nonisolated static func project(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
@@ -1339,10 +888,7 @@ public final class ChatScreenViewModel {
         return items
     }
 
-    /// Project a Core `SourceCitation` into the UI-local pill model. Derives
-    /// the display host from the URL (leading `www.` stripped) and treats a
-    /// title that merely repeats the host (or is empty) as "no title", so the
-    /// pill renders a single host line instead of a redundant host+title pair.
+    /// Suppresses citation titles that merely repeat the display host.
     private nonisolated static func sourcePill(_ citation: SourceCitation) -> SourceCitationPillModel {
         let rawHost = citation.url.host() ?? ""
         let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
@@ -1375,10 +921,7 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Build the banner state for an `LLMError`. A provider error carries its
-    /// raw body — often a long JSON payload — so it's split into a compact
-    /// one-line `message` plus a `detail` the banner reveals on tap, rather
-    /// than dumping the whole thing inline.
+    /// Keeps verbose provider bodies behind the banner's detail disclosure.
     private nonisolated static func errorState(for error: LLMError) -> MessageList.ErrorState {
         if case .providerError(let code, let message) = error {
             // `message` is "HTTP <code>" or "HTTP <code>: <body>". The summary
@@ -1413,57 +956,24 @@ public final class ChatScreenViewModel {
     }
 }
 
-/// Indirection between `ChatScreenViewModel` and `ChatSession` so the view
-/// model can be tested with a fake driver without spinning up GRDB or an
-/// LLM provider. The production conformer lives in
-/// `ChatSessionDriver+Adapter.swift`.
 public protocol ChatSessionDriver: Sendable {
-    /// Submit a user turn. `references` carries any verse-reference pills
-    /// attached in the composer; the underlying session persists them on
-    /// the user `MessageRecord` and `ContextAssembler` expands them into
-    /// the prompt.
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent>
 
-    /// Re-run the LLM turn loop against the already-persisted transcript.
-    /// Used by the error banner's Retry pill: the failed user message is
-    /// already on disk, so retry must not write a second one. No
-    /// `references` parameter — retry never carries new pills.
+    /// Re-runs the persisted turn without inserting another user message.
     func retry(model: LLMModel) async -> AsyncStream<ChatEvent>
 
-    /// Attach to the underlying session's in-flight turn (if any). The
-    /// view model calls this on `load()` so a re-mounted screen for a
-    /// conversation whose session is mid-turn picks up where it left off
-    /// instead of waiting for `.assistantMessageSaved` to repaint from
-    /// GRDB. The snapshot is `nil` (and the stream finishes immediately)
-    /// when no turn is in flight.
+    /// Returns a snapshot and event stream for the in-flight turn, or `nil` when idle.
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>)
 
-    /// Cancel the session's current turn. The composer's stop button
-    /// calls this — dropping the view model's iteration alone no longer
-    /// cancels the underlying work (so view-model swaps don't abort
-    /// streams), so an explicit cancel hook is needed.
     func cancel() async
 
-    /// Approve a parked `request_web_search` proposal so the session
-    /// re-issues the turn with native web search enabled. Driven by the
-    /// inline confirm row's "Search" button.
     func confirmToolCall(id: String) async
 
-    /// Decline a parked `request_web_search` proposal so the session
-    /// answers without searching. Driven by the inline confirm row's
-    /// "Skip" button.
     func skipToolCall(id: String) async
 }
 
-/// Default ``VoiceInputService`` used when no controller is injected
-/// into ``ChatScreenViewModel``. Deliberately *lies* about availability
-/// (returns `true`) so snapshot tests + previews render the live mic icon
-/// at idle without breaking the pre-M11 baseline, then deflects a real
-/// tap by returning `.denied` from `requestPermissions()` so the user
-/// sees the permission banner instead of a silent no-op. Production hosts
-/// must replace this with `SpeechRecognizerVoiceInputService` —
-/// "Placeholder" (not "Noop") in the name to keep that lie visible at
-/// every reference site.
+/// Reports availability to preserve fixture rendering, but denies capture if a host
+/// fails to inject the production speech service.
 private struct PlaceholderVoiceInputService: VoiceInputService {
     func stopRecognition() {}
     func isAvailable(locale: Locale) -> Bool { true }

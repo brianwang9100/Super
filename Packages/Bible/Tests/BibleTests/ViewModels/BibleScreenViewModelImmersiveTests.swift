@@ -3,11 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleScreenViewModel`'s scroll-driven immersive reducer
-/// (`updateScroll`) — the pure logic that flips `isImmersive` so the Bible
-/// nav bar and the shell's chrome hide as the user scrolls into a chapter and
-/// return on scroll-up / at the top. Regression coverage for the
-/// scroll-to-hide reading-chrome feature.
 @Suite("BibleScreenViewModel immersive scroll")
 @MainActor
 struct BibleScreenViewModelImmersiveTests {
@@ -18,8 +13,7 @@ struct BibleScreenViewModelImmersiveTests {
         )
     }
 
-    /// A user-driven scroll establishes a baseline without flipping immersive.
-    /// Helper: seed the reducer at `offsetY` so a later delta is measured.
+    // The first user scroll seeds a baseline without toggling chrome.
     private func seed(_ viewModel: BibleScreenViewModel, at offsetY: CGFloat) {
         viewModel.updateScroll(offsetY: offsetY, userDriven: true)
     }
@@ -43,7 +37,6 @@ struct BibleScreenViewModelImmersiveTests {
         seed(viewModel, at: 200)
         viewModel.updateScroll(offsetY: 240, userDriven: true)
         #expect(viewModel.isImmersive == true)
-        // Any deliberate upward run past the reveal threshold brings it back.
         viewModel.updateScroll(offsetY: 220, userDriven: true)
         #expect(viewModel.isImmersive == false)
     }
@@ -54,7 +47,6 @@ struct BibleScreenViewModelImmersiveTests {
         seed(viewModel, at: 300)
         viewModel.updateScroll(offsetY: 340, userDriven: true)
         #expect(viewModel.isImmersive == true)
-        // A jump to (near) the top reveals regardless of direction run.
         viewModel.updateScroll(offsetY: 2, userDriven: true)
         #expect(viewModel.isImmersive == false)
     }
@@ -63,8 +55,6 @@ struct BibleScreenViewModelImmersiveTests {
     func belowMinOffsetKeepsChrome() {
         let viewModel = makeViewModel()
         seed(viewModel, at: 10)
-        // Accumulates well past the hide threshold, but the reader is still
-        // above the min-offset gate, so chrome stays.
         viewModel.updateScroll(offsetY: 40, userDriven: true)
         viewModel.updateScroll(offsetY: 60, userDriven: true)
         #expect(viewModel.isImmersive == false)
@@ -76,10 +66,8 @@ struct BibleScreenViewModelImmersiveTests {
         seed(viewModel, at: 200)
         viewModel.updateScroll(offsetY: 240, userDriven: true)
         #expect(viewModel.isImmersive == true)
-        // 4pt up — below the reveal threshold — stays hidden.
         viewModel.updateScroll(offsetY: 236, userDriven: true)
         #expect(viewModel.isImmersive == true)
-        // Another 4pt up in the same direction crosses the threshold → reveals.
         viewModel.updateScroll(offsetY: 232, userDriven: true)
         #expect(viewModel.isImmersive == false)
     }
@@ -88,7 +76,6 @@ struct BibleScreenViewModelImmersiveTests {
     func smallDownwardJitterKeepsChrome() {
         let viewModel = makeViewModel()
         seed(viewModel, at: 200)
-        // +8pt — past the min-offset gate but below the hide threshold.
         viewModel.updateScroll(offsetY: 208, userDriven: true)
         #expect(viewModel.isImmersive == false)
     }
@@ -109,12 +96,10 @@ struct BibleScreenViewModelImmersiveTests {
     func programmaticScrollIgnored() {
         let viewModel = makeViewModel()
         seed(viewModel, at: 100)
-        // A large programmatic jump (narration follow / deep-link scrollTo)
-        // only updates the baseline — it must not hide chrome.
+        // Programmatic follow/deep-link jumps must update the baseline without hiding chrome.
         viewModel.updateScroll(offsetY: 600, userDriven: false)
         #expect(viewModel.isImmersive == false)
-        // And measuring resumes from the programmatic baseline: a tiny user
-        // delta from 600 is far below the gate's reach, so still visible.
+        // Measure the next user delta from the programmatic baseline.
         viewModel.updateScroll(offsetY: 604, userDriven: true)
         #expect(viewModel.isImmersive == false)
     }

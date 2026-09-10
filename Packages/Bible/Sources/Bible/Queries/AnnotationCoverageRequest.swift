@@ -1,24 +1,15 @@
-// `import Combine` is mandatory (see ChapterHighlightsRequest): the
-// `ValueObservationQueryable` conformance needs the `AnyPublisher: Publisher`
-// conformance visible here. No Combine data flow is used.
+// Required for GRDBQuery's AnyPublisher conformance; data flow still uses @Query.
 import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing whole-Bible annotation **coverage** — the count
-/// of distinct annotated books / chapters / verses backing the hub's
-/// `AnnotationCoverageCard`. `@Query` re-renders the card whenever any
-/// annotation row is written or cleared, so coverage ticks up live as a bulk
-/// run progresses (rows are mutated by the runner, outside the hub view).
 public struct AnnotationCoverageRequest: ValueObservationQueryable {
     public static var defaultValue: AnnotationCoverage { .none }
 
     public init() {}
 
     public func fetch(_ db: Database) throws -> AnnotationCoverage {
-        // Distinct books / chapters, and a verse tally summed over verse-target
-        // ranges (`verseEnd - verseStart + 1`). Ranges effectively never overlap
-        // for a target, so the sum is the distinct-verse count in practice.
+        // Verse coverage sums inclusive ranges; overlapping ranges would count shared verses more than once.
         let row = try Row.fetchOne(db, sql: """
             SELECT
               COUNT(DISTINCT bookId) AS books,

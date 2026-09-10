@@ -1,41 +1,16 @@
 import Core
 import SwiftUI
 
-/// One note rendered as a row in `NoteListSheet`.
-///
-/// Anatomy mirrors the Claude Design canvas (`notes/sheet.jsx`):
-///
-/// - **Date written** — a small uppercase monospaced line (the note's
-///   `createdAt`, pre-formatted by the caller).
-/// - **Body** — the note text, clamped to `lineLimit` lines with a tail
-///   ellipsis so a long note doesn't blow out the row height.
-/// - **Provenance footer** — assistant-written notes only: a `sparkles`
-///   glyph + "Written by {author}". User notes have no footer.
-///
-/// Stateless: the row owns no selection or delete state. The list sheet
-/// supplies the tap (→ edit) and swipe-to-delete affordances around it.
-/// The note's content parameter is named `text` rather than `body` to
-/// avoid shadowing SwiftUI's `View.body` requirement on this type — the
-/// same rename rationale the old `AnnotationBlock.Content` followed
-/// (avoid shadowing SwiftUI's `View.body` on the same type).
 struct NoteCard: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Pre-formatted "date written", e.g. `"May 24, 2026"`. Uppercased
-    /// for display here. The caller formats it because date formatting
-    /// belongs with the coordinator that already holds a formatter, not
-    /// in a leaf view rendered once per row.
     let dateWritten: String
     let text: String
-    /// Non-nil ⇒ an assistant-written note; renders the provenance footer
-    /// naming the author. `nil` for user-typed notes (no footer).
+    /// Nil hides provenance for user-authored notes.
     let author: String?
     let lineLimit: Int
 
-    // Font sizes carried as scaled metrics so the card tracks Dynamic Type —
-    // the design's fixed point sizes, scaled relative to the nearest system
-    // text style (the `BibleBookSheet` convention).
     @ScaledMetric(relativeTo: .caption2) private var dateSize: CGFloat = 10.5
     @ScaledMetric(relativeTo: .subheadline) private var bodySize: CGFloat = 14
     @ScaledMetric(relativeTo: .caption2) private var provenanceSize: CGFloat = 10

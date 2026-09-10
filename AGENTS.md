@@ -40,7 +40,14 @@ Questions and trivial documentation edits do not require the full process unless
 - If displayed database rows can change outside the view, bind through GRDBQuery `@Query`. Single-owner flows or state that merges records with streaming/drafts may use imperative repository reads in an `@Observable @MainActor` view model. Never hand-roll `ValueObservation` inside a view model.
 - No Combine for data flow; use `AsyncStream`/`AsyncSequence`. Use actors for shared state or `os_unfair_lock` for synchronous atomic mutation; no `DispatchQueue`/`NSLock` synchronization.
 - Use protocol-typed services at applet boundaries. Inject Core's `Clock`/`IDGenerator` into testable logic; reuse `FixedClock`/`DeterministicIDGenerator` in tests.
-- Throw domain `Sendable` error enums defined alongside the API. Public declarations and test suite types carry short `///` documentation directly above the declaration.
+- Throw domain `Sendable` error enums defined alongside the API.
+
+## Comments
+
+- Let names, types, and control flow explain the code. Comment sparingly to clarify non-obvious contracts, invariants, rationale, or workarounds; keep the explanation close to the code and as short as clarity allows.
+- Public declarations and test suites do not require comments by default. Use `///` for caller-facing information the signature cannot express, such as units, side effects, ordering, or cancellation. Do not restate names, signatures, or obvious steps.
+- For workarounds, explain the constraint and why the straightforward approach fails; include an issue or removal condition when known. Preserve legal notices and tool directives with their necessary rationale.
+- Remove stale history, milestone notes, tutorials, and duplicated explanations. Keep `MARK:` sections only when they materially aid navigation. When changing code, update or remove comments it invalidates.
 
 ## Typography and controls
 

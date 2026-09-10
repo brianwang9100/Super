@@ -1,39 +1,23 @@
 import FoundationModels
 import Foundation
 
-/// Test seam over `FoundationModels.LanguageModelSession`. The framework
-/// type is `final class` — no protocol, no public subclass hook — so
-/// `AppleFoundationLLMProvider` can't be unit-tested against the real
-/// session: the model would actually run, requiring Apple Intelligence
-/// to be enabled on the host. The protocol below exposes the minimum
-/// surface the provider uses; `LiveLanguageSession` wraps the real
-/// session for production, and the suite injects a scripted fake.
+/// Test seam: the final framework session would run a real on-device model.
 protocol LanguageSession: Sendable {
-    /// Yield the model's cumulative text snapshot every time it emits.
-    /// Each snapshot starts with the previous one's content; the provider
-    /// diffs successive snapshots into `LLMStreamEvent.textDelta` events.
-    /// Tools handed to the session via the factory are invoked in-band
-    /// by Apple Foundation Models (AFM) during this stream and never
-    /// surface as separate stream events.
+    /// Cumulative text snapshots with prior content as a prefix. Tools execute in-band
+        /// and never appear as separate stream events.
     func streamResponse(
         to prompt: String,
         options: GenerationOptions
     ) -> AsyncThrowingStream<String, any Error>
 }
 
-/// Factory the provider uses to spawn one session per turn. The
-/// `transcript` carries the conversation history; `tools` carries the
-/// `DynamicLLMTool` wrappers AFM may invoke during the stream.
+/// One session per turn, with transcript history and in-band tools.
 typealias LanguageSessionFactory = @Sendable (
     _ transcript: Transcript,
     _ tools: [any FoundationModels.Tool]
 ) -> any LanguageSession
 
-/// Production conformer that wraps a real `LanguageModelSession`. Bridges
-/// its `ResponseStream<String>` (cumulative `Snapshot.content`) into an
-/// `AsyncThrowingStream<String, any Error>` so the provider sees the same
-/// shape every conformer produces. Cancellation of the outer stream
-/// propagates via the bridging `Task`'s `onTermination`.
+/// Outer stream termination cancels the bridging task.
 struct LiveLanguageSession: LanguageSession {
     private let session: LanguageModelSession
 

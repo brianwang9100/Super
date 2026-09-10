@@ -1,12 +1,6 @@
 import Foundation
 import GRDB
 
-/// GRDB-backed `BibleNoteRepository` over the `bibleNote` table.
-///
-/// `update(id:body:updatedAt:)` reads-then-writes inside one `queue.write`
-/// transaction so a concurrent reader never sees a half-applied edit, and
-/// touches only the two mutable columns (`body`, `updatedAt`) — the position
-/// and provenance fields are fixed at creation.
 public struct GRDBBibleNoteRepository: BibleNoteRepository {
     private let queue: DatabaseQueue
 
@@ -29,8 +23,6 @@ public struct GRDBBibleNoteRepository: BibleNoteRepository {
                 verseStart: verseStart,
                 verseEnd: verseEnd
             )
-            // Newest note first — the list sheet shows recent thinking on top.
-            // `id` tie-breaks rows sharing a timestamp for a stable order.
             .order(Column("createdAt").desc, Column("id").asc)
             .fetchAll(db)
         }
@@ -60,10 +52,7 @@ public struct GRDBBibleNoteRepository: BibleNoteRepository {
         }
     }
 
-    /// The base query for one target group. Equality on a nullable column in
-    /// GRDB needs the IS-NULL branch explicit; `nil`-typed comparisons
-    /// otherwise compile but always evaluate false in SQL. Mirrors
-    /// `GRDBBibleAnnotationRepository.targetGroupQuery`.
+    // Explicit nil branches produce SQL IS NULL for absent position coordinates.
     private static func targetGroupQuery(
         target: BibleNoteTarget,
         bookId: String,

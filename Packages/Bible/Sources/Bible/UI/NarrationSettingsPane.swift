@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Narration connections, styled like the model registration list, with provider-specific setup sheets.
 struct NarrationSettingsPane: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

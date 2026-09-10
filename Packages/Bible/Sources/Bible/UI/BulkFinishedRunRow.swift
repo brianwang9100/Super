@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// One entry in the hub's "Recently finished" section — a run that has reached a
-/// terminal state and cleared from the active slot. A completed run reads as a
-/// quiet "✓ N annotations"; a stopped run shows its halt reason and failed count
-/// plus a **Retry**. Both carry a dismiss control that removes the run.
 struct BulkFinishedRunRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -52,8 +48,6 @@ struct BulkFinishedRunRow: View {
         }
     }
 
-    /// `✓ N annotations` for a clean run; `Stopped · <reason> · N failed` for a
-    /// halt; a partial completion notes its failed count alongside the total.
     private var detail: String {
         let annotations = "\(summary.producedCount) \(summary.producedCount == 1 ? "annotation" : "annotations")"
         if summary.status == .failed {

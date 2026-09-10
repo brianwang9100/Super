@@ -1,10 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Unit tests for `AnnotationBubble.state(hasAnnotation:isGenerating:)` —
-/// the shared three-state derivation the chapter-title and book-picker
-/// bubbles both use. Covers the precedence rule (filled wins over
-/// generating) without standing up a SwiftUI host.
 @Suite("AnnotationBubble.state")
 @MainActor
 struct AnnotationBubbleStateTests {

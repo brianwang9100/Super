@@ -1,41 +1,19 @@
 import SwiftUI
 
-/// Inline pill rendered under an assistant message whose turn produced a
-/// successful `memory` tool call.
-///
-/// Compact and faint so it doesn't compete with the message body — the
-/// LLM (Large Language Model) saving a memory should feel ambient, not
-/// like a tool-use receipt. Tap toggles between the collapsed "Memory
-/// updated" chip and an expanded line that names the op (Saved / Updated
-/// / Forgot) and the text. Failed memory calls fall back to the normal
-/// `ToolCallBlock` upstream so the error is still surfaced.
 struct MemoryUpdatedPill: View {
-    /// Single successful memory tool call rendered by this pill. The
-    /// `parametersJSON` is parsed once at init time; failure to parse
-    /// (a malformed payload from a future tool revision) collapses to
-    /// the generic "Memory updated" label without leaking JSON.
     let call: MessageList.ToolCallItem
-    /// Parsed view of the tool's `op` and `text` parameters, computed
-    /// once in init so `body`'s repeated reads from `headline` and the
-    /// accessibility label don't re-run `JSONSerialization` per render.
-    /// Unexpected payloads collapse to `.unknown` with empty text.
     private let parsed: ParsedMemoryCall
     @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    /// Production initializer — pill starts collapsed; user taps to expand.
     init(call: MessageList.ToolCallItem) {
         self.call = call
         self.parsed = ParsedMemoryCall.parse(call.parametersJSON)
         self._isExpanded = State(initialValue: false)
     }
 
-    /// Test-only seam that seeds the `isExpanded` `@State` so snapshot
-    /// tests can pin the expanded baseline without driving a tap. The
-    /// underscore prefix follows the codebase convention for surfaces
-    /// that are not stable API (see `ChatScreenViewModel
-    /// ._waitForPendingTitleTask()` per AGENTS.md §Testing rule 2).
+    /// Snapshot seam for expanded state.
     init(call: MessageList.ToolCallItem, _isExpanded: Bool) {
         self.call = call
         self.parsed = ParsedMemoryCall.parse(call.parametersJSON)
@@ -88,11 +66,7 @@ struct MemoryUpdatedPill: View {
         }
     }
 
-    /// Detail text rendered in the expanded state. `nil` when nothing
-    /// meaningful would render — either the pill is collapsed, the
-    /// parsed `text` is empty, or the op is `forget` (whose input JSON
-    /// only carries `id`, never the text being forgotten; "Forgot
-    /// memory" alone is the right ambient confirmation).
+    /// Forget inputs contain only an ID, so there is no memory text to reveal.
     private var detailText: String? {
         guard isExpanded else { return nil }
         switch parsed.op {
@@ -110,10 +84,6 @@ struct MemoryUpdatedPill: View {
         return "\(headline): \(parsed.text)"
     }
 
-    /// VoiceOver hint describing what tapping the pill does. Without it,
-    /// VO users hear "Saved to memory, button" with no signal that the
-    /// row is expandable. Forget pills never reveal extra detail (the
-    /// input JSON has no `text`), so the hint reflects that no-op.
     private var accessibilityHint: String {
         switch parsed.op {
         case .save, .update, .unknown:
@@ -124,10 +94,6 @@ struct MemoryUpdatedPill: View {
     }
 }
 
-/// Two parameters extracted from the memory tool call's input JSON. Kept
-/// as a dedicated value type so the parsing logic is shared between
-/// `body` and the accessibility label, and so future descriptors that
-/// add fields stay localized.
 private struct ParsedMemoryCall: Equatable {
     enum Op: String, Equatable {
         case save, update, forget, unknown

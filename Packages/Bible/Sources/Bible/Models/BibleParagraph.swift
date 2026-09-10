@@ -1,6 +1,4 @@
-/// One block of a chapter: an editorial heading, a prose paragraph, or a
-/// poetry stanza. Decoded from a `type`-discriminated JSON object so invalid
-/// combinations (a heading carrying verses) can't be represented.
+/// JSON uses a type discriminator; headings cannot carry verses.
 public enum BibleParagraph: Sendable, Equatable {
     case heading(String)
     case prose([BibleVerse])

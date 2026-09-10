@@ -6,18 +6,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `SearchConfirmationRow` — the native web-search cost-gate
-/// prompt rendered under an assistant turn. The awaiting state pins the
-/// query/reason card + Search/Skip buttons across light / dark / sepia and a
-/// Dynamic Type XXL reflow case; the resolved states pin the compact
-/// "searched" / "skipped" summaries the row collapses to after a decision,
-/// each across light / dark / sepia plus an XXL reflow variant.
-///
-/// `.serialized` for the same TOCTOU reason as the other snapshot suites
-/// (parallel writes race on the `__Snapshots__/` PNGs, not on code under
-/// test). Reduce Motion is not a separate variant: the row swaps subviews on
-/// a plain status change with no `withAnimation`, so steady-state frames are
-/// identical regardless of `accessibilityReduceMotion`.
 @Suite("SearchConfirmationRow snapshots", .serialized)
 @MainActor
 struct SearchConfirmationRowSnapshotTests {
@@ -52,10 +40,8 @@ struct SearchConfirmationRowSnapshotTests {
         )
     }
 
-    // Note: `.success` (approved) intentionally renders nothing here — the
-    // approved search is announced by `WebSearchCallCell` on the answer turn,
-    // so there's no "searched" summary to snapshot. Only the skipped (`.failed`)
-    // summary remains.
+    // Approved search renders on the answer turn through WebSearchCallCell;
+    // only the skipped summary remains in this row.
 
     @Test("resolved skipped, light")
     func skippedLight() {
@@ -67,8 +53,6 @@ struct SearchConfirmationRowSnapshotTests {
         verify(status: .failed, theme: .vellumDark, height: 80, name: "search_confirm_skipped_dark")
     }
 
-    // The skipped summary is single-line in the steady case; pin it at XXL so
-    // its reflow is captured rather than silently regressing.
     @Test("resolved skipped, dynamic type XXL")
     func skippedXXL() {
         verify(

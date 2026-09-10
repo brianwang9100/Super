@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Playback preferences preserve a valid credential lookup already suspended in secure storage.
 @Suite("Narration credential preferences")
 @MainActor
 struct NarrationCredentialPreferenceTests {
@@ -164,7 +163,7 @@ private struct PreferenceCredentialFixture {
     }
 }
 
-/// Fake secure storage whose single gated read does not block a preference save's availability refresh.
+/// Gates one credential read while allowing preference-save availability refreshes.
 private actor PreferenceKeychain: KeychainClient {
     private var values = ["borrowed-ref": "configured"]
     private var armed = false

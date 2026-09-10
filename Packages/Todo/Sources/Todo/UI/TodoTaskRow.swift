@@ -1,12 +1,6 @@
 import Core
 import SwiftUI
 
-/// One task row: a left priority stripe, the state box, the title, label
-/// chips, and an optional due-date badge. Tapping the row opens the editor
-/// (`onPress`); tapping the state box toggles open↔done (`onToggleState`).
-/// `now` and `calendar` are injected so the "Today" / "Tomorrow" badge
-/// stays deterministic under snapshot tests. Mirrors `TaskCard` (variant B)
-/// in the Todo design source's `components.jsx`.
 public struct TodoTaskRow: View {
     public let row: TaskWithLabels
     public let now: Date
@@ -82,8 +76,6 @@ public struct TodoTaskRow: View {
         .onTapGesture { onPress(row) }
     }
 
-    /// A terminal task (done or cancelled) renders dimmed, and its due
-    /// badge drops the due-today emphasis.
     private var isMuted: Bool { row.task.state.isTerminal }
 
     /// The pinned trailing badge for the meta line — the due date, or a
@@ -119,13 +111,10 @@ public struct TodoTaskRow: View {
         return parts.joined(separator: ", ")
     }
 
-    /// Priority stripe color from the design's `priColor`:
-    /// `oklch(0.62 0.14 hue)` against the task's priority hue.
     private var stripeColor: Color {
         OKLCH(0.62, 0.14, row.task.priority.hue).color
     }
 
-    /// Warm red for a due-today badge — the design's `oklch(0.5 0.16 25)`.
     private static let dueAccent = OKLCH(0.5, 0.16, 25).color
 
     private func dueIsToday(_ date: Date) -> Bool {
@@ -142,10 +131,6 @@ public struct TodoTaskRow: View {
     }
 }
 
-/// Inline label chip — a small filled capsule shown in a task row's meta
-/// line. Used only by `TodoTaskRow` (the tag *picker* renders its own inline
-/// chips), so it's file-private. Colors derive from the label's stored hue
-/// via the design's `tagBg` / `tagFg` OKLCH formulas.
 private struct TodoTagChip: View {
     let label: LabelRecord
 

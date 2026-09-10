@@ -3,14 +3,6 @@ import Synchronization
 import Testing
 @testable import Core
 
-/// Tests for ``CodeBlockCopyController``'s pasteboard write + revert
-/// timing + cancellation behavior. Drives the controller directly so
-/// the assertions don't depend on standing up a SwiftUI render.
-///
-/// Sleep is injected via a closure so the timing tests don't rely on
-/// real-time waits — sim-under-load runs would flake on real-clock
-/// timing tests, and the injected closure lets us deterministically
-/// control when the revert fires.
 @Suite("CodeBlockCopyController")
 @MainActor
 struct CodeBlockCopyControllerTests {
@@ -43,11 +35,7 @@ struct CodeBlockCopyControllerTests {
         controller.copy("abc")
         #expect(controller.state == .copied)
 
-        // Release the sleep — the revert task wakes, checks Task.isCancelled
-        // (false), and writes .idle.
         release.release()
-        // Drain the revert task on an observable signal — its completion is
-        // the `state = .idle` commit — rather than polling `Task.yield()`.
         await controller._waitForRevert()
 
         #expect(controller.state == .idle)

@@ -1,18 +1,9 @@
-// `import Combine` is mandatory (see `AnnotationCoverageRequest`): the
-// `ValueObservationQueryable` conformance needs the `AnyPublisher: Publisher`
-// conformance visible here. No Combine data flow is used.
+// Required for GRDBQuery's AnyPublisher conformance; data flow still uses @Query.
 import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing which chapters carry **any** annotation — the
-/// Generate sheet's per-chapter "Done" badge, and (folded against the catalog by
-/// the view model) the per-book badge.
-///
-/// Returns the set of `(bookId, chapterNumber)` pairs that appear on at least one
-/// annotation row with a non-null `chapterNumber` (chapter- and verse-target
-/// rows; book-target rows have a nil `chapterNumber` and are excluded). `@Query`
-/// re-fires as a bulk run writes rows, so badges light up live.
+/// Includes chapter and verse annotations; book-level rows have no chapter and are excluded.
 public struct AnnotatedChaptersRequest: ValueObservationQueryable {
     public static var defaultValue: Set<ChapterRef> { [] }
 

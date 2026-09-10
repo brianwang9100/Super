@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for the bounded, browser-style Bible chapter history.
 @Suite("BibleNavigationHistory")
 struct BibleNavigationHistoryTests {
     private let a = BiblePosition(bookId: "1PE", chapterNumber: 2)

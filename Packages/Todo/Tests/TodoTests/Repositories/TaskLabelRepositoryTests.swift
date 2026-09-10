@@ -3,8 +3,6 @@ import GRDB
 import Testing
 @testable import Todo
 
-/// Tests for `GRDBTaskLabelRepository`: the set-replacement semantics of
-/// `setLabels` and the soft-delete-aware bulk lookup.
 @Suite("GRDBTaskLabelRepository")
 struct TaskLabelRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

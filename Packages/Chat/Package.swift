@@ -25,16 +25,8 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
             ],
-            // `.process` flattens the directory into the bundle root —
-            // `Resources/DefaultSystemPrompt.md` ends up at
-            // `Chat_Chat.bundle/DefaultSystemPrompt.md`. We use `.process`
-            // (not `.copy`) because the `.copy` layout (`Info.plist` at
-            // root + `Resources/` subfolder) is neither iOS-shallow nor
-            // macOS-deep, which makes `codesign` reject the bundle with
-            // "bundle format unrecognized" — breaking simulator builds
-            // that need a signed app for Keychain entitlements.
-            // `ChatSettings._loadBundledDefaultSystemPrompt` looks the
-            // file up without a subdirectory to match this layout.
+            // process flattens resources to match bundle-root lookups. copy produces a
+            // bundle layout codesign rejects, breaking signed simulator builds.
             resources: [
                 .process("Resources"),
             ],

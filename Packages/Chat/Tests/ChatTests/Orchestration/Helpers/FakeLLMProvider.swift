@@ -1,15 +1,8 @@
 import Core
 import Foundation
 
-/// Test double for `LLMProvider`. Each call to `stream(...)` consumes the
-/// next enqueued event sequence and replays it as the AsyncThrowingStream.
-/// The provider records every request so tests can assert message
-/// assembly, tool list filtering, and temperature plumbing.
-///
-/// Strict by design: a `stream(...)` call with no enqueued script crashes
-/// via `fatalError` rather than handing back a benign empty response. A
-/// silent fallback would let "session loops one extra turn" or "test
-/// forgot to script the second turn" bugs hide in green test runs.
+/// Consumes one script per request; unscripted calls trap so extra tool-loop
+/// iterations cannot silently pass tests.
 final class FakeLLMProvider: LLMProvider, Sendable {
     let id: String
     let displayName: String
@@ -41,9 +34,7 @@ final class FakeLLMProvider: LLMProvider, Sendable {
         stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
     }
 
-    /// The options-carrying overload is the real one — `ChatSession` calls it,
-    /// so capturing `options` here is the only coverage of the per-request
-    /// cache-key threading (the protocol default would otherwise drop it).
+    // Capture this overload because the protocol default discards request options.
     func stream(
         messages: [LLMMessage],
         model: LLMModel,
@@ -73,7 +64,6 @@ final class FakeLLMProvider: LLMProvider, Sendable {
     }
 }
 
-/// A snapshot of what the session sent into `stream(...)` for one turn.
 struct CapturedLLMRequest: Sendable, Equatable {
     let modelID: String
     let messages: [LLMMessage]

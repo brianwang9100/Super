@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Common study sheets; full-reader navigation and narration lifecycle remain with the host.
 struct BibleStudySheetsModifier: ViewModifier {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -64,20 +63,7 @@ struct BibleStudySheetsModifier: ViewModifier {
             isPresented: $viewModel.isAnnotationDisclaimerPresented,
             onDismiss: {
                 guard presentation.isCurrent(identity) else { return }
-                // `sheet(onDismiss:)` fires on *both* dismissal paths —
-                // the user's "Got it" tap (acknowledge) and the
-                // drag-down (discard). The two are distinguished by the
-                // queue state: acknowledge drains it synchronously
-                // before flipping the binding, so an empty queue here
-                // means the user acked; a non-empty queue means they
-                // drag-dismissed without confirmation.
-                //
-                // The previous shape called `discardAnnotationDisclaimer()`
-                // unconditionally — it was a silent no-op when the queue
-                // was already empty, but a future side effect on
-                // `discardAnnotationDisclaimer` (telemetry, logging,
-                // toast) would have fired on the acknowledge path too.
-                // The explicit guard documents the contract.
+                // Acknowledgement drains the queue; a remaining queue means drag-to-dismiss.
                 if !viewModel.pendingAnnotationIntents.isEmpty {
                     viewModel.discardAnnotationDisclaimer()
                 }
@@ -120,20 +106,13 @@ struct BibleStudySheetsModifier: ViewModifier {
             )
             .onAppear { self.presentation.didPresent(.bookmark, identity: identity) }
         }
-        // The verse-selection action sheet and the narration transport share a
-        // single `.sheet(item:)` so a `.selection` → `.narration` swap is one
-        // sheet re-presenting (rather than two `.sheet` modifiers racing). Each
-        // sheet view owns its own presentation (detents, drag indicator,
-        // background) via `.sheetPresentation(_:)`, so the call sites just
-        // supply content.
+        // One sheet avoids competing selection and narration presentations.
         .sheet(item: bottomSheetBinding, onDismiss: { presentation.didDismiss(.bottom, identity: identity) }) { kind in
             bottomSheetContent(kind)
                 .onAppear { presentation.didPresent(.bottom, identity: identity) }
         }
     }
 
-    /// The card shown in the shared action / narration sheet, chosen by the
-    /// presented `kind`.
     @ViewBuilder
     private func bottomSheetContent(_ kind: BibleBottomOverlayKind) -> some View {
         switch kind {

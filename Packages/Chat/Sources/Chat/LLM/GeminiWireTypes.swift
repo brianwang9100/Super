@@ -1,33 +1,13 @@
 import Core
 import Foundation
 
-// Wire-level Codable shapes for Google's Gemini **`generateContent`** API
-// (Application Programming Interface) — `POST /v1beta/models/{model}:streamGenerateContent?alt=sse`.
-// Internal; every public surface stays on `GeminiNativeLLMProvider`.
-//
-// Gemini's shape differs from OpenAI Chat Completions in the ways this file
-// encodes: there is no system *role* — the system prompt rides a top-level
-// `systemInstruction`; conversation roles are `user`/`model` (not `assistant`);
-// tool *results* ride a `user`-role content as a `functionResponse` part; and
-// native web search is the `google_search` grounding tool whose results come
-// back as `groundingMetadata` (no per-result opaque blob to echo, unlike
-// Anthropic). Request/response JSON is already camelCase, so no key strategy is
-// applied — property names map 1:1.
-
-/// Gemini native web-search (grounding) tool — naming in one place.
-///
-/// `google_search` is the Gemini 2.x grounding tool (the 1.5-era
-/// `google_search_retrieval` is not used). It carries no version string and no
-/// extra capability dependency. Docs:
-/// https://ai.google.dev/gemini-api/docs/google-search
+/// Uses Gemini 2.x `google_search` grounding.
 enum GeminiWebSearch {
     static let toolName = "google_search"
 }
 
 // MARK: - Request
 
-/// Request body for `POST {baseURL}/models/{model}:streamGenerateContent?alt=sse`.
-/// Keys are Gemini's native camelCase, matched by the property names.
 struct GeminiGenerateContentRequest: Encodable {
     let contents: [GeminiContent]
     /// System prompt. Gemini carries it here, not as a message role.
@@ -35,27 +15,18 @@ struct GeminiGenerateContentRequest: Encodable {
     let generationConfig: GenerationConfig?
     let tools: [GeminiTool]?
 
-    /// Per-request generation knobs.
     struct GenerationConfig: Encodable {
         let temperature: Double?
-        /// Enables Gemini 2.5 "thinking" so the stream carries `thought` parts.
-        /// ⚠️ Unverified against the live API (no network in unit tests); the
-        /// shape is covered by serialization tests and flagged for PR4 live
-        /// validation. Omitted entirely for non-thinking models.
+        /// Omitted for models without thinking support.
         let thinkingConfig: ThinkingConfig?
     }
 
-    /// Gemini thinking toggle. `includeThoughts` asks the model to stream its
-    /// reasoning as `thought:true` parts.
     struct ThinkingConfig: Encodable {
         let includeThoughts: Bool
     }
 }
 
-/// One content turn in `contents` (or the lone `systemInstruction`). `role` is
-/// `user`/`model` for conversation turns and omitted for the system
-/// instruction. `GeminiNativeLLMProvider` merges adjacent same-role Core
-/// messages so the user/model turns stay well-formed.
+/// Conversation roles alternate `user`/`model`; system instructions omit a role.
 struct GeminiContent: Encodable {
     let role: String?
     let parts: [GeminiPart]
@@ -66,16 +37,7 @@ struct GeminiContent: Encodable {
     }
 }
 
-/// One part inside a content turn. `text` is prose; `functionCall` replays a
-/// prior assistant tool call; `functionResponse` carries a tool result. Both
-/// carry an optional `id` — Gemini's per-call identity, matched result→call
-/// when present (omitted for older id-less turns; `name` still rides along).
-///
-/// `functionCall` carries an optional `thoughtSignature` — an opaque token
-/// Gemini's thinking models attach to the call and **require** echoed back on
-/// the next turn's `functionCall` part (a replay that omits it is rejected
-/// with HTTP 400 `INVALID_ARGUMENT`). It rides the *part*, as a sibling of the
-/// `functionCall` object, not inside it.
+/// Call IDs correlate parallel results; thought signatures ride the part and must replay verbatim.
 enum GeminiPart: Encodable {
     case text(String)
     case functionCall(id: String?, name: String, args: JSONValue, thoughtSignature: String?)
@@ -85,9 +47,7 @@ enum GeminiPart: Encodable {
         case text, functionCall, functionResponse, thoughtSignature
     }
 
-    // `id` is optional: synthesized `Encodable` uses `encodeIfPresent` for
-    // Optionals, so a nil id omits the key entirely — keeping requests for
-    // id-less (older) Gemini turns byte-identical to before.
+    // Omit IDs for legacy id-less turns.
     private struct FunctionCallBody: Encodable {
         let id: String?
         let name: String
@@ -142,7 +102,6 @@ enum GeminiTool: Encodable {
     private struct EmptyObject: Encodable {}
 }
 
-/// A client tool's JSON-Schema declaration under `functionDeclarations`.
 struct GeminiFunctionDeclaration: Encodable {
     let name: String
     let description: String
@@ -151,19 +110,11 @@ struct GeminiFunctionDeclaration: Encodable {
 
 // MARK: - Stream
 
-/// One decoded `streamGenerateContent` chunk. With `?alt=sse` each SSE
-/// (Server-Sent Events) frame is an unnamed `data:` line carrying a partial
-/// `GenerateContentResponse`; there is no `event:` name and no terminal
-/// sentinel — the stream ends when the connection closes (the final chunk
-/// carries `finishReason`). All fields are optional; the reducer reads only
-/// what a given chunk populates. Docs:
-/// https://ai.google.dev/api/generate-content
+/// Unnamed SSE chunk; connection close terminates the stream.
 struct GeminiStreamResponse: Decodable {
     let candidates: [Candidate]?
     let usageMetadata: UsageMetadata?
-    /// The resolved model version, captured for `.messageStart`.
     let modelVersion: String?
-    /// Stable response id when present (newer API versions), else nil.
     let responseId: String?
     /// Present when a frame carries a streamed error envelope rather than a
     /// candidate (most Gemini failures arrive as a non-2xx HTTP status handled
@@ -187,11 +138,7 @@ struct GeminiStreamResponse: Decodable {
         let parts: [Part]?
     }
 
-    /// One streamed part. `thought == true` marks a reasoning fragment;
-    /// `functionCall` is a client tool call (delivered whole, not streamed).
-    /// `thoughtSignature` is the opaque token a thinking model attaches to a
-    /// `functionCall`; it must be echoed back verbatim on the next turn (see
-    /// `GeminiPart`), so the reducer surfaces it on the `.toolUse` event.
+    /// Tool-call thought signatures must be surfaced for verbatim replay.
     struct Part: Decodable {
         let text: String?
         let thought: Bool?
@@ -200,11 +147,7 @@ struct GeminiStreamResponse: Decodable {
     }
 
     struct FunctionCall: Decodable {
-        /// Gemini's unique per-call id. Present on parallel/multi-tool turns
-        /// (e.g. `gemini-3.5-flash`); absent on older single-call paths. When
-        /// present it is the call's identity and must be round-tripped on the
-        /// `functionResponse` so results match calls — using the function name
-        /// as the id instead collapses parallel same-tool calls onto one id.
+        /// Must round-trip when present so parallel calls to one function remain distinct.
         let id: String?
         let name: String?
         let args: JSONValue?

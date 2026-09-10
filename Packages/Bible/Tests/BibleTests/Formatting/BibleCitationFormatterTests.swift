@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleCitationFormatter` — the run compression that turns a set
-/// of verse numbers into a citation clause, and the full citation it builds.
 @Suite("BibleCitationFormatter")
 struct BibleCitationFormatterTests {
     @Test("a single verse renders as itself")

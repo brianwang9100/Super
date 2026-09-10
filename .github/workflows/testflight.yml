@@ -32,15 +32,9 @@ jobs:
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       MARKETING_VERSION: ${{ github.event.inputs.marketing_version }}
-      # Resolved by the "Set AUTH_KEY_PATH" step below using runtime $HOME
-      # so the workflow doesn't break if the runner image ever changes its
-      # home directory layout. Apple's xcrun altool/xcodebuild auto-discover
-      # keys in this canonical ~/.appstoreconnect/private_keys/ path.
+      # Resolve from runtime HOME; Apple tools discover API keys in ~/.appstoreconnect/private_keys.
       AUTH_KEY_PATH: ""
-      # Temporary keychain that holds the imported Apple Distribution cert.
-      # Created in the "Import Apple Distribution certificate" step and
-      # deleted by the cleanup step at job end so no signing material leaks
-      # between runs on a self-hosted runner.
+      # Use a temporary keychain and delete it at job end to avoid retaining signing material.
       KEYCHAIN_PATH: ""
     steps:
       - uses: actions/checkout@v7.0.1
@@ -48,12 +42,7 @@ jobs:
           fetch-depth: 0
 
       - name: Select Xcode
-        # Apple rejects App Store uploads built with anything older than
-        # the iOS 26 SDK. macos-26's Xcode 26.4.1 ships the iOS 26.4 SDK,
-        # comfortably above that floor. Pinned literally (not
-        # `latest-stable`) so a runner image refresh can't surprise this
-        # release job with a beta Xcode (26.5 is still preview on the
-        # image as of writing).
+        # Pin a release toolchain so runner-image updates cannot introduce a beta into uploads.
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.4.1"
@@ -82,9 +71,6 @@ jobs:
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        # Same pinned-version composite action the PR-CI workflows use, so the
-        # TestFlight archive is generated with exactly the XcodeGen that CI
-        # validated — no second copy of the version to drift out of sync.
         uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
@@ -115,9 +101,7 @@ jobs:
 
           echo "$APPLE_DIST_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
 
-          # Create a fresh, ephemeral keychain just for this job. Using a
-          # dedicated keychain (rather than login.keychain) keeps the cert
-          # out of any persistent runner state and lets us delete it cleanly.
+          # Keep signing material out of the persistent login keychain.
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           # 2h timeout matches the job timeout; auto-locks if we crash.
           security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
@@ -128,14 +112,12 @@ jobs:
             -A -t cert -f pkcs12 \
             -k "$KEYCHAIN_PATH"
 
-          # Allow codesign to access the imported key without an interactive
-          # prompt. Without this, codesign hangs on a UI prompt in CI.
+          # Allow noninteractive codesign access or CI can hang on a prompt.
           security set-key-partition-list \
             -S apple-tool:,apple: \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Prepend the build keychain to the search list so codesign finds
-          # the identity without losing access to the system keychain.
+          # Prepend this keychain without removing access to system identities.
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
 
           rm -f "$CERT_PATH"
@@ -153,9 +135,7 @@ jobs:
           PROFILE_TMP="$RUNNER_TEMP/profile.mobileprovision"
           echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_TMP"
 
-          # Extract UUID + Name from the signed profile so we can install it
-          # at the canonical path Xcode looks for ($UUID.mobileprovision) and
-          # reference it by Name in the export options plist.
+          # Install by UUID and reference by profile name, as Xcode expects.
           PROFILE_PLIST=$(security cms -D -i "$PROFILE_TMP")
           PROFILE_UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID raw -)
           PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name raw -)
@@ -171,25 +151,9 @@ jobs:
         env:
           PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
-          # APPLE_TEAM_ID is already exported on the job (line 29) from
-          # secrets.APPLE_TEAM_ID; PROFILE_NAME is bridged through this
-          # step's env: above. Both are shell variables here, never
-          # inlined as workflow-expression substitutions into the run
-          # script — which is the GitHub-recommended pattern for keeping
-          # run scripts free of template expansion.
-          #
-          # NOTE: do not write the literal workflow-expression token
-          # (dollar-brace-brace ... brace-brace) anywhere in this run
-          # block, even inside a shell comment. GitHub parses every such
-          # token in the workflow file before bash sees it, and an
-          # invalid expression body (e.g. an ellipsis) makes the whole
-          # workflow refuse to queue.
-          #
-          # Config/Base.xcconfig (committed) does `#include? "Local.xcconfig"`
-          # and is wired as the Super target's baseConfigurationReference via
-          # `configFiles:` in project.yml. The actual team ID + profile name
-          # are gitignored — we materialize Local.xcconfig here from the same
-          # secrets we already imported for cert + profile installation.
+          # Pass secrets through environment variables, never inline workflow expressions.
+          # GitHub evaluates expression delimiters even inside shell comments; invalid examples break queueing.
+          # Materialize the ignored signing overrides included by Config/Base.xcconfig.
           mkdir -p Config
           cat > Config/Local.xcconfig <<EOF
           DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
@@ -240,12 +204,8 @@ jobs:
           BUILD_NUMBER: ${{ steps.build_number.outputs.value }}
         run: |
           set -o pipefail
-          # Signing settings reach the Super target via two paths, both
-          # target-scoped so they don't leak to SwiftPM dependency targets:
-          #   - CODE_SIGN_STYLE + CODE_SIGN_IDENTITY: inline in project.yml's
-          #     Release block (public-equivalent values).
-          #   - DEVELOPMENT_TEAM + PROVISIONING_PROFILE_SPECIFIER: from
-          #     Config/Local.xcconfig, written above from secrets.
+          # Keep signing target-scoped so profiles do not leak into SwiftPM resource bundles.
+          # Public signing mode/identity come from project.yml; private team/profile values come from Local.xcconfig.
           ARGS=(
             -project Super.xcodeproj
             -scheme Super
@@ -263,9 +223,7 @@ jobs:
       - name: Export and upload to TestFlight
         run: |
           set -o pipefail
-          # -allowProvisioningUpdates is kept so xcodebuild can talk to App
-          # Store Connect for the upload itself; with signingStyle=manual in
-          # the plist it will NOT try to create or update certs/profiles.
+          # Manual signing prevents profile creation; allowProvisioningUpdates still permits upload authentication.
           xcodebuild -exportArchive \
             -archivePath build/Super.xcarchive \
             -exportPath build/export \

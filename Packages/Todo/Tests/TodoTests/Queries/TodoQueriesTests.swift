@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for the GRDBQuery requests `ActiveTasksRequest` / `ActiveLabelsRequest`.
-/// Each `fetch(_:)` is exercised directly against an in-memory database —
-/// the `@Query` observation wrapper is covered at the view layer.
 @Suite("Todo queries")
 struct TodoQueriesTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

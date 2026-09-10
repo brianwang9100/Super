@@ -3,17 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// End-to-end tests for `GeminiNativeLLMProvider`. Exercises the request shape
-/// (URL, `x-goog-api-key` header, `systemInstruction`, `google_search` sentinel,
-/// thinking config, tool translation) and the full streaming pipeline by
-/// replaying recorded `streamGenerateContent` SSE (Server-Sent Events) fixtures
-/// through a fake HTTP client. No real network — ever (per Chat `AGENTS.md`).
-///
-/// **Stream contract**: every test asserts the stream terminates with
-/// `.messageComplete`; failures surface as `.error` events, never throws.
-///
-/// `LLMTool.nativeSearchSentinel` is defined once in the OpenAI Responses test
-/// file (same test module) and reused here.
 @Suite("GeminiNativeLLMProvider")
 struct GeminiNativeLLMProviderTests {
     private let baseURL = URL(string: "https://generativelanguage.googleapis.com/v1beta")!
@@ -73,9 +62,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
-    /// `usageMetadata.cachedContentTokenCount` (implicit-cache hits on Gemini
-    /// 2.5+/3.x) surfaces as `cacheReadInputTokens` — a subset of
-    /// `promptTokenCount`, with no write count.
+    /// Gemini cache hits are a subset of prompt tokens, with no write count.
     @Test func cachedFixtureSurfacesCachedContentTokensInUsage() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-cached"))
         let provider = makeProvider(http: http)
@@ -94,8 +81,6 @@ struct GeminiNativeLLMProviderTests {
         )))
     }
 
-    /// Chunked delivery must produce the identical event stream — proves the SSE
-    /// parser's partial-frame handling holds for Gemini's unnamed-`data:` framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {
         let whole = try await collect(makeProvider(http: FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
@@ -113,8 +98,6 @@ struct GeminiNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.0
         ))
 
-        // The thought part opens a thinking block; the plain text part flips to
-        // a fresh text block (distinct normalized index 0 then 1).
         #expect(events.map(Self.kind) == [
             "messageStart",
             "contentBlockStart(thinking)",
@@ -137,8 +120,7 @@ struct GeminiNativeLLMProviderTests {
             model: model, tools: [.nativeSearchSentinel], temperature: 0.7
         ))
 
-        // Gemini delivers grounding in the final chunk, so `.searchStarted`
-        // lands after the answer text (unlike Anthropic's server_tool_use).
+        // Gemini delivers grounding in the final chunk, after the answer text.
         #expect(events.contains(.searchStarted(query: "mars rover news")))
         #expect(events.contains(.textDelta(index: 0, text: "The rover found ice.")))
 
@@ -149,15 +131,11 @@ struct GeminiNativeLLMProviderTests {
         let nasa = try #require(citations.first)
         #expect(nasa.url == URL(string: "https://www.nasa.gov/mars")!)
         #expect(nasa.title == "NASA Mars")
-        // Snippet comes from the grounding support that references chunk 0.
         #expect(nasa.snippet == "The rover found ice.")
-        // Gemini citations carry no echo (no per-result blob to round-trip).
         #expect(nasa.providerEcho == nil)
-        // Each id is URL + ordinal so a `ForEach` can't collide.
         #expect(citations[1].id == "https://www.space.com/rover#1")
         #expect(citations[1].snippet == nil)
 
-        // The mandatory Search-Suggestions HTML is surfaced unmodified.
         let suggestions = events.compactMap { event -> String? in
             if case .searchSuggestionsHTML(let html) = event { return html } else { return nil }
         }
@@ -165,9 +143,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 30, outputTokens: 25)))
     }
 
-    /// The grounding path carries a large `groundingMetadata` JSON in the final
-    /// chunk — the shape most likely to expose an SSE partial-frame bug — so it
-    /// must be chunking-invariant too.
+    /// Large final-chunk grounding metadata also exercises partial-frame handling.
     @Test func searchFixtureIsChunkingInvariant() async throws {
         let whole = try await collect(makeProvider(http: FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-search"))).stream(
             messages: [LLMMessage(role: .user, text: "mars?")], model: model, tools: [.nativeSearchSentinel], temperature: 0.5
@@ -178,8 +154,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(whole == chunked)
     }
 
-    /// Two grounding chunks pointing at the same URL must yield distinct
-    /// `SourceCitation.id`s (URL + ordinal) so a `ForEach` can't collide.
+    /// Duplicate URLs need ordinal IDs to avoid ForEach collisions.
     @Test func sameURLGroundingChunksGetDistinctIDs() async throws {
         let sse = """
         data: {"candidates":[{"content":{"role":"model","parts":[{"text":"x"}]},"finishReason":"STOP","groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://example.com/a","title":"A"}},{"web":{"uri":"https://example.com/a","title":"A again"}}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1},"modelVersion":"gemini-2.5-pro","responseId":"r"}
@@ -213,19 +188,15 @@ struct GeminiNativeLLMProviderTests {
             return nil
         }
         #expect(toolUses.count == 1)
-        // Gemini supplies no call id; the function name doubles as the id.
+        // This older fixture lacks a call ID, so the function name supplies the fallback.
         #expect(toolUses.first?.id == "get_weather")
         #expect(toolUses.first?.name == "get_weather")
         #expect(toolUses.first?.input == .object(["city": .string("Paris")]))
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 15, outputTokens: 8)))
     }
 
-    /// Gemini returns a unique per-call `id` on each `functionCall` (verified
-    /// against the live `gemini-3.5-flash` wire body). When the same tool is
-    /// called twice in one turn the reducer must surface those distinct ids on
-    /// the `.toolUse` events — using the function *name* as the id collapses
-    /// both calls onto one identity, which collides the `toolCall` primary key
-    /// and traps transcript projection (the bible-"wrath" crash).
+    /// Reusing the function name for parallel same-tool calls collides the toolCall
+    /// primary key and traps transcript projection. Preserve server IDs.
     @Test func parallelToolCallsToSameToolGetDistinctServerIDs() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-parallel-toolcalls"))
         let events = try await collect(makeProvider(http: http).stream(
@@ -242,10 +213,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(Set(toolUses.map(\.id)).count == 2)
     }
 
-    /// Replaying parallel same-tool calls must round-trip each call's server id
-    /// on both the `functionCall` and its matching `functionResponse`, with the
-    /// function *name* carried on the response (Gemini matches result→call by
-    /// id; `name` is a required `functionResponse` field).
+    /// Gemini matches results by ID and also requires the function name.
     @Test func parallelSameToolResultsRoundTripWithDistinctIDs() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         let history: [LLMMessage] = [
@@ -265,15 +233,12 @@ struct GeminiNativeLLMProviderTests {
         let body = try Self.decodeBody(http)
         let contents = try #require(body["contents"] as? [[String: Any]])
 
-        // Assistant turn: two functionCall parts, each carrying its server id.
         let modelParts = try #require(contents[1]["parts"] as? [[String: Any]])
         let calls = modelParts.compactMap { $0["functionCall"] as? [String: Any] }
         #expect(calls.count == 2)
         #expect(calls.compactMap { $0["id"] as? String } == ["call-paris", "call-london"])
         #expect(calls.allSatisfy { $0["name"] as? String == "get_weather" })
 
-        // Tool results: two functionResponse parts keyed by the matching id,
-        // each naming the function.
         let resultParts = try #require(contents[2]["parts"] as? [[String: Any]])
         let responses = resultParts.compactMap { $0["functionResponse"] as? [String: Any] }
         #expect(responses.count == 2)
@@ -281,9 +246,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(responses.allSatisfy { $0["name"] as? String == "get_weather" })
     }
 
-    /// Thinking models attach a `thoughtSignature` to the functionCall part;
-    /// the reducer must surface it on the `.toolUse` event so it can be
-    /// persisted and replayed (Gemini 400s on a replay that omits it).
+    /// Gemini rejects replay without the original thoughtSignature.
     @Test func toolCallCapturesThoughtSignature() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-toolcall-signature"))
         let events = try await collect(makeProvider(http: http).stream(
@@ -297,9 +260,7 @@ struct GeminiNativeLLMProviderTests {
         #expect(signature == "SIG-abc123")
     }
 
-    /// Gemini may deliver the `thoughtSignature` on a separate (empty-text)
-    /// part preceding the `functionCall`. The reducer must still attach it to
-    /// the tool call rather than dropping it with the content-free part.
+    /// A signature can arrive on a preceding empty-text part; retain it for the call.
     @Test func toolCallCapturesThoughtSignatureFromSeparatePart() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-toolcall-signature-separate"))
         let events = try await collect(makeProvider(http: http).stream(
@@ -313,9 +274,6 @@ struct GeminiNativeLLMProviderTests {
         #expect(signature == "SIG-sep-99")
     }
 
-    /// On replay, the persisted signature must ride the request's functionCall
-    /// part as a sibling `thoughtSignature` key — the exact field Gemini
-    /// rejected the `bible.annotate` follow-up turn for omitting.
     @Test func replayedToolCallEncodesThoughtSignatureOnFunctionCallPart() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         let history: [LLMMessage] = [
@@ -336,7 +294,6 @@ struct GeminiNativeLLMProviderTests {
         let body = try Self.decodeBody(http)
         let contents = try #require(body["contents"] as? [[String: Any]])
         let modelParts = try #require(contents[1]["parts"] as? [[String: Any]])
-        // The functionCall part carries the thoughtSignature as a sibling key.
         let callPart = try #require(modelParts.first { $0["functionCall"] != nil })
         #expect(callPart["thoughtSignature"] as? String == "SIG-xyz")
     }
@@ -369,8 +326,6 @@ struct GeminiNativeLLMProviderTests {
     }
 
     @Test func transportErrorWithOpenTextBlockClosesItAndReportsTheError() async throws {
-        // A text block is open when the transport drops: the open block's start
-        // is balanced with a stop, then the transport error is reported.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("gemini-open-text").utf8)],
             error: HTTPError.badStatus(503, body: "")
@@ -389,9 +344,8 @@ struct GeminiNativeLLMProviderTests {
     }
 
     @Test func transportErrorAfterAStreamedErrorDoesNotDoubleReport() async throws {
-        // A streamed error envelope fires, then the transport also drops. The
-        // catch must not yield a second, less-specific error over the
-        // already-surfaced one (`ChatSession` keeps the last).
+        // ChatSession keeps the last error; a transport failure must not overwrite
+        // the more specific provider error.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("gemini-error-only").utf8)],
             error: HTTPError.badStatus(500, body: "")
@@ -441,7 +395,6 @@ struct GeminiNativeLLMProviderTests {
         let request = try #require(http.observed.all.first)
         #expect(request.url?.absoluteString
             == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse")
-        // Gemini authenticates with x-goog-api-key, NOT a bearer token.
         #expect(request.value(forHTTPHeaderField: "x-goog-api-key") == "test-key")
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
         #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
@@ -476,7 +429,6 @@ struct GeminiNativeLLMProviderTests {
         let body = try Self.decodeBody(http)
         let config = try #require(body["generationConfig"] as? [String: Any])
         #expect(config["thinkingConfig"] == nil)
-        // Gemini accepts [0, 2]; out-of-range clamps rather than rejects.
         #expect(config["temperature"] as? Double == 2.0)
     }
 
@@ -493,7 +445,6 @@ struct GeminiNativeLLMProviderTests {
         let systemInstruction = try #require(body["systemInstruction"] as? [String: Any])
         let systemParts = try #require(systemInstruction["parts"] as? [[String: Any]])
         #expect(systemParts[0]["text"] as? String == "You are terse.")
-        // The system message must NOT leak into `contents`.
         let contents = try #require(body["contents"] as? [[String: Any]])
         #expect(contents.count == 1)
         #expect(contents[0]["role"] as? String == "user")
@@ -517,19 +468,15 @@ struct GeminiNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let tools = try #require(body["tools"] as? [[String: Any]])
-        // One tool object carries functionDeclarations; another is google_search.
         let declarations = tools.compactMap { $0["functionDeclarations"] as? [[String: Any]] }.flatMap { $0 }
         let declaredNames = declarations.compactMap { $0["name"] as? String }
         #expect(declaredNames == ["get_weather"])
         #expect(!declaredNames.contains(NativeWebSearch.sentinelToolName))
-        // The google_search tool is present as its own `{"google_search":{}}`.
         #expect(tools.contains { $0["google_search"] != nil })
     }
 
     @Test func arrayParameterDeclaresItemsSchema() async throws {
-        // Regression: an array function-declaration parameter must carry `items`
-        // — the native generateContent validator rejects the tool with HTTP 400
-        // (`properties[entries].items: missing field`) when it's absent.
+        // Gemini rejects array schemas without items with HTTP 400.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         let tool = LLMTool(
             id: "annotate", name: "annotate", description: "writes cards",
@@ -569,8 +516,7 @@ struct GeminiNativeLLMProviderTests {
     }
 
     @Test func toolResultBecomesFunctionResponseOnAUserContent() async throws {
-        // Gemini has no tool role: a Core `.tool` message becomes a `user`-role
-        // content with a functionResponse part keyed by the function name.
+        // Gemini has no tool role; results use user content with functionResponse parts.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "weather?"),
@@ -589,14 +535,12 @@ struct GeminiNativeLLMProviderTests {
         let contents = try #require(body["contents"] as? [[String: Any]])
         #expect(contents.map { $0["role"] as? String } == ["user", "model", "user"])
 
-        // The assistant turn carries text + a functionCall part.
         let modelParts = try #require(contents[1]["parts"] as? [[String: Any]])
         #expect(modelParts[0]["text"] as? String == "Let me check.")
         let functionCall = try #require(modelParts[1]["functionCall"] as? [String: Any])
         #expect(functionCall["name"] as? String == "get_weather")
-        #expect(functionCall["id"] == nil)   // id-less (id == name) sends name-only
+        #expect(functionCall["id"] == nil)
 
-        // The tool result rides the trailing user content as a functionResponse.
         let resultParts = try #require(contents[2]["parts"] as? [[String: Any]])
         let functionResponse = try #require(resultParts[0]["functionResponse"] as? [String: Any])
         #expect(functionResponse["name"] as? String == "get_weather")
@@ -605,13 +549,11 @@ struct GeminiNativeLLMProviderTests {
         #expect(response["result"] as? String == "18C clear")
     }
 
-    /// A locally-minted tool-call id (the disambiguated PK the orchestrator
-    /// creates for id-less calls — audit P1-6) is synthetic: it must NOT leak
-    /// onto the Gemini wire, since Gemini round-trips only the ids it minted.
-    /// Both the `functionCall` and its `functionResponse` send name-only.
+    /// Local IDs only disambiguate persistence keys. Gemini round-trips server IDs,
+    /// so synthetic IDs must stay off both calls and results on the wire.
     @Test func locallyMintedToolCallIDStaysNameOnlyOnTheWire() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
-        let minted = ToolCallRecord.locallyMintedID("id-3")   // localtoolu_id-3
+        let minted = ToolCallRecord.locallyMintedID("id-3")
         let history: [LLMMessage] = [
             LLMMessage(role: .assistant, content: [
                 .toolUse(id: minted, name: "get_weather", input: .object(["c": .string("Paris")]), signature: nil),
@@ -629,7 +571,7 @@ struct GeminiNativeLLMProviderTests {
         let modelParts = try #require(contents[0]["parts"] as? [[String: Any]])
         let call = try #require(modelParts.first { $0["functionCall"] != nil }?["functionCall"] as? [String: Any])
         #expect(call["name"] as? String == "get_weather")
-        #expect(call["id"] == nil)   // the synthetic PK must not reach Gemini
+        #expect(call["id"] == nil)
 
         let resultParts = try #require(contents[1]["parts"] as? [[String: Any]])
         let resp = try #require(resultParts.first { $0["functionResponse"] != nil }?["functionResponse"] as? [String: Any])
@@ -638,8 +580,7 @@ struct GeminiNativeLLMProviderTests {
     }
 
     @Test func searchResultBlockIsIgnoredForGemini() async throws {
-        // Gemini grounding needs no per-turn echo, so a replayed `.searchResult`
-        // block (Anthropic's carrier) produces no extra content — only the text.
+        // Gemini grounding has no replay echo; omit Anthropic search-result carriers.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         let cited = SourceCitation(id: "c1", title: "T", url: URL(string: "https://example.com/a")!)
         let history: [LLMMessage] = [

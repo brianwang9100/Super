@@ -1,101 +1,37 @@
 import Core
 import SwiftUI
 
-/// Left-anchored 300pt drawer overlaying the active applet. Hosts the Super
-/// wordmark, a New-Chat call-to-action (CTA), the registry-driven applet
-/// rail, the chronological chats list (rendered only when Chat is the active
-/// applet), and a footer with a Settings button.
-///
-/// The host is responsible for placing this in a `ZStack` over the active
-/// surface and toggling `isPresented`. This view paints its own scrim so the
-/// host doesn't have to coordinate dimming.
-///
-/// **Callback contract**: every action callback (`onSelectConversation`,
-/// `onNewChat`, `onOpenSettings`, `onSelectApplet`) is invoked *after* the
-/// drawer has already started its dismissal animation. The host can rely on
-/// the drawer being in a closing state when its callback fires.
+/// Start dismissal before invoking action callbacks; the host can assume the drawer is closing.
 public struct SidebarDrawer: View {
-    /// `true` while the drawer is visible (slid in + scrim shown). The
-    /// drawer mutates the binding to `false` immediately before each
-    /// callback fires; the host can also flip it externally to dismiss.
     @Binding public var isPresented: Bool
 
-    /// Source of `chats` rows + `activeConversationId`. The host owns the
-    /// instance and refreshes it on a schedule appropriate for its UI.
     @Bindable public var viewModel: SidebarViewModel
 
-    /// Bundle metadata rendered into the wordmark caption (`v… · personal`).
     public let appInfo: SuperAppInfo
 
-    /// Applets registered with the shell, in display order. Rendered as a
-    /// vertical rail between the New Chat CTA and the CHATS history list.
-    /// Driven by the shell's `AppletRegistry`; the drawer itself doesn't
-    /// decide which applets exist or in what order. Chat is the *host*
-    /// surface — it's not registered as an applet and doesn't appear in
-    /// this list.
     public let applets: [any MiniApplet]
 
-    /// Identifier of the currently-active backdrop applet, or `nil` if
-    /// no backdrop is active (chat-only surface). The matching rail row
-    /// is highlighted with `theme.accentSoft` when non-`nil`.
     public let activeAppletID: String?
 
-    /// Fires when a row in the CHATS list is tapped. The drawer has
-    /// already begun closing; the host should swap the active chat.
     public let onSelectConversation: (String) -> Void
 
-    /// Fires when the New Chat CTA is tapped. The drawer has already
-    /// begun closing; the host should create a new `ConversationRecord`
-    /// and switch to it.
     public let onNewChat: () -> Void
 
-    /// Fires when the Settings gear is tapped. The drawer has already
-    /// begun closing; the host should present the Settings sheet.
     public let onOpenSettings: () -> Void
 
-    /// Fires when an applet rail row is tapped. The drawer has already
-    /// begun closing; the host should flip the registry's `activeID`.
     public let onSelectApplet: (String) -> Void
 
-    /// Fires when the "See all chats…" overflow row is tapped (only
-    /// rendered when `viewModel.hasMoreChats == true`). The drawer
-    /// has already begun closing; the host should switch the backdrop
-    /// to the Chats applet — which is the see-all surface — and
-    /// collapse the chat overlay so the list owns the screen.
     public let onSeeAllChats: () -> Void
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.hapticsEngine) private var hapticsEngine
-    /// Base sizes for the drawer's *system-font* nav chrome — "New Chat", the
-    /// applet-rail names, and the "CHATS" section label. Declared via
-    /// `@ScaledMetric` so the chrome composes OS Dynamic Type, then rendered
-    /// through `typography.font(size:)` (default `tracksFontScale: true`) so it
-    /// also tracks the app font-scale slider — the slider is a global size
-    /// control, so the drawer scales on both axes. The brand-face wordmark +
-    /// version mark carry their own axes directly in `wordmarkHeader`.
+    /// System chrome combines ScaledMetric for Dynamic Type with typography.font for app scaling.
     @ScaledMetric(relativeTo: .body) private var navLabelSize: CGFloat = 17
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 11
 
     private let drawerWidth: CGFloat = 300
 
-    /// Build a drawer.
-    ///
-    /// - Parameters:
-    ///   - isPresented: Two-way binding controlling visibility.
-    ///   - viewModel: Shared sidebar state owner.
-    ///   - appInfo: Supplies the wordmark text (`bundleName`) and the
-    ///     version caption beneath it.
-    ///   - applets: Ordered list of registered applets to render in the rail.
-    ///   - activeAppletID: Identifier of the active backdrop applet, or
-    ///     `nil` if no backdrop is active (chat-only surface).
-    ///   - onSelectConversation: Invoked with the tapped conversation id.
-    ///   - onNewChat: Invoked when the New Chat CTA is tapped.
-    ///   - onOpenSettings: Invoked when the Settings gear is tapped.
-    ///   - onSelectApplet: Invoked with the tapped applet's `appletID`.
-    ///   - onSeeAllChats: Invoked when the "See all chats…" overflow
-    ///     row is tapped — only present when the underlying chats list
-    ///     is capped (more than 10 conversations on disk).
     public init(
         isPresented: Binding<Bool>,
         viewModel: SidebarViewModel,
@@ -136,8 +72,7 @@ public struct SidebarDrawer: View {
                     .background(theme.sidebar.ignoresSafeArea(edges: .vertical))
                     .shadow(color: Color.black.opacity(0.10), radius: 30, x: 4, y: 0)
                     .transition(.move(edge: .leading))
-                    // VoiceOver users can dismiss with the two-finger Z
-                    // (escape) gesture since the scrim is hidden.
+                    // The hidden scrim needs an accessible dismissal alternative.
                     .accessibilityAction(.escape) { close() }
             }
         }
@@ -149,19 +84,12 @@ public struct SidebarDrawer: View {
         isPresented = false
     }
 
-    // MARK: - Surface
-
     @ViewBuilder
     private var drawerSurface: some View {
         VStack(spacing: 0) {
             wordmarkHeader
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: []) {
-                    // New Chat CTA, applet rail, and chat history always
-                    // render — chat is the shell's host surface, not a
-                    // sidebar-listed applet, so its history is the user's
-                    // primary navigation regardless of which applet
-                    // backdrop is active.
                     newChatButton
 
                     ForEach(applets, id: \.appletID) { applet in
@@ -202,11 +130,7 @@ public struct SidebarDrawer: View {
 
     private var wordmarkHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Wordmark + version mark track the app font-scale slider along
-            // with the rest of the drawer (the slider is a global size
-            // control). The wordmark stays `relativeTo: nil` — a brand mark
-            // that grows with the slider but not OS Dynamic Type; the version
-            // caption keeps its .caption2 anchor so it honors both axes.
+            // The wordmark tracks app font scale but not Dynamic Type; the version tracks both.
             Text(appInfo.bundleName)
                 .font(typography.display(36, relativeTo: nil))
                 .italic()
@@ -286,17 +210,12 @@ public struct SidebarDrawer: View {
             .padding(.bottom, 8)
     }
 
-    // MARK: - Footer
-
     private var footer: some View {
         HStack(spacing: 0) {
             Button(action: {
                 close()
                 onOpenSettings()
             }) {
-                // Plain Liquid Glass like the rest of the nav chrome — glass
-                // supplies its own edge and elevation, so the accent fill and
-                // drop shadows are dropped and the glyph reads in `ink`.
                 Image(dsIcon: .settings)
                     .resizable()
                     .frame(width: 20, height: 20)
@@ -313,10 +232,6 @@ public struct SidebarDrawer: View {
     }
 }
 
-// MARK: - Chat row
-
-/// One row in the CHATS list. Active row uses `accent` ink + `accentSoft`
-/// background; running row gets a leading rotating spinner.
 private struct ChatRow: View {
     let chat: SidebarViewModel.ChatItem
     let isActive: Bool
@@ -324,14 +239,6 @@ private struct ChatRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Row title base size, declared via `@ScaledMetric` so it composes OS
-    /// Dynamic Type. Anchored to `.body` because the 17 pt base matches that
-    /// text style's default size (so it scales at the same rate as the
-    /// `.body`-anchored nav chrome above it). Rendered through
-    /// `typography.font(size:)` (default `tracksFontScale: true`) so the title
-    /// also tracks the app font-scale slider — the slider is a global size
-    /// control, so the `@ScaledMetric` base (OS Dynamic Type) and the slider
-    /// compose.
     @ScaledMetric(relativeTo: .body) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
@@ -362,26 +269,12 @@ private struct ChatRow: View {
     }
 }
 
-// MARK: - See-all overflow row
-
-/// Footer row in the CHATS section rendered when there are more than
-/// `SidebarViewModel.sidebarChatLimit` conversations on disk. Routes to
-/// the Chats applet — which is the searchable see-all surface — rather
-/// than expanding the list inline.
 private struct SeeAllChatsRow: View {
     let onTap: () -> Void
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Row title base size, declared via `@ScaledMetric` so it composes OS
-    /// Dynamic Type. Like `ChatRow`, it's rendered through
-    /// `typography.font(size:)` (default `tracksFontScale: true`) so it tracks
-    /// the app font-scale slider too — both axes compose. Anchored to
-    /// `.subheadline` (15 pt base).
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
-    /// Trailing chevron base size. Also `@ScaledMetric` so it grows with the
-    /// title under OS Dynamic Type (a fixed 11 pt glyph would look undersized
-    /// next to scaled-up text), and tracks the slider alongside the title.
     @ScaledMetric(relativeTo: .caption2) private var chevronSize: CGFloat = 11
 
     var body: some View {
@@ -406,12 +299,6 @@ private struct SeeAllChatsRow: View {
     }
 }
 
-// MARK: - Pressable row style
-
-/// Mirrors the React `onMouseEnter / onMouseLeave` `--bg-sunken` hover
-/// using SwiftUI's `isPressed` configuration. Skips the press state when
-/// the row is already painted with the active background — pressing an
-/// already-active row shouldn't re-tint underneath.
 private struct SidebarPressableRowStyle: ButtonStyle {
     let theme: SuperTheme
     let cornerRadius: CGFloat
@@ -429,11 +316,6 @@ private struct SidebarPressableRowStyle: ButtonStyle {
     }
 }
 
-// MARK: - Spinner ring
-
-/// Small rotating arc used as the per-row "in-flight turn" indicator.
-/// Ring border is `theme.border`; the leading 90° wedge uses
-/// `currentColor` (parent sets `foregroundStyle` to `accent`).
 private struct SpinnerRing: View {
     @Environment(\.superTheme) private var theme
     @State private var rotation: Double = 0

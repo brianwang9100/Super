@@ -7,19 +7,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// The single place all eight theme variants (four families × light/dark) are
-/// pixel-locked on the Bible reader. The per-screen reader suites render only
-/// Vellum light/dark (the default) to keep CI cost flat; this gallery is where
-/// Lapis / Scriptorium / Slate — and Vellum again — get their palette coverage
-/// on the verse-reading surface (EB Garamond reading body, verse numbers,
-/// chapter title), so a palette regression in any family fails here.
+/// Owns all eight reader theme variants so screen suites need only the default light/dark pair.
 @Suite("Theme gallery — Bible reader", .serialized)
 @MainActor
 struct ThemeGallerySnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts before any render so the chapter
-    /// title's brand serif and the EB Garamond reading body resolve instead of
-    /// baking the system fallback (see SnapshotFontRegistration).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the reader renders in every theme variant",

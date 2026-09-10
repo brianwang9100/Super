@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Tests for the new headless-dispatch envelopes added alongside the
-/// existing cross-applet events — `bibleAnnotateRequested` and
-/// `bibleAnnotateCompleted` plus the `BibleAnnotateResult` payload they
-/// carry. The existing cases are covered through `SuperEventBusTests`.
 @Suite("SuperEvent — Bible annotate envelopes")
 struct SuperEventTests {
     @Test("two bibleAnnotateRequested events with the same reference compare equal")

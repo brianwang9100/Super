@@ -1,17 +1,7 @@
 import SwiftUI
 
-/// Sixteen-point Star of Bethlehem — SuperBible's brand mark, used as the
-/// chat empty-state hero icon.
-///
-/// The path geometry mirrors `starPath()` in
-/// `Scripts/generate_superbible_brand_assets.swift` (the generator that
-/// renders the app icon, splash, and launch screen): 16 points, radii
-/// alternating long / short / waist in the proportion `44 : 22 : 8`,
-/// starting at the top. That script is a standalone CLI tool and can't
-/// import Chat, so the geometry is shared by convention — keep the two in
-/// sync. The long points touch the frame edges, so `size` is the star's
-/// drawn diameter. Fills with the current foreground, so a caller tints it
-/// with `.foregroundStyle(theme.accent)`.
+/// Keep geometry in sync with starPath() in Scripts/generate_superbible_brand_assets.swift;
+/// the standalone generator cannot import Chat. Size is the long-point diameter.
 public struct StarIcon: View {
     public let size: CGFloat
 
@@ -26,10 +16,6 @@ public struct StarIcon: View {
     }
 }
 
-/// The filled 16-point star path, scaled so its long points reach the
-/// edges of `rect`. Radii keep the generator script's `44 : 22 : 8`
-/// proportion (long on every fourth point, short on the even points
-/// between, waist on the odd points).
 private struct StarOfBethlehemShape: Shape {
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
