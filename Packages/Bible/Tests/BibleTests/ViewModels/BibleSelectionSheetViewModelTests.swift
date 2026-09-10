@@ -125,7 +125,7 @@ struct BibleSelectionSheetViewModelTests {
         #expect(model.selectedVerses == Set(16...36))
         #expect(model.pendingScrollVerse == 16)
         #expect(model.translation == .web)
-        #expect(model.isActionSheetPresented)
+        #expect(!model.isActionSheetPresented)
         #expect(model.selectionSheet == nil)
     }
 

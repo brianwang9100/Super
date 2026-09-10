@@ -1,6 +1,5 @@
 import Core
 
-/// An internal navigation payload preserving the reader's translation and exact verse selection.
 struct BibleReaderReference: Sendable, Equatable {
     let position: BiblePosition
     let translation: BibleTranslation

@@ -1,37 +1,17 @@
 import FoundationModels
 
-/// Normalized availability of the on-device Apple Foundation Model (AFM)
-/// exposed by `FoundationModels.SystemLanguageModel`. Wraps Apple's
-/// nested `Availability` / `UnavailableReason` pair in our own type so
-/// callers can `switch` on a single value without importing
-/// `FoundationModels`.
-///
-/// The Chat Settings pane renders one row per state; the
-/// `AppleFoundationLLMProvider` rejects `stream(...)` calls whenever
-/// availability is anything but `.available`.
+/// Keeps FoundationModels availability types out of callers' imports.
 public enum AppleFoundationAvailability: Sendable, Equatable {
     case available
     case unavailable(Reason)
 
-    /// Why AFM cannot serve a turn right now. Maps 1:1 onto Apple's
-    /// `SystemLanguageModel.Availability.UnavailableReason`, plus a
-    /// catch-all for forward-compatible new cases.
     public enum Reason: Sendable, Equatable, CaseIterable {
         case deviceNotEligible
         case appleIntelligenceNotEnabled
         case modelNotReady
     }
 
-    /// Map Apple's `SystemLanguageModel.Availability` into our flat shape.
-    ///
-    /// The outer switch does not carry `@unknown default`: Apple marks
-    /// `Availability` itself as `@frozen`, so `available` / `unavailable`
-    /// are the entire case set and the compiler emits a "default will
-    /// never be executed" warning if one is added. The inner
-    /// `UnavailableReason` switch is not frozen, so a future Apple SDK
-    /// could ship a new reason — those land as `.modelNotReady` (the
-    /// most user-actionable default — "we're working on it") rather
-    /// than crashing.
+    // Availability is frozen; UnavailableReason is not. Unknown reasons map to modelNotReady.
     public init(_ availability: SystemLanguageModel.Availability) {
         switch availability {
         case .available:
@@ -57,9 +37,7 @@ public enum AppleFoundationAvailability: Sendable, Equatable {
 }
 
 extension AppleFoundationAvailability.Reason {
-    /// Stable identifier surfaced via `LLMError.providerError(code:...)` so
-    /// the Chat UI can render a specific banner per reason without
-    /// pattern-matching localized strings.
+    /// Stable codes let UI choose recovery without parsing localized messages.
     public var errorCode: String {
         switch self {
         case .deviceNotEligible: return "afm_device_not_eligible"
@@ -68,7 +46,6 @@ extension AppleFoundationAvailability.Reason {
         }
     }
 
-    /// User-facing default message. The Chat UI may override per code.
     public var errorMessage: String {
         switch self {
         case .deviceNotEligible:
@@ -80,9 +57,6 @@ extension AppleFoundationAvailability.Reason {
         }
     }
 
-    /// Compact one-line variant of `errorMessage` for places that need a
-    /// short subtitle (Settings model-row cards), not the full
-    /// banner-friendly sentence.
     public var subtitle: String {
         switch self {
         case .deviceNotEligible: return "Device not eligible"

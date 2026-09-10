@@ -3,13 +3,7 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Tests for `SettingsToggle.commit(isOn:isEnabled:)` — the pure helper
-/// that gates both the button tap and the explicit `.accessibilityAction`
-/// behind `@Environment(\.isEnabled)`. Covers the disabled-guard
-/// regression Brian's PR #89 review caught: a VoiceOver-issued
-/// accessibility action could otherwise flip the binding on a row that
-/// `.disabled(!isAvailable)` had already greyed out, silently writing a
-/// `false` for an AFM row before the OS reports AFM as available.
+// Accessibility actions must respect the disabled state just like button taps.
 @MainActor
 @Suite("SettingsToggle commit guard")
 struct SettingsToggleTests {

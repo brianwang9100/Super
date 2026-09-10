@@ -3,7 +3,6 @@ import SnapshottingTests
 import UIKit
 import XCTest
 
-/// Exports selected Chat preview groups and Core's UIKit probes, never the legacy suites.
 final class PreviewPilotTests: SnapshotTest {
     override class func snapshotPreviewModules() -> [String]? { ["Chat", "Core"] }
 

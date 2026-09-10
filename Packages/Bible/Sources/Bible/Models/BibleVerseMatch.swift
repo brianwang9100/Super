@@ -1,10 +1,4 @@
-/// One verse returned by content search (`bible.search`): the citation
-/// coordinates plus the verse text.
-///
-/// Distinct from `BibleSearchResult`/`BibleSearchQuery` in `Formatting/`, which
-/// model *reference* parsing for the book picker. This is a *content* hit — a
-/// verse whose text matched a full-text query — already coalesced to one entry
-/// per verse number.
+/// Full-text search hit, coalesced per verse number; picker reference parsing uses BibleSearchResult.
 public struct BibleVerseMatch: Sendable, Equatable {
     public let bookId: String
     public let chapter: Int

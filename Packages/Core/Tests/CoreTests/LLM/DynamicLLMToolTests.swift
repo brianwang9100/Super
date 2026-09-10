@@ -4,11 +4,6 @@ import Testing
 import os
 @testable import Core
 
-/// Tests for `DynamicLLMTool`'s parameter extraction and registry dispatch,
-/// and for `DynamicGenerationSchemaBuilder`'s mapping from `LLMTool`
-/// parameter descriptors to `DynamicGenerationSchema`. These don't
-/// exercise Apple Foundation Models (AFM) at all — the tool is unit-
-/// tested in isolation against a real `ToolRegistry`.
 @Suite
 struct DynamicLLMToolTests {
 
@@ -92,12 +87,9 @@ struct DynamicLLMToolTests {
             registry: registry
         )
 
-        // Pass no properties — AFM does this when the model decides to
-        // omit an optional argument.
         _ = try await dynamicTool.call(arguments: emptyArguments())
 
         let captured = executor.lastInput
-        // Missing parameter is dropped, not surfaced as null/empty.
         #expect(captured?.isEmpty == true)
     }
 
@@ -131,8 +123,6 @@ struct DynamicLLMToolTests {
 
         let result = try await dynamicTool.call(arguments: emptyArguments())
 
-        // Non-registry errors surface as a tool-output string that AFM
-        // feeds back to the model; the stream is never failed.
         #expect(result.contains("tool boom failed"))
     }
 
@@ -145,11 +135,7 @@ struct DynamicLLMToolTests {
             isRequired: true, enumValues: ["red", "green", "blue"]
         )
         let tool = descriptor(toolID: "t", parameters: [parameter])
-        // GenerationSchema is opaque once constructed — round-trip
-        // through `init(root:dependencies:)` is the smoke test that
-        // the anyOf-overloaded `DynamicGenerationSchema.init` was
-        // selected rather than the type-based one (which would refuse
-        // a String + enum mix).
+        // Building the opaque GenerationSchema rejects the wrong enum-construction overload.
         _ = try DynamicGenerationSchemaBuilder.build(for: tool)
     }
 
@@ -196,10 +182,6 @@ struct DynamicLLMToolTests {
 
 // MARK: - Test doubles
 
-/// Lock-backed executor that records the last input it received and
-/// returns a fixed `ToolResult`. Used to assert that
-/// `DynamicLLMTool` projected the AFM arguments into the right
-/// `[String: JSONValue]` shape before dispatch.
 final class ScriptedToolExecutor: ToolExecutor, Sendable {
     let toolID: String
     private let content: String
@@ -220,8 +202,6 @@ final class ScriptedToolExecutor: ToolExecutor, Sendable {
     }
 }
 
-/// Executor that throws a generic error to exercise the
-/// `DynamicLLMTool` non-`ToolRegistryError` branch.
 struct FailingToolExecutor: ToolExecutor {
     let toolID: String
 
@@ -231,4 +211,3 @@ struct FailingToolExecutor: ToolExecutor {
         throw TestError()
     }
 }
-

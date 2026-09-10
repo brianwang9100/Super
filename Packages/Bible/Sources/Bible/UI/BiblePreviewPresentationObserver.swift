@@ -41,8 +41,7 @@ struct BiblePreviewPresentationObserver: UIViewControllerRepresentable {
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            // A standalone snapshot/host has no native modal ancestor and
-            // cannot claim that a chapter sheet has finished presenting.
+            // A standalone host has no native modal completion to report.
             var presenter: UIViewController = self
             while let parent = presenter.parent { presenter = parent }
             guard presenter.presentingViewController != nil, !presenter.isBeingDismissed else { return }
@@ -51,8 +50,7 @@ struct BiblePreviewPresentationObserver: UIViewControllerRepresentable {
                     guard !context.isCancelled, let presenter, !presenter.isBeingDismissed else { return }
                     self?.emitReady()
                 }
-                // UIKit may reject registration after native appearance. It may
-                // still call completion later; emitReady consumes its callback once.
+                // Registration can fail after appearance; `emitReady` is idempotent.
                 if !registered, !transition.isCancelled, !presenter.isBeingDismissed {
                     emitReady()
                 }
@@ -76,7 +74,6 @@ struct BiblePreviewPresentationObserver: UIViewControllerRepresentable {
     }
 }
 #else
-/// Non-UIKit hosts do not synthesize a native iOS presentation-completion signal.
 struct BiblePreviewPresentationObserver: View {
     let identity: UUID
     let onReady: (UUID) -> Void

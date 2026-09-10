@@ -1,61 +1,28 @@
 import Core
 import SwiftUI
 
-/// The Bible reading surface: a floating nav bar over a scrolling column of
-/// heading, prose, and poetry paragraphs, ending in prev / next cards.
-///
-/// All chapter and selection state lives in `BibleScreenViewModel`; the view
-/// reads it and renders. The chapter text loads synchronously, so a step
-/// repaints at once — only the persisted reading position is written
-/// asynchronously. Tapping verses drives the action sheet, whose chat
-/// actions publish the selection to the `SuperEventBus` for the Chat
-/// composer. The green sparkles menu in the top-right routes the same
-/// hand-off paths plus an Annotate entry — all selection-aware when verses
-/// are selected, whole-chapter otherwise — plus a Narrate (text-to-speech)
-/// entry that drives ``NarrationController`` through ``NarrationTransportSheet``.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    /// Cross-applet event bus, injected by the shell. `nil` in previews
-    /// and isolated tests — the chat hand-off then falls back to the
-    /// "coming soon" toast.
     @Environment(\.superEventBus) private var eventBus
-    /// Shared holder for the chat composer's hovering flank buttons, injected by
-    /// the shell on targets that opt in (SuperBible). The reader publishes its
-    /// previous / next chapter chevrons here so they render above the composer
-    /// pill. `nil` on SuperOS, in previews, and in isolated tests — publishing
-    /// is then a no-op and the chevrons simply don't appear.
     @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
     @State private var measuredNavigationHeight: CGFloat = 60
 
     @State private var studyPresentation: BibleStudyPresentationViewModel
 
-    /// How the toast and the picker state flips animate in and out — a bottom
-    /// slide by default, a cross-fade when Reduce Motion is on. (The migrated
-    /// sheets animate themselves; this drives the toast and the `withAnimation`
-    /// wrappers around selection / picker mutations.)
     private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
 
-    /// Space at the bottom reserved for the shell's minimized chat pill — the
-    /// toast clears it, settling a few points above the pill's drag handle
-    /// rather than touching it.
+    // Keep toasts above the minimized chat pill.
     private let bottomReserve: CGFloat = 100
 
-    /// Which bottom sheet is currently presented, with narration taking
-    /// precedence over the verse selection. Doubles as the `.sheet(item:)`
-    /// item for the combined action / narration sheet and as the reader's
-    /// selection-scroll gate.
     private var activeOverlayKind: BibleBottomOverlayKind? {
         if viewModel.isNarrationSheetPresented { return .narration }
         if viewModel.isActionSheetPresented { return .selection }
         return nil
     }
 
-    /// `.sheet(item:)` binding for the book picker. `selectionSheet` is `private(set)`
-    /// on the view model, so the dismiss path routes through `dismissSelectionSheet()`
-    /// rather than writing the property directly.
     private var selectionSheetBinding: Binding<BibleSelectionSheetViewModel?> {
         Binding(
             get: { viewModel.selectionSheet },
@@ -65,10 +32,6 @@ public struct BibleScreen: View {
         )
     }
 
-    /// Book ids whose `.book`-target annotation generation is currently in
-    /// flight, derived from the view model's dispatch-status map. Drives the
-    /// book picker's generating bubbles. Reading `dispatchStatusByTarget` in
-    /// the body keeps the picker reactive as dispatches start and complete.
     private var generatingBookIds: Set<String> {
         Set(viewModel.dispatchStatusByTarget.compactMap { spec, status in
             guard spec.target == .book, case .running = status else { return nil }
@@ -76,11 +39,6 @@ public struct BibleScreen: View {
         })
     }
 
-    /// Write seam for per-card deletion from the annotation sheet, and
-    /// the dependency the `AnnotationSheetContainer` needs for its
-    /// mutation callbacks. `nil` in previews / isolated tests — the
-    /// sheet then renders without per-card delete (the delete tap is a
-    /// silent no-op).
     private let annotationRepository: (any BibleAnnotationRepository)?
 
     public init(
@@ -125,9 +83,6 @@ public struct BibleScreen: View {
         .onAppear { studyPresentation.activate() }
         .task {
             await viewModel.load()
-            // Publish the prev / next chevrons so they hover above the chat
-            // composer pill once the chapter (and its canon-end availability)
-            // is loaded.
             publishComposerAccessories()
         }
         .onChange(of: viewModel.selectionCitation) { _, _ in
@@ -136,27 +91,17 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.isRestoringNavigation) { _, _ in
             publishComposerAccessories()
         }
-        // Immersive reading: when the scroll reducer flips `isImmersive`,
-        // mirror it to the shell so its hamburger + chat pill hide/show in
-        // sympathy with the local nav bar. Published only on real flips
-        // (`updateScroll` is idempotent), matching the bus's low-frequency
-        // event style.
+        // Mirror reader visibility to shell chrome only on actual state changes.
         .onChange(of: viewModel.isImmersive) { _, immersive in
             publishChromeVisibility(!immersive)
         }
-        // Stepping chapters re-identifies the reader and resets its scroll to
-        // the top; clear immersive so chrome can't strand hidden (the
-        // `isImmersive` change above restores the shell's chrome too).
+        // Chapter changes reset scroll; restore chrome so it cannot remain stranded hidden.
         .onChange(of: viewModel.position) { _, _ in
             studyPresentation.cancelPendingHandoff()
             viewModel.resetImmersive()
-            // Stepping a chapter can flip the canon-end availability, so
-            // refresh the hovering chevrons' enabled state.
             publishComposerAccessories()
         }
-        // Leaving the reader restores chrome unconditionally so a non-Bible
-        // applet — or a later re-entry — never inherits a hidden state. Clear
-        // the composer chevrons too so they don't outlive the reader.
+        // Other applets must not inherit hidden chrome or stale reader accessories.
         .onDisappear {
             studyPresentation.invalidate()
             viewModel.dismissNarrationSheet()
@@ -164,21 +109,14 @@ public struct BibleScreen: View {
             publishChromeVisibility(true)
             clearComposerAccessories()
         }
-        // Foreground-only narration per spec: leaving the app stops
-        // playback cleanly so the controller's state matches what the
-        // OS would silence anyway.
+        // Stop background playback while leaving transport open for replay.
         .onChange(of: scenePhase) { _, new in
             if new != .active { viewModel.narration.stop() }
             if new == .background {
                 Task { await viewModel.flushNavigationPersistence() }
             }
         }
-        // No `.onChange(narration.state) { dismissCard }` here on
-        // purpose: per spec, Stop halts playback but keeps the card up
-        // so the user can re-trigger Narrate from the play button.
-        // Nothing flips `isNarrationSheetPresented` on Stop, so the
-        // native sheet stays presented; it hides only on a drag-down or
-        // a second nav-bar speaker tap.
+        // Stop keeps transport presented for replay; playback state must not dismiss the sheet.
         .modifier(BibleStudySheetsModifier(
             viewModel: viewModel,
             presentation: studyPresentation,
@@ -204,41 +142,23 @@ public struct BibleScreen: View {
         )
     }
 
-    /// Hand the current verse selection to the Chat composer over the
-    /// `SuperEventBus`. `startNew` picks "New chat" vs. "Add to chat".
-    /// Falls back to the "coming soon" toast when no bus is wired.
     private func addSelectionToChat(startNew: Bool) {
         guard let reference = viewModel.makeVerseReference() else { return }
         publishReferenceToChat(reference, startNew: startNew)
     }
 
-    /// Hand the whole current chapter to the Chat composer — the spark
-    /// menu's `Add to chat` / `Start a new chat` rows route through here
-    /// when no verses are selected.
     private func addCurrentChapterToChat(startNew: Bool) {
         guard let reference = viewModel.makeChapterReference() else { return }
         publishReferenceToChat(reference, startNew: startNew)
     }
 
-    /// Ask the shell to hide (`false`) or restore (`true`) its global chrome —
-    /// the hamburger and the minimized chat pill — so the reader can claim the
-    /// full screen in immersive mode. A no-op without a bus (previews /
-    /// isolated tests); the shell only complies while the chat is a pill and
-    /// otherwise leaves its chrome put.
-    ///
-    /// Each call is an independent unstructured `Task`, so two flips in quick
-    /// succession have no delivery-order guarantee. That's acceptable here: the
-    /// reducer's hysteresis debounces flips to roughly one per scroll-direction
-    /// change, and an out-of-order pair self-heals on the next user-driven
-    /// scroll sample (or the shell's applet-switch / chat-state reset). It only
-    /// ever lands on a *stale* boolean, never a wrong one.
+    /// Independent publish tasks can reorder quick flips. Later scroll changes or shell resets
+    /// restore visibility; the shell applies this only while Chat is minimized.
     private func publishChromeVisibility(_ visible: Bool) {
         guard let eventBus else { return }
         Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }
     }
 
-    /// Publish chapter arrows and selection controls above the chat composer.
-    /// Hosts without a store keep those controls in the reader's top bar.
     private func publishComposerAccessories() {
         guard let composerAccessoryStore else { return }
         composerAccessoryStore.buttons = ComposerAccessoryButtons(
@@ -262,15 +182,12 @@ public struct BibleScreen: View {
                     onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
                 )
             },
-            // The footer replaces redundant arrows, but must never take away
-            // the selection's reopen / clear controls. Read inside the renderer
-            // so scroll visibility stays reactive without republishing.
+            // Footer visibility hides only arrows; selection reopen/clear controls must remain.
+            // Read inside the renderer to stay reactive without republishing.
             shouldHideButtons: { viewModel.isChapterFooterVisible }
         )
     }
 
-    /// Clear the composer flank chevrons when the reader leaves so a non-Bible
-    /// backdrop never inherits them.
     private func clearComposerAccessories() {
         composerAccessoryStore?.buttons = .none
     }
@@ -290,19 +207,12 @@ public struct BibleScreen: View {
         }
     }
 
-    /// Dispatch a spark-menu action: selection-aware annotation and chat
-    /// hand-off (selected verses when any are selected, else the whole
-    /// chapter), plus a Narrate session.
     private func handleSparkAction(_ action: BibleNavBar.SparkMenuAction) {
         switch action {
         case .annotate:
             if viewModel.selectedVerses.isEmpty {
-                // No sheet is up — trigger directly, mirroring the chapter
-                // reader's "generate" bubble. First run shows the disclaimer.
                 viewModel.triggerAnnotationGeneration(for: viewModel.currentChapterAnnotationSpec)
             } else {
-                // Reuse the tile path, dismissing the action sheet first if
-                // it is still open, then firing one intent per range.
                 studyPresentation.annotateSelection()
             }
         case .addToChat:
@@ -329,9 +239,6 @@ public struct BibleScreen: View {
             translation: viewModel.translation,
             selectionCitation: viewModel.selectionCitation,
             showsSelectionPill: composerAccessoryStore == nil,
-            // SuperBible (a composer-accessory store is injected) hovers the
-            // chevrons above the chat composer pill, so the bar hides them;
-            // SuperOS (no store) keeps them in the bar.
             showsChapterChevrons: composerAccessoryStore == nil,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
@@ -365,12 +272,7 @@ public struct BibleScreen: View {
         } action: { height in
             measuredNavigationHeight = height
         }
-        // Immersive reading: slide the whole bar up off the top edge and fade
-        // it as the user scrolls down into the chapter. The measured hide distance
-        // clears the bar plus the top safe area / Dynamic Island. The shell's
-        // own chrome (hamburger + chat pill) hides in sympathy off the bus
-        // event published below, on the same `chromeReveal` curve so the two
-        // move together.
+        // Match the shell chrome animation while clearing the measured toolbar and top safe area.
         .offset(y: viewModel.isImmersive ? -navigationHideDistance : 0)
         .opacity(viewModel.isImmersive ? 0 : 1)
         .animation(

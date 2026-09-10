@@ -1,7 +1,6 @@
 import Foundation
 
-/// One parsed SSE (Server-Sent Events) frame. Multiple `data:` lines in a
-/// single frame are joined by `\n`, matching the WHATWG EventSource spec.
+/// Multiple data lines join with a newline.
 public struct SSEEvent: Sendable, Equatable {
     public let event: String?
     public let data: String
@@ -11,33 +10,17 @@ public struct SSEEvent: Sendable, Equatable {
         self.data = data
     }
 
-    /// True when this event carries the `[DONE]` end-of-stream sentinel
-    /// used by OpenAI-compatible providers.
     public var isDone: Bool { data == "[DONE]" }
 }
 
-/// Buffered, partial-chunk-tolerant SSE (Server-Sent Events) frame parser.
-///
-/// Per the WHATWG EventSource spec, frames are separated by a blank line
-/// (`\n\n` or `\r\n\r\n`) and each frame is a sequence of `field: value`
-/// lines. Callers pump bytes via `append(_:)` and receive only the events
-/// whose frames are complete; trailing partial frames stay in the buffer
-/// until either the next `append(_:)` completes them or `finish()` flushes
-/// them. Recognized fields are `data:`, `event:`, `id:`, `retry:`, and `:`
-/// (comment); everything else is ignored.
+/// Buffers incomplete frames. append emits complete frames; finish flushes the
+/// trailing frame. Event IDs and retry hints are ignored.
 public struct SSEParser: Sendable {
     private var buffer = Data()
 
     public init() {}
 
-    /// Feed raw bytes from the wire.
-    ///
-    /// - Parameter data: Bytes received from the upstream HTTP body. Safe to
-    ///   pass partial frames; the parser holds the tail until the next
-    ///   `append(_:)` or `finish()` completes it.
-    /// - Returns: The events whose terminating blank line landed inside (or
-    ///   on the boundary of) `data`, in arrival order. Empty if no frame
-    ///   completed.
+    /// Retains incomplete trailing frames for the next call.
     public mutating func append(_ data: Data) -> [SSEEvent] {
         buffer.append(data)
         var events: [SSEEvent] = []
@@ -51,11 +34,7 @@ public struct SSEParser: Sendable {
         return events
     }
 
-    /// Flush any unterminated trailing frame. Call when the upstream HTTP
-    /// stream closes without a final blank line.
-    ///
-    /// - Returns: One event if the buffer held a parseable trailing frame,
-    ///   otherwise empty.
+    /// Flushes an unterminated trailing frame when the upstream stream closes.
     public mutating func finish() -> [SSEEvent] {
         let remaining = buffer
         buffer.removeAll(keepingCapacity: false)
@@ -65,7 +44,6 @@ public struct SSEParser: Sendable {
         return [event]
     }
 
-    /// Locates the earliest `\n\n` or `\r\n\r\n` separator in `data`.
     private func nextBoundary(in data: Data) -> Range<Data.Index>? {
         let lf = data.range(of: Data([0x0A, 0x0A]))
         let crlf = data.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A]))
@@ -77,7 +55,6 @@ public struct SSEParser: Sendable {
         }
     }
 
-    /// Parse a single complete frame (sans terminator) into an event.
     private static func parseFrame(_ frame: Data) -> SSEEvent? {
         guard let raw = String(data: frame, encoding: .utf8) else { return nil }
         let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
@@ -100,8 +77,6 @@ public struct SSEParser: Sendable {
         return SSEEvent(event: eventName, data: dataLines.joined(separator: "\n"))
     }
 
-    /// Drops the `prefix` (and one optional space) from `line`, returning
-    /// the field value or nil if the line doesn't match.
     private static func stripField(_ line: Substring, prefix: String) -> String? {
         guard line.hasPrefix(prefix) else { return nil }
         var remainder = line.dropFirst(prefix.count)

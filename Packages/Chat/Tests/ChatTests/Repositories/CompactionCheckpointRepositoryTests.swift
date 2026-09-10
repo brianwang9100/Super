@@ -4,8 +4,6 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBCompactionCheckpointRepository` — single-live-per-
-/// conversation invariant, transaction rollback, and scoped reads/deletes.
 @Suite("GRDBCompactionCheckpointRepository")
 struct CompactionCheckpointRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -123,7 +121,6 @@ struct CompactionCheckpointRepositoryTests {
         try await s.checkpoints.save(makeCheckpoint(id: "cp_c1", conversationId: "c1"))
         try await s.checkpoints.save(makeCheckpoint(id: "cp_c2", conversationId: "c2"))
 
-        // Saving a new live row in c1 must not demote the live row in c2.
         try await s.checkpoints.save(makeCheckpoint(id: "cp_c1_new", conversationId: "c1", offset: 60))
 
         #expect(try await s.checkpoints.liveCheckpoint(for: "c1")?.id == "cp_c1_new")

@@ -1,32 +1,20 @@
 import Foundation
 import GRDB
 
-/// Persistence boundary for `ConversationRecord`. Soft-deleted rows
-/// (`deletedAt != nil`) are excluded from `listActive()` but remain in the
-/// database until the sync engine confirms server-side deletion.
 public protocol ConversationRepository: Sendable {
     /// All non-deleted conversations, newest update first.
     func listActive() async throws -> [ConversationRecord]
-    /// First `limit` non-deleted conversations, newest update first.
-    /// Callers that need to detect "there is more beyond the cap" pass
-    /// `limit + 1` and check the returned count — that pattern is what
-    /// `SidebarViewModel` uses to surface its `hasMoreChats` footer.
+    /// Newest update first. Request limit + 1 to detect overflow beyond a displayed cap.
     func listActiveRecent(limit: Int) async throws -> [ConversationRecord]
-    /// One conversation by id, deleted or not.
+    /// Includes soft-deleted rows.
     func fetch(id: String) async throws -> ConversationRecord?
-    /// Insert or update.
     func save(_ record: ConversationRecord) async throws
-    /// Mark deleted: sets both `deletedAt` and `updatedAt` to the supplied
-    /// timestamp. No-op when the row is already deleted (preserves the
-    /// original tombstone time). Caller passes the timestamp so the test
-    /// suite can drive deletes against a `Clock`-controlled value.
+    /// Set deletedAt and updatedAt; preserve the original tombstone if already deleted.
     func softDelete(id: String, at deletedAt: Date) async throws
-    /// Remove the row outright. Cascades to messages and tool calls per
-    /// the schema. Use only after sync confirmation.
+    /// Delete permanently, cascading to messages and tool calls.
     func hardDelete(id: String) async throws
 }
 
-/// GRDB-backed `ConversationRepository`.
 public struct GRDBConversationRepository: ConversationRepository {
     private let queue: DatabaseQueue
 

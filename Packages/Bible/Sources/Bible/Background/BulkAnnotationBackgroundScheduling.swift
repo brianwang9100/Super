@@ -4,15 +4,8 @@ import Foundation
 import BackgroundTasks
 #endif
 
-/// The seams the bulk-annotation background scheduler drives, abstracted away
-/// from the `BackgroundTasks` framework so the scheduling logic is unit-testable
-/// on macOS (`swift test`, where `BackgroundTasks` isn't available) with fakes
-/// and no sleeps. The thin `System…` adapters below wrap the real
-/// `BGTaskScheduler` / `BGTask` and are exercised only by the app build +
-/// on-device, never by the logic tests.
+// Isolate BackgroundTasks behind seams usable by macOS logic tests.
 
-/// A scheduled processing-task request, mirroring the handful of
-/// `BGProcessingTaskRequest` fields the runner needs.
 public struct BulkBackgroundTaskRequest: Sendable, Equatable {
     public let identifier: String
     public let requiresNetworkConnectivity: Bool
@@ -29,17 +22,12 @@ public struct BulkBackgroundTaskRequest: Sendable, Equatable {
     }
 }
 
-/// Submits / cancels background-task requests — the `BGTaskScheduler` surface the
-/// scheduler talks to. A fake records calls in tests; `SystemBulkBackgroundTaskScheduler`
-/// forwards to the real scheduler on-device.
 public protocol BulkBackgroundTaskScheduling: Sendable {
     func submit(_ request: BulkBackgroundTaskRequest) throws
     func cancel(identifier: String)
 }
 
-/// A live background task the system handed us — the `BGTask` surface the
-/// scheduler drives (install an expiration handler, mark complete). `@MainActor`
-/// so the run engine it cooperates with stays on the main actor end to end.
+/// Expiration is delivered on the main queue registered by the launch handler.
 @MainActor
 public protocol BulkBackgroundTask: AnyObject {
     var expirationHandler: (() -> Void)? { get set }
@@ -48,8 +36,6 @@ public protocol BulkBackgroundTask: AnyObject {
 
 #if canImport(UIKit)
 
-/// Forwards to the real `BGTaskScheduler` on-device. Stateless, so trivially
-/// `Sendable`.
 public struct SystemBulkBackgroundTaskScheduler: BulkBackgroundTaskScheduling {
     public init() {}
 
@@ -65,8 +51,6 @@ public struct SystemBulkBackgroundTaskScheduler: BulkBackgroundTaskScheduling {
     }
 }
 
-/// Wraps the system `BGTask` the launch handler delivers. Only ever touched on
-/// the main actor (the handler registers on `.main`).
 @MainActor
 final class SystemBulkBackgroundTask: BulkBackgroundTask {
     private let task: BGTask
@@ -84,9 +68,7 @@ final class SystemBulkBackgroundTask: BulkBackgroundTask {
 
 #else
 
-/// macOS / non-UIKit fallback so the default initializer argument and the
-/// composition root still compile under `swift test`. Background execution is an
-/// iOS-only capability, so these are no-ops.
+/// Background execution is iOS-only; non-UIKit builds use no-op adapters.
 public struct SystemBulkBackgroundTaskScheduler: BulkBackgroundTaskScheduling {
     public init() {}
     public func submit(_ request: BulkBackgroundTaskRequest) throws {}

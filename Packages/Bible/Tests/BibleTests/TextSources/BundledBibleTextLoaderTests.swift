@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BundledBibleTextLoader` — loading a real bundled book in each
-/// translation, the missing- and malformed-resource error paths, and that the
-/// bundled translations resolve to genuinely different text.
 @Suite("BundledBibleTextLoader")
 struct BundledBibleTextLoaderTests {
     @Test("loads a bundled book with its chapters and paragraphs")
@@ -17,7 +14,6 @@ struct BundledBibleTextLoaderTests {
 
         let chapter = try #require(book.chapter(2))
         #expect(!chapter.paragraphs.isEmpty)
-        // 1 Peter 2 opens with a prose paragraph whose first verse is 1.
         guard case .prose(let verses) = chapter.paragraphs.first else {
             Issue.record("expected the first paragraph to be prose")
             return
@@ -47,9 +43,7 @@ struct BundledBibleTextLoaderTests {
     @Test("every pair of bundled translations carries distinct text")
     func translationsDiffer() throws {
         let loader = BundledBibleTextLoader()
-        // Same book identity, different rendered text in every pair — proof
-        // the loader keyed each read to the right resource rather than always
-        // reading WEB.
+        // Different text in every translation catches an incorrectly fixed resource key.
         let books = try BibleTranslation.allCases.map {
             try loader.loadBook(id: "1PE", translation: $0)
         }
@@ -69,10 +63,7 @@ struct BundledBibleTextLoaderTests {
 
     @Test("a malformed resource throws malformedResource")
     func malformedResourceThrows() {
-        // `.module` here is the BibleTests target bundle, into which
-        // `Fixtures/WEB-BAD.json` (invalid JSON) is processed — the real
-        // 264 resources live in a separate bundle, so pointing the loader
-        // here isolates the malformed-resource path.
+        // This target bundle contains malformed WEB-BAD.json, separate from the real text fixtures.
         let loader = BundledBibleTextLoader(bundle: .module)
         #expect(throws: BibleTextLoaderError.malformedResource("BAD")) {
             try loader.loadBook(id: "BAD", translation: .web)

@@ -7,70 +7,22 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Apple-built-in `os.Logger` for shell-level routing diagnostics. Used
-/// today for the openRecord deep-link drop case; the subsystem matches
-/// the rest of the app so all shell logs filter together in Console.
 private let appShellLog = Logger(subsystem: "com.brianwang.Super", category: "app-shell")
 
-/// Hosts the active mini-app's backdrop, the always-on-top chat overlay,
-/// the shell-level hamburger chrome, and the sidebar + settings drawers.
-///
-/// Target-neutral: both `SuperOSApp` and `SuperBibleApp` instantiate the
-/// same `AppShell`, handing it an `AppShellDependencies` built from their
-/// respective bootstraps. The applet roster the shell shows in the
-/// sidebar comes from `dependencies.appletRegistry` — each target's
-/// bootstrap pre-fills it with the right mix (SuperOS: Todo + Recipes +
-/// Bible + Finance; SuperBible: Bible + Plans-at-SB-M2).
-///
-/// One backdrop applet is always selected so dragging the chat down
-/// reveals a real applet behind it. `init` adopts the registry the
-/// bootstrap built; `onSelectApplet` writes the user's pick back to
-/// `UserDefaults` via the shared `activeAppletStorageKey` so the
-/// selection survives relaunches.
-///
-/// The shell also owns the sidebar drawer and settings sheet visibility
-/// bindings, and the per-conversation view-model rebuild path the chat
-/// surface needs when the user picks a different chat from the sidebar.
+/// Hosts the active applet behind Chat, with shared sidebar and settings chrome.
 struct AppShell: View {
-    /// `UserDefaults` key for the persisted backdrop applet ID. Hoisted
-    /// here (rather than to either bootstrap) because both targets need
-    /// the same string and both `SuperOSAppBootstrap` and
-    /// `SuperBibleAppBootstrap` read it via this constant. Per-target
-    /// `UserDefaults` is sandboxed by bundle id, so the SuperOS and
-    /// SuperBible writes don't collide despite sharing the key.
+    /// Shared by both bootstraps; bundle-specific UserDefaults keep target selections separate.
     static let activeAppletStorageKey: String = "shell.activeAppletID"
 
     let dependencies: AppShellDependencies
 
     @State private var registry: AppletRegistry
-    /// The current settled chat anchor. Seeded from
-    /// `dependencies.launchBehavior.initialChatState` in `init` —
-    /// `.expanded` for SuperOS (chat fills the screen, backdrop hidden
-    /// behind), `.minimized` for SuperBible (Bible visible, chat as a
-    /// pill). Mutates in response to (a) the user dragging the chat
-    /// surface and releasing (`ChatOverlay` snaps to the nearest anchor),
-    /// (b) tapping the minimized pill, (c) tapping the dimmed applet
-    /// backdrop in semi-expanded (→ minimized), (d) selecting an applet
-    /// from the sidebar (→ minimized), or (e) selecting an existing chat
-    /// / "New Chat" from the sidebar (→ expanded). The live in-flight
-    /// drag height lives inside `ChatOverlay`; the continuously-changing
-    /// visual progress reaches us via `chatProgress` below.
+    /// Settled anchor; live drag progress is tracked separately below.
     @State private var chatState: ChatPresentationState
-    /// Live chat-overlay progress (0 = pill, 1 = full screen). Read from
-    /// `ChatOverlay`'s `ChatProgressPreferenceKey` so the backdrop applet
-    /// can interpolate its opacity and hit-testing alongside the chat's
-    /// drag — no more discrete `switch chatState` opacity. Seeded in
-    /// `init` to match the initial `chatState` (1 for `.expanded`, 0
-    /// otherwise) so the backdrop dim is correct on the first frame
-    /// before `ChatOverlay`'s preference key reports a value.
+    /// Live overlay progress: 0 = pill, 1 = full screen. Seeded before preference delivery
+    /// to prevent a first-frame dim mismatch.
     @State private var chatProgress: Double
-    /// Live mid-knot of the backdrop's dim curve — the progress value
-    /// at which the chat overlay is settled at semi-expanded. Read from
-    /// `ChatOverlay`'s `ChatSemiProgressPreferenceKey` because the semi
-    /// anchor's progress is no longer the literal 0.52 ratio; it's
-    /// derived from `containerHeight - topInset` and shifts with
-    /// device geometry. Defaults to the legacy 0.52 so the first
-    /// frame draws a sensible curve before the overlay reports.
+    /// Geometry-dependent semi-expanded progress; 0.52 is the fallback before preference delivery.
     @State private var chatSemiProgress: Double = 0.52
     @State private var viewModel: ChatScreenViewModel?
     @State private var sidebarViewModel: SidebarViewModel?
@@ -78,48 +30,18 @@ struct AppShell: View {
     @State private var bootstrapError: String?
     @State private var theme: SuperTheme = .make(.vellumLight)
     @State private var appearance: ChatAppearance = .default
-    /// Active typography (brand serif faces + folded-in font scale).
-    /// Rebuilt alongside `theme`/`appearance` from settings at load and on
-    /// font-scale / typography-id changes; injected at the same composition
-    /// boundaries as `.superTheme`/`.superFontScale`.
     @State private var typography: SuperTypography = .make(SuperTypography.Identifier.serif)
     @State private var sidebarOpen: Bool = false
     @State private var settingsOpen: Bool = false
-    /// Whether the shell's global chrome — the top-left hamburger and the
-    /// minimized chat pill — is on screen. An applet can request it hidden
-    /// over the bus (`shellChromeVisibilityRequested`) to claim the full
-    /// screen for immersive content; today only the Bible reader does, on
-    /// scroll. Reset to `true` on every applet switch and whenever the chat
-    /// leaves its pill state so a request can never strand chrome off-screen.
+    /// Reset on applet switches and when Chat leaves its minimized state.
     @State private var shellChromeVisible = true
     @State private var activeConversationId: String?
-    /// Composer focus state, owned by the shell so every "user moved away
-    /// from the composer" transition (drag-collapse, hamburger open,
-    /// applet switch, conversation pick, backdrop tap) can clear it via
-    /// `dismissKeyboard()`. The binding is plumbed into `ChatOverlay →
-    /// ChatScreen → ChatComposer` so the same `@FocusState` is the
-    /// single source of truth across the whole stack — without that,
-    /// the shell could only fire UIKit `resignFirstResponder` (hides
-    /// the keyboard visually) while the SwiftUI focus state stayed set
-    /// and the keyboard reappeared on the next re-expand.
+    /// Shared with the composer so chrome transitions clear actual focus. UIKit dismissal
+    /// alone leaves SwiftUI focused and makes the keyboard reappear on expansion.
     @FocusState private var composerIsFocused: Bool
-    /// Set the moment `ensureViewModel` enters its critical section so a
-    /// re-fired `.task` (scene refresh, identity change) can't race a
-    /// second bootstrap before the first finishes. Safe to read/write
-    /// without coordination because `.task` runs on the main actor.
+    /// Set before the first suspension to prevent duplicate bootstrap tasks on the main actor.
     @State private var bootstrapStarted = false
-    /// Queued shell requests from the cross-applet event bus. The
-    /// drain task in `ensureViewModel()` writes here; the body's
-    /// `.onChange` reads and dispatches to `selectConversation` /
-    /// `startNewChat`. Routing through `@State` (rather than calling
-    /// the methods directly from the captured-self drain task) is
-    /// load-bearing: a `[self]`-captured closure snapshots `self`
-    /// once at task spawn, and `@Environment` values on a struct copy
-    /// don't refresh when the OS setting changes — `reduceMotion`
-    /// would be frozen at boot time for every routed navigation.
-    /// `@State` storage is reference-backed and survives the copy,
-    /// and body re-eval gives the dispatcher fresh `@Environment`
-    /// values so `withAnimation` honors the live `reduceMotion`.
+    /// Queue bus requests in reference-backed State, then dispatch from body with fresh environment values.
     @State private var requestInbox = OrderedInbox<ShellRequest>()
     @State private var navigationQueue = SerialActionQueue()
     // Queued transitions can outlive the environment captured when they were enqueued.
@@ -128,31 +50,14 @@ struct AppShell: View {
     /// Remains true during Settings dismissal, until native onDismiss.
     @State private var settingsOwnsPresentation = false
 
-    /// Adopts the registry the composition root built. Pre-existing
-    /// `applets` array + `UserDefaults` read used to live here; both
-    /// moved to each target's bootstrap so the same registry is the
-    /// source of truth for both the sidebar rail and the briefings
-    /// handed to `ChatSessionStore`.
-    ///
-    /// `chatState` and `chatProgress` are seeded from
-    /// `dependencies.launchBehavior.initialChatState` so the cold-launch
-    /// frame matches the per-target policy (SuperOS expanded, SuperBible
-    /// pill) without a one-frame flash through the default.
+    /// Seed chat state and progress together so the first frame matches the target launch policy.
     init(dependencies: AppShellDependencies) {
         self.dependencies = dependencies
         _registry = State(initialValue: dependencies.appletRegistry)
         let initialChatState = dependencies.launchBehavior.initialChatState
         _chatState = State(initialValue: initialChatState)
-        // `switch` (not a ternary) so adding a future case to
-        // `ChatPresentationState` is a compiler error here rather than a
-        // silent fall-through to 0. The `.semiExpanded` arm traps:
-        // `AppShellLaunchBehavior` doesn't currently support it as a
-        // launch state (the right initial progress depends on container
-        // geometry, not a literal), so reaching it means a caller
-        // constructed an invalid `AppShellLaunchBehavior` — a debug
-        // crash beats a wrong first frame that survives to production.
-        // When `.semiExpanded` is ever wired as a launch option, replace
-        // this with the named semi-anchor constant from `ChatOverlay`.
+        // Keep this switch exhaustive when new presentation states are added.
+        // Semi-expanded launch requires geometry; see AppShellLaunchBehavior.
         _chatProgress = State(initialValue: {
             switch initialChatState {
             case .expanded: 1.0
@@ -167,39 +72,18 @@ struct AppShell: View {
 
     private var appInfo: SuperAppInfo { .fromBundle() }
 
-    /// Whether the minimized chat pill should slide off the bottom edge for
-    /// immersive reading: an applet asked for chrome hidden *and* the chat is
-    /// in its pill state. A semi/expanded chat is a deliberate state and never
-    /// hides.
     private var composerHidden: Bool {
         !shellChromeVisible && chatState == .minimized
     }
 
-    /// How far down to slide the chat pill when it hides — past the pill's own
-    /// height plus a bottom-safe-area allowance so it clears the screen edge on
-    /// every iPhone.
+    /// Clears the pill height plus the bottom safe area.
     private static let composerHideDistance: CGFloat =
         ChatPresentationState.minimizedBaseHeight + 140
 
-    /// Honoured by the chat-overlay container's spring and by the
-    /// backdrop's opacity transition. Reading it here so the sidebar's
-    /// programmatic state flip uses the right animation.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Each layer below is a separate `View` struct so re-render
-        // cost is spread across small focused bodies instead of one
-        // monolithic shell body. A composer focus flip still re-runs
-        // this body (it owns `@FocusState composerIsFocused`) and each
-        // child body (closure-typed inputs like `onBackdropTap` are
-        // freshly allocated each render so SwiftUI cannot prove input
-        // equality and skip them), but each child body does far less
-        // work than the pre-extraction unified body did — no more
-        // re-running every `.onChange`/`.task` modifier setup or the
-        // entire chrome stack in one pass. Stage 2 (typed-dispatch
-        // removal of `MiniApplet.rootView() -> AnyView`) will close
-        // the residual cost of the `AnyView` re-wrap inside
-        // `BackdropLayer`.
+        // Separate bodies limit work when composer focus invalidates the shell.
         ZStack {
             BackdropLayer(
                 activeApplet: registry.activeApplet,
@@ -218,15 +102,9 @@ struct AppShell: View {
                 },
                 reduceMotion: reduceMotion
             )
-            // `.equatable()` so a composer focus flip (which invalidates
-            // this whole body) doesn't re-evaluate the backdrop and rebuild
-            // the hosted applet's view tree. See `BackdropLayer.==`.
+            // Skip rebuilding the applet tree on composer focus changes; see BackdropLayer.==.
             .equatable()
-            // Inject the shared composer-accessory store into the backdrop
-            // subtree so the active applet (today the Bible reader) can publish
-            // its composer flank controls. `nil` on SuperOS — the default env
-            // value, a no-op. The store reference is stable, so this doesn't
-            // defeat `BackdropLayer`'s `.equatable()` skip.
+            // Stable store identity preserves the backdrop equality check.
             .composerAccessoryStore(dependencies.composerAccessoryStore)
             ChatLayer(
                 viewModel: viewModel,
@@ -241,32 +119,18 @@ struct AppShell: View {
                 onProgressChange: { chatProgress = $0 },
                 onSemiProgressChange: { chatSemiProgress = $0 }
             )
-            // Empty-state starter buttons: each registered applet contributes
-            // its own actions, aggregated here from the registry so each target
-            // surfaces exactly the applets it ships (SuperBible → Bible only;
-            // SuperOS → Bible + Todo). Propagates down to `ChatScreen`.
             .environment(
                 \.appletSuggestedChatActions,
                 SuggestedChatAction.merged(registry.applets.map(\.suggestedChatActions))
             )
-            // Immersive reading: slide the minimized chat pill down off the
-            // bottom edge when an applet requests chrome hidden. Gated on the
-            // pill state so a deliberately semi/expanded chat is untouched —
-            // offsetting the whole layer only moves the pill, since that's the
-            // only visible part of the surface in `.minimized`.
             .offset(y: composerHidden ? Self.composerHideDistance : 0)
             .animation(
                 SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
                 value: composerHidden
             )
-            // Same as the hamburger: the pill is offset off-screen but stays in
-            // the accessibility tree, so hide it from VoiceOver while immersive.
+            // Off-screen offsets do not remove controls from VoiceOver.
             .accessibilityHidden(composerHidden)
-            // Composer flank buttons (e.g. Bible prev / next chapter), hovering
-            // above the minimized pill. A sibling of `ChatLayer`, so it is NOT
-            // subject to the immersive `.offset` above — when the pill slides
-            // off, these buttons stay and drop into the vacated slot. Only
-            // present on a target that supplies a store (SuperBible).
+            // A sibling of ChatLayer so accessories stay visible when the pill slides off-screen.
             if let composerAccessoryStore = dependencies.composerAccessoryStore {
                 ComposerAccessoryLayer(
                     store: composerAccessoryStore,
@@ -300,10 +164,7 @@ struct AppShell: View {
                 onSeeAllChats: { route(.openApplet(id: ChatsApplet.appletID)) }
             )
         }
-        // Settings presents as a native `.sheet` at the `.large` detent. Both
-        // dismiss paths — the close button and a drag-down — only flip
-        // `settingsOpen`, so `onDismiss` is the single site that resets the
-        // nav stack to root, after the dismiss animation finishes.
+        // Reset Settings only after native dismissal completes, for both button and drag dismissals.
         .sheet(isPresented: $settingsOpen, onDismiss: {
             settingsViewModel?.popToRoot()
             settingsOwnsPresentation = false
@@ -311,17 +172,7 @@ struct AppShell: View {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
-                // Factory closure: skips the `.readOnly { ... }`
-                // allocation during the bootstrap window when
-                // `settingsViewModel` is still nil. Once the view
-                // model is wired the factory fires per
-                // `SettingsLayer.body` re-run — same per-frame churn
-                // the pre-extraction inline call had. The context
-                // grants `SettingsMemoryPane`'s `@Query` read access
-                // to the same `chat.sqlite` the LLM writes through
-                // MemoryTool — without it the pane falls back to its
-                // empty defaultValue and the user sees "No memories
-                // yet" even when memories exist.
+                // Delay database-context creation until Settings is ready; its memory query needs chat.sqlite.
                 makeDatabaseContext: { .readOnly { dependencies.chatDatabase.queue } },
                 theme: theme,
                 appearance: appearance,
@@ -355,75 +206,37 @@ struct AppShell: View {
         .onChange(of: reduceMotion, initial: true) { _, value in
             navigationReduceMotion = value
         }
-        // Narrow observers instead of one broad one on `settings`
-        // so unrelated mutations (system prompt, verbosity, auto-compact
-        // threshold) don't churn the host's render state — only the
-        // appearance-relevant fields fire a refresh.
+        // Observe appearance fields individually so unrelated settings cannot invalidate the shell.
         .onChange(of: settingsViewModel?.settings.themeId) { _, newId in
             if let newId { theme = .make(newId) }
         }
         .onChange(of: settingsViewModel?.settings.fontScale) { _, newScale in
-            // A non-nil `newScale` implies the same optional chain's
-            // `settingsViewModel` is non-nil, so unwrap it directly rather
-            // than threading a dead `?? .serif` fallback through `typographyID`.
             guard let newScale, let settingsViewModel else { return }
             appearance = ChatAppearance(fontScale: newScale)
             typography = .make(settingsViewModel.settings.typographyID, fontScale: newScale)
         }
         .onChange(of: settingsViewModel?.settings.typographyID) { _, newID in
-            // Read fontScale from the source of truth (settings), not the
-            // derived `appearance` @State — keeps this handler independent of
-            // onChange delivery order when both keys change in one update, and
-            // mirrors the fontScale handler above.
+            // Read settings directly to avoid depending on delivery order of simultaneous field changes.
             guard let newID, let settingsViewModel else { return }
             typography = .make(newID, fontScale: settingsViewModel.settings.fontScale)
         }
         .onChange(of: settingsViewModel?.models) { _, _ in
-            // Refresh the composer's model picker whenever Settings adds,
-            // edits, or deletes a model — `SettingsViewModel` already
-            // re-registered/unregistered the matching `LLMProvider` with
-            // the registry, so the picker just needs to re-pull.
             Task { await refreshAvailableModels() }
         }
         .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
-            // The chat view model is constructed per-conversation, so without
-            // an explicit push here a settings flip would only take effect
-            // when the user opens the next chat.
+            // Push into the live model so the setting applies before the next conversation switch.
             viewModel?.applyExternalVerbosity(newValue)
         }
-        // Owner-side keyboard dismissal: every minimize-like transition
-        // clears the shell's `@FocusState` *directly*, rather than
-        // relying on `ChatScreen`'s in-screen `.onChange(of: progress)`
-        // observer (which writes through a cross-module
-        // `FocusState<Bool>.Binding` onto a `TextField` that flips
-        // `.disabled(true)` in the same render — on iOS 26 that write
-        // doesn't reliably propagate, so the keyboard would dismiss
-        // visually via the UIKit `resignFirstResponder` dispatch but the
-        // focus state stayed `true` and the keyboard re-appeared the
-        // moment the field became enabled again on drag-up).
-        //
-        // `chatState` covers every settled minimize (drag-snap, backdrop
-        // tap, applet switch); `chatProgress` covers mid-drag so the
-        // keyboard starts tearing down before the snap completes. The
-        // shell's `chatProgress` observer fires one preference-propagation
-        // tick after `ChatScreen`'s in-screen observer, so the two are
-        // not redundant in *time* — `ChatScreen`'s fires first and may
-        // silently no-op on iOS 26; this one fires a frame later and
-        // lands reliably. Both dismiss calls are idempotent.
+        // On iOS 26, clearing child focus while disabling the field can fail. Clear the shell owner too.
+        // State changes cover settled collapse; progress covers mid-drag, one preference tick after the child.
         .onChange(of: chatState) { _, newState in
             if newState == .minimized {
                 dismissKeyboard()
             } else {
-                // Leaving the pill (semi/expanded) takes the composer out of
-                // its hideable state — restore chrome so it can't stay hidden
-                // behind a non-pill chat. The composer-offset call site is
-                // pill-gated anyway; this keeps the hamburger honest too.
                 shellChromeVisible = true
             }
         }
-        // Any applet switch (sidebar select, See-all, an `openRecord`
-        // deep link) restores chrome so a hidden state set by one applet
-        // never bleeds into the next — the new applet starts with full chrome.
+        // One applet must not leave another applet's chrome hidden.
         .onChange(of: registry.activeID) { _, _ in
             shellChromeVisible = true
         }
@@ -432,21 +245,13 @@ struct AppShell: View {
                 dismissKeyboard()
             }
         }
-        // Drain queued navigation requests written by the event-bus
-        // task. This observer fires inside a body re-eval, so the
-        // dispatch runs on a fresh `self` whose `@Environment` reflects
-        // the live OS state (notably `reduceMotion` for `withAnimation`).
+        // Drain from the current body so queued navigation uses live environment values.
         .onChange(of: requestInbox.revision) { _, _ in
             drainRequests()
         }
-        // One bus instance shared by every applet — the Bible backdrop
-        // publishes verse references, the shell routes them in navigation order.
         .environment(\.superEventBus, dependencies.eventBus)
         .hapticsEngine(dependencies.hapticsEngine)
-        // External `super://bible/verse?...` deep links — from Safari,
-        // Notes, Messages, Spotlight — navigate the full reader directly.
-        // Transcript citations use previewRecord instead. Non-`super://` URLs are
-        // ignored here and SwiftUI's default handling continues.
+        // External Bible deep links navigate the full reader; transcript citations request temporary previews.
         .onOpenURL { url in
             guard let link = BibleDeepLink(url: url) else { return }
             let eventBus = dependencies.eventBus
@@ -516,21 +321,10 @@ struct AppShell: View {
         }
     }
 
-    /// Switch the active backdrop applet to `id` and collapse the chat
-    /// overlay so the applet is on screen. Same chrome transition the
-    /// sidebar uses for an explicit pick — keyboard dismissal, registry
-    /// mutation, persistence, animated chat-state change — but driven
-    /// by an inbound `SuperEvent.openRecord`. No-op when the registry
-    /// doesn't host `id` (e.g. a stray deep link for an applet this
-    /// build doesn't ship).
+    /// Shows the requested applet and collapses Chat; unknown applet IDs are ignored.
     @MainActor
     private func selectApplet(id: String) {
         guard registry.applets.contains(where: { $0.appletID == id }) else {
-            // Inbound deep links from outside the app (`super://` URLs in
-            // Notes, Spotlight, etc.) can name an applet this build
-            // doesn't ship — e.g. a SuperOS-only Todo link opened on a
-            // SuperBible device. Drop with a warning so the failure
-            // shows up in Console rather than vanishing silently.
             appShellLog.warning("openRecord for unregistered applet \(id, privacy: .public) — dropped")
             return
         }
@@ -549,26 +343,10 @@ struct AppShell: View {
     private func presentSidebar() {
         guard let sidebarViewModel else { return }
         dependencies.hapticsEngine.play(.selection)
-        // Mirror the keyboard-dismiss the old in-`ChatScreen` hamburger
-        // did. Opening the sidebar with the composer focused would
-        // otherwise leave the keyboard up behind the drawer.
         dismissKeyboard()
         sidebarOpen = true
-        // Tell applets the drawer is opening so they dismiss any native
-        // sheet they're presenting — a native sheet renders in its own
-        // window above the in-view drawer, so the menu would otherwise
-        // slide in behind it. The drawer is a Chat-package overlay; the
-        // shell can't reach Bible's view model directly (applets are
-        // import-isolated), so this goes through the bus.
-        //
-        // Intentional async gap: `sidebarOpen = true` above starts the
-        // drawer's spring on *this* render pass, while the publish (and
-        // the resulting sheet dismissal) lands a main-actor turn later.
-        // That's fine — the drawer's animation is far longer than the
-        // scheduling delay, so the sheet slides away under the incoming
-        // drawer and the overlap is imperceptible. Don't reorder the
-        // publish ahead of `sidebarOpen = true` chasing a tighter
-        // guarantee; the bus hop can't be made synchronous anyway.
+        // Native sheets cover this in-view drawer. Start its animation before the async
+        // dismissal broadcast so the drawer responds immediately.
         let eventBus = dependencies.eventBus
         Task {
             await eventBus.publish(.sidebarOpened)
@@ -576,17 +354,8 @@ struct AppShell: View {
         }
     }
 
-    /// Dismiss the composer's keyboard before a chrome transition.
-    /// Clears the shell-owned ``composerIsFocused`` so SwiftUI doesn't
-    /// re-focus the composer on the next render (which would re-show the
-    /// keyboard the moment the composer becomes interactive again), and
-    /// then dispatches UIKit's `resignFirstResponder` — the load-bearing
-    /// piece on iOS 26.x where flipping `@FocusState` alone doesn't
-    /// always tear the keyboard down. Both halves are needed: the
-    /// `@FocusState` clear is what makes the dismissal durable across a
-    /// re-expand; the UIKit dispatch is what reliably hides the keyboard
-    /// right now. `#if canImport(UIKit)` compiles the dispatch out on
-    /// macOS where there's no on-screen keyboard.
+    /// Clear focus to prevent re-focusing on expansion, then resign UIKit first responder.
+    /// iOS 26 can leave the keyboard visible when only FocusState is cleared.
     private func dismissKeyboard() {
         composerIsFocused = false
         #if canImport(UIKit)
@@ -599,19 +368,8 @@ struct AppShell: View {
         #endif
     }
 
-    /// Open the Settings sheet.
-    ///
-    /// - Parameters:
-    ///   - rootPane: The pane at the base of the sheet's navigation stack. The
-    ///     leading header button is a close-✕ here (dismisses the sheet), so the
-    ///     composer's "Manage models…" passes `.models` to land on Models as its
-    ///     own modal root rather than pushed atop the Settings root.
-    ///   - pushedPane: An optional pane pushed onto `rootPane` — its leading
-    ///     button is a back chevron returning to `rootPane`. The composer's
-    ///     "Add model" pushes `.modelDetail(id: nil)` onto the default `.root`.
-    ///
-    /// `rootPane` is set on every open, so the view model can't carry a stale
-    /// root across presentations.
+    /// The root pane closes the sheet; a pushed pane navigates back to that root.
+    /// Set the root on every presentation to avoid carrying over a previous route.
     private func openSettings(
         rootedAt rootPane: SettingsSheet.Pane = .root,
         pushing pushedPane: SettingsSheet.Pane? = nil
@@ -621,8 +379,7 @@ struct AppShell: View {
 
     private func presentSettings(rootedAt rootPane: SettingsSheet.Pane, pushing pushedPane: SettingsSheet.Pane?) {
         guard let settingsViewModel else { return }
-        // Seed both the root and any pushed pane before flipping the visibility
-        // binding so the sheet animates in already on the requested pane.
+        // Seed navigation before presentation so the sheet opens on the requested pane.
         settingsViewModel.rootPane = rootPane
         if let pushedPane {
             settingsViewModel.openPane(pushedPane)
@@ -647,22 +404,8 @@ struct AppShell: View {
     }
 
     private func initializeViewModels() async {
-        // Drain the Chats applet's "open this chat" / "new chat"
-        // requests onto the shell's existing routing. The bus
-        // does no buffering before subscription, so any event the
-        // Chats backdrop publishes after this task starts is
-        // delivered exactly once. The task is intentionally
-        // long-lived — `AppShell` lives for the whole app session,
-        // so cancellation isn't load-bearing.
-        //
-        // All destination-sensitive events share this one subscription.
-        // Writes land in `requestInbox`, a `@State` whose
-        // reference-backed storage survives the struct copy this
-        // closure captures. The body's `.onChange` then dispatches
-        // from a fresh `self` so `@Environment` reads (notably
-        // `reduceMotion`) reflect the live OS setting at the
-        // moment of navigation — not the value frozen into this
-        // captured copy at task-spawn time.
+        // One app-session subscription preserves order across destination-sensitive events.
+        // Queue dispatch through State so the captured struct cannot freeze environment values.
         let eventBus = dependencies.eventBus
         let events = await eventBus.events()
         Task { [self] in
@@ -681,18 +424,10 @@ struct AppShell: View {
                           !settingsOwnsPresentation, !sidebarOpen else { continue }
                     requestInbox.enqueue(.preview(reference))
                 case .openRecord(let reference):
-                    // The receiving applet's own bus subscriber
-                    // performs the within-applet navigation; the
-                    // shell's job is only to make that applet's
-                    // backdrop visible. Route through
-                    // `requestInbox` so the dispatch runs
-                    // inside a body re-eval and `@Environment`
-                    // reads (notably `reduceMotion`) are fresh.
+                    // The applet owns within-applet navigation; the shell exposes its backdrop.
                     enqueueNavigation(.openApplet(id: reference.appletID))
                 case .bibleAnnotateRequested, .bibleAnnotateProgress, .bibleAnnotateCompleted:
-                    // Annotation requests, progress, and completion flow between
-                    // Chat's generator and Bible's shared dispatch state.
-                    // They do not participate in shell navigation.
+                    // Chat and Bible share annotation dispatch state independently of shell navigation.
                     break
                 case .credentialChanged: break
                 case .sidebarOpened:
@@ -700,27 +435,15 @@ struct AppShell: View {
                     recordPreview.invalidateCompletion()
                     requestInbox.remove { if case .preview = $0 { true } else { false } }
                 case .shellChromeVisibilityRequested(let visible):
-                    // An applet (today only Bible, on scroll) asks the shell
-                    // to hide/show its global chrome. No `withAnimation` here:
-                    // the chrome views carry their own `.animation(value:)` so
-                    // a fresh `reduceMotion` read drives the curve, sidestepping
-                    // this captured task's stale-environment hazard. The
-                    // composer half is additionally gated on the pill state at
-                    // the call site, so a non-pill chat ignores the hide.
+                    // Chrome views animate using their current Reduce Motion environment; this task
+                    // captures an older environment, so do not animate here.
                     shellChromeVisible = visible
                 }
             }
         }
         let conversation = ensureConversation()
-        // Whether this conversation came from disk or is a fresh
-        // launch-into-empty-DB draft. Captured before
-        // `rebuildChatViewModel` runs (which checks the DB itself
-        // to decide whether to wrap the driver lazily).
         let isDraft = ((try? await dependencies.conversationRepository.fetch(id: conversation.id)) == nil)
-        // Build the sidebar view model **before** the chat view
-        // model so the chat's lazy-persist callback and the
-        // auto-titler's `onTitleGenerated` hook can capture a
-        // non-nil sidebar reference.
+        // Build the sidebar first so lazy-persist and auto-title callbacks can capture it.
         let sidebar = SidebarViewModel(
             conversationRepository: dependencies.conversationRepository,
             sessionStore: dependencies.chatSessionStore,
@@ -741,32 +464,21 @@ struct AppShell: View {
             autoCompactPolicyReceiver: dependencies.chatSessionStore,
             webSearchPolicyReceiver: dependencies.chatSessionStore,
             hapticsEngine: dependencies.hapticsEngine,
-            // Power the Data pane's "Export all chats" job. Both repos already
-            // live on `AppShellDependencies`; `clock` defaults to SystemClock.
             messageRepository: dependencies.messageRepository,
             toolCallRepository: dependencies.toolCallRepository,
-            // Required for SettingsMemoryPane edit/delete/clear-all
-            // to reach the GRDB store. Optional in the type so test
-            // fixtures can construct the VM without one — production
-            // always wires it.
+            // Optional for fixtures, required here for memory editing and deletion.
             memoryRepository: dependencies.memoryRepository,
             llmProviderRegistry: dependencies.llmProviderRegistry,
             httpClient: URLSessionHTTPClient(),
-            // Thread the boot-time availability snapshot through so the
-            // Settings UI agrees with the seeder/provider hydrator on
-            // whether AFM is usable. Re-querying `SystemLanguageModel
-            // .default.availability` here would let a mid-session toggle
-            // of Apple Intelligence split that answer across surfaces.
+            // Reuse boot-time availability so a mid-session Apple Intelligence toggle cannot
+            // make Settings disagree with the seeder and provider hydrator.
             appleFoundationAvailability: dependencies.appleFoundationAvailability,
             audioSetup: dependencies.providerAudioSetup,
             eventBus: dependencies.eventBus
         )
         await settings.load()
         settingsViewModel = settings
-        // Seed the shared engine from the persisted toggle so a user who
-        // disabled haptics last session stays silent before they touch
-        // Settings. Live toggles thereafter flow through
-        // `SettingsViewModel.setHapticsEnabled`.
+        // Apply persisted haptics before any interaction; Settings owns subsequent toggles.
         dependencies.hapticsEngine.setEnabled(settings.settings.hapticsEnabled)
         theme = .make(settings.settings.themeId)
         appearance = ChatAppearance(fontScale: settings.settings.fontScale)
@@ -780,20 +492,12 @@ struct AppShell: View {
         for conversation: ConversationRecord,
         initialReferences: [RecordReference] = []
     ) async {
-        // Detach (don't cancel) the outgoing view model. Its iteration
-        // task stops draining events so it can deinit promptly, but the
-        // underlying `ChatSession` (owned by `ChatSessionStore`) keeps
-        // streaming the turn to completion. Switching back will create a
-        // new view model whose `load()` re-attaches via `subscribe()`.
+        // Detach the outgoing observer while its store-owned session keeps streaming; returning re-subscribes.
         viewModel?.detachFromLiveTurn()
 
         let session = await dependencies.chatSessionStore.session(for: conversation.id)
         let liveDriver = LiveChatSessionDriver(session: session)
-        // If the conversation isn't on disk yet (a fresh "New Chat" tap
-        // or a first-launch empty DB), wrap the driver so persistence
-        // happens lazily — the first `send` writes the
-        // `ConversationRecord` *then* forwards the message. An unused
-        // draft never touches disk.
+        // Persist new drafts on first send only; unused drafts must never reach disk.
         let conversationRepo = dependencies.conversationRepository
         let isDraft = ((try? await conversationRepo.fetch(id: conversation.id)) == nil)
         let conversationCopy = conversation
@@ -805,9 +509,7 @@ struct AppShell: View {
                     try? await conversationRepo.save(conversationCopy)
                 },
                 onPersisted: { [weak sidebar = sidebarViewModel] in
-                    // Promote the draft row to a real DB-backed row in
-                    // the sidebar. `refresh()` self-clears the draft
-                    // pointer when it sees the row in the DB list.
+                    // Refresh promotes the now-persisted draft into the sidebar's database rows.
                     await sidebar?.refresh()
                 }
             )
@@ -828,18 +530,13 @@ struct AppShell: View {
             persisted: persistedModelId,
             available: providerModels
         )
-        // Friendly tool labels for the transcript's tool-call cards. Built
-        // here because the registry has every applet's tools registered; the
-        // Chat package can't statically see other applets' descriptors.
+        // Compose tool labels here because Chat cannot import other applets' descriptors.
         let registrations = await dependencies.toolRegistry.allRegistrations()
         let toolDisplayNames = registrations
             .reduce(into: [String: String]()) { map, registration in
                 map[registration.tool.name] = registration.tool.displayName ?? registration.tool.name
             }
-        // Empty-state suggestion generator: AFM-first when Apple Intelligence is
-        // available (its own minimal, context-safe prompt — never the chat
-        // system prompt), with the static applet actions as the fallback.
-        // `capabilities` are the compact, schema-free tool summaries.
+        // Suggestions use a minimal capability prompt, never the conversation system prompt.
         let suggestionCapabilities = SuggestionCapabilities.compact(
             from: registrations.filter(\.isEnabled).map(\.tool)
         )
@@ -880,38 +577,24 @@ struct AppShell: View {
                 await settings?.setLastSelectedModelId(recordId)
             }
         }
-        // When the auto-titler lands, repaint the sidebar so the row's
-        // "New chat" placeholder flips to the real title without waiting
-        // for the next drawer open.
         newModel.onTitleGenerated = { [weak sidebar = sidebarViewModel] _ in
             Task { await sidebar?.refresh() }
         }
-        // Mirror the picker's initial pick into the active provider, and persist
-        // if it differs from disk (also self-heals a legacy model-id value, which
-        // `resolveInitialModelId` maps to its record id).
+        // Persist the resolved record ID to repair legacy model IDs as well as stale selections.
         if let id = initialModelId {
             try? await registry.setActive(id: id)
             if id != persistedModelId {
                 await settingsViewModel?.setLastSelectedModelId(id)
             }
         }
-        // Pre-load the transcript so the first render of the swapped-in
-        // view model already shows the messages instead of flashing the
-        // empty state. ChatScreen's `.task(id: conversationId)` still
-        // re-fires for any future swap.
+        // Load before swapping models to avoid flashing the empty transcript.
         await newModel.load()
         viewModel = newModel
         activeConversationId = conversation.id
         sidebarViewModel?.activeConversationId = conversation.id
     }
 
-    /// Refresh the chat composer's model list after the user
-    /// adds/edits/deletes a model in Settings. Re-pulls from the
-    /// registry (which `SettingsViewModel` already updated during the
-    /// save) and pushes the new list into the live chat view model so
-    /// the picker repaints without losing the transcript. Also re-asserts
-    /// the active provider by the picker's selected record id (direct
-    /// `setActive(id:)`, no scan) so it matches the registry.
+    /// Refreshes picker choices without rebuilding the transcript and reasserts its active provider.
     private func refreshAvailableModels() async {
         let providers = await dependencies.llmProviderRegistry.allProviders()
         viewModel?.setAvailableModels(SelectableModel.from(providers: providers))
@@ -922,20 +605,13 @@ struct AppShell: View {
 
     private func selectConversation(id: String) async {
         sidebarOpen = false
-        // Picking a different conversation is a context shift — resign
-        // the prior composer's focus so the keyboard doesn't slide back
-        // up over the newly-loaded transcript on the next render.
         dismissKeyboard()
-        // Selecting a chat is an intent to focus on chat — snap the
-        // overlay to expanded if the user came from minimized/semi over
-        // an applet backdrop.
         withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
             chatState = .expanded
         }
         guard id != activeConversationId else { return }
         do {
             guard let row = try await dependencies.conversationRepository.fetch(id: id) else { return }
-            // Picking an existing chat drops any in-memory draft.
             sidebarViewModel?.draftConversation = nil
             await rebuildChatViewModel(for: row)
             await sidebarViewModel?.refresh()
@@ -944,25 +620,14 @@ struct AppShell: View {
         }
     }
 
-    /// Open a fresh in-memory draft conversation. `targetChatState`
-    /// controls the chrome the chat lands at — sidebar's "New Chat"
-    /// passes the default (`.expanded`); the Bible hand-off passes
-    /// `.semiExpanded` so the just-attached verse pill is visible
-    /// against the applet backdrop behind the floating panel.
+    /// Creates an in-memory draft. Bible handoffs use semiExpanded to keep the source applet visible.
     private func startNewChat(
         targetChatState: ChatPresentationState = .expanded,
         initialReferences: [RecordReference] = []
     ) async {
         sidebarOpen = false
-        // Starting a fresh chat is a context shift — drop the prior
-        // composer's focus so the keyboard doesn't carry into the empty
-        // draft when the new view model mounts. We re-focus the new
-        // composer below once the expand animation has visually settled.
         dismissKeyboard()
         let now = Date()
-        // Construct an in-memory draft. Persistence is deferred to the
-        // first send (`LazyConversationDriver` writes the record then,
-        // and the sidebar self-promotes the draft row to a real one).
         let row = ConversationRecord(
             id: UUID().uuidString,
             title: "New chat",
@@ -970,26 +635,14 @@ struct AppShell: View {
             updatedAt: now
         )
         sidebarViewModel?.draftConversation = row
-        // Rebuild *before* the animation so the new view model is in
-        // place when the overlay slides up — the user never sees a flash
-        // of the previous conversation's content during the transition.
+        // Install the new view model before animation to avoid flashing the previous conversation.
         await rebuildChatViewModel(for: row, initialReferences: initialReferences)
         await animateChatState(to: targetChatState)
         composerIsFocused = true
     }
 
-    /// Animate the chat overlay to `target` and return only once the
-    /// animation has *logically* settled. The continuation guard is
-    /// load-bearing: focus assigned mid-animation collides with iOS
-    /// keyboard-avoidance, which reads the composer's in-flight position
-    /// and breaks the overlay's spring layout. Logical completion is the
-    /// signal that the field has reached its final frame and is safe to
-    /// focus.
-    ///
-    /// Short-circuits when `chatState == target` so a sidebar "New Chat"
-    /// tapped while chat is already `.expanded` (the SuperOS cold-launch
-    /// default) doesn't pay for a no-op `withAnimation` round-trip plus
-    /// a `CheckedContinuation` allocation just to fall through.
+    /// Waits for logical completion before focus can trigger keyboard avoidance; focusing
+    /// mid-animation measures an in-flight composer frame and disrupts the overlay spring.
     private func animateChatState(to target: ChatPresentationState) async {
         guard chatState != target else { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -1004,23 +657,8 @@ struct AppShell: View {
         }
     }
 
-    /// Cross-applet hand-off has buffered a `RecordReference` for the
-    /// composer (today: a Bible verse range or whole chapter via the
-    /// action sheet or the spark menu). Owns the visible response:
-    /// semi-expand from minimized so the user sees the just-attached
-    /// pill, and assign first responder so they can type immediately.
-    ///
-    /// Sequencing mirrors the sidebar's "New Chat" path
-    /// (``startNewChat(targetChatState:)``): animate the chrome, await
-    /// logical completion via ``animateChatState(to:)``, *then* focus.
-    /// Focusing mid-animation collides with iOS keyboard-avoidance.
-    ///
-    /// Never demotes from a higher anchor — if the chat is already at
-    /// `.semiExpanded` or `.expanded`, leave the chrome alone and only
-    /// move focus. The action sheet that fires this path is unreachable
-    /// at `.expanded` today (the backdrop is hidden), but the spark menu
-    /// could be wired from a future surface, and "snapping down" would
-    /// be a regression.
+    /// Reveal attached references without lowering an existing higher anchor.
+    /// Focus only after expansion completes to avoid competing with keyboard avoidance.
     private func handleComposerAttention(_ request: ComposerAttentionRequest) async {
         if request.startNew {
             let target: ChatPresentationState = chatState == .expanded ? .expanded : .semiExpanded
@@ -1034,11 +672,7 @@ struct AppShell: View {
         composerIsFocused = true
     }
 
-    /// Returns the conversation to load on launch — always a fresh
-    /// in-memory draft so the user starts every session on a clean
-    /// "New chat" surface. Existing persisted rows remain accessible
-    /// from the sidebar drawer. The draft only hits disk if the user
-    /// actually sends a message (same lazy-persist path as `startNewChat`).
+    /// Launch into a fresh draft; save only on first send. Saved chats remain in the sidebar.
     private func ensureConversation() -> ConversationRecord {
         let now = Date()
         return ConversationRecord(
@@ -1052,33 +686,11 @@ struct AppShell: View {
 
 // MARK: - Shell layers
 
-/// Backdrop layer hosting the active mini-app's root view, plus the
-/// semi-expanded tap-target that collapses the chat back to minimized.
-///
-/// A pure function of its props (`activeApplet`/`activeAppletID`, the
-/// theme trio, `chatState`/`chatProgress`/`chatSemiProgress`,
-/// `reduceMotion`) with no `@State`/`@Environment`/`@Bindable` of its
-/// own, so it's safe to gate with `.equatable()` at the call site. That
-/// short-circuits the body — and the `activeApplet.rootView()` re-wrap —
-/// on a composer focus flip, which would otherwise invalidate the whole
-/// `AppShell.body` (the shell owns `@FocusState composerIsFocused`) and
-/// rebuild the hosted applet's view tree. Stage 2 (typed-dispatch removal
-/// of `MiniApplet.rootView() -> AnyView`) will close the residual re-wrap
-/// cost that remains when it *does* re-render (applet switch, theme
-/// change, drag).
-// Main-actor-isolated `Equatable` conformance: the struct is main-actor
-// isolated (it's a SwiftUI `View`), and SwiftUI's `.equatable()` diffing
-// calls `==` on the main actor, so isolating the conformance is sound and
-// avoids the Swift 6 "conformance crosses into main-actor code" error.
+/// Gates backdrop work on render inputs so composer focus changes do not rebuild the applet.
+/// SwiftUI diffs on the main actor; the isolated conformance matches the view's isolation.
 private struct BackdropLayer: View, @MainActor Equatable {
-    /// The active applet, used only to render its `rootView()`. Excluded
-    /// from `==` (compared indirectly via ``activeAppletID``) because the
-    /// existential isn't `Equatable` and the registry never swaps the
-    /// instance backing a given id.
+    /// Compared by ID: registry instances are fixed for the session and the existential is not Equatable.
     let activeApplet: (any MiniApplet)?
-    /// Cheap, stable identity for the active applet — the value `==` keys
-    /// on so an applet switch (and only an applet switch) re-renders the
-    /// backdrop.
     let activeAppletID: String?
     let theme: SuperTheme
     let appearance: ChatAppearance
@@ -1087,30 +699,12 @@ private struct BackdropLayer: View, @MainActor Equatable {
     let chatProgress: Double
     let chatSemiProgress: Double
     let onBackdropTap: () -> Void
-    /// Threaded as a prop (not just captured inside `onBackdropTap`) so
-    /// the AGENTS.md "Reduce Motion must thread through" rule holds for the
-    /// backdrop's collapse animation: including it in `==` means a Reduce
-    /// Motion toggle fails the equality check, re-renders this layer, and
-    /// refreshes the captured-`reduceMotion` closure on the same update —
-    /// no stale-closure window.
+    /// Compared explicitly so a toggle refreshes the onBackdropTap closure's captured value.
     let reduceMotion: Bool
 
-    /// Compare every value input that changes what the backdrop renders,
-    /// so SwiftUI's `.equatable()` only skips this body when none of them
-    /// moved. `onBackdropTap` is excluded — a fresh closure every
-    /// `AppShell.body` eval, and the sole reason an otherwise-unchanged
-    /// layer would re-render (and re-invoke `rootView()`) on a composer
-    /// focus flip; the one piece of state it captures, `reduceMotion`, is
-    /// instead threaded as a prop and compared below, so excluding the
-    /// closure costs no correctness. `activeApplet` is excluded too (keyed
-    /// via `activeAppletID`). `theme.id` is the cheap stable key mirroring
-    /// how the shell builds themes via `.make(id)`; `chatProgress`/
-    /// `chatSemiProgress` stay in so the dim keeps tracking a live drag.
-    ///
-    /// Safe because the re-render on an applet switch is driven by
-    /// `AppShell.body` observing `registry.activeID` (read for
-    /// `SidebarLayer`), not by this layer reading the registry — hence this
-    /// view must stay a pure function of its props.
+    /// Ignore fresh closure identity; compare its captured Reduce Motion value instead.
+    /// Applet ID and theme ID stand in for immutable registry instances and constructed themes.
+    /// Keep this view a function of its props; AppShell observes registry changes.
     static func == (lhs: BackdropLayer, rhs: BackdropLayer) -> Bool {
         lhs.activeAppletID == rhs.activeAppletID
             && lhs.theme.id == rhs.theme.id
@@ -1122,61 +716,27 @@ private struct BackdropLayer: View, @MainActor Equatable {
             && lhs.reduceMotion == rhs.reduceMotion
     }
 
-    /// Opacity applied to the applet backdrop, interpolated continuously
-    /// against `chatProgress` so the dim tracks the user's drag in
-    /// lockstep with the chat surface's height.
-    ///
-    /// Anchor points (matching the 2026-05-13 design):
-    /// - progress 0 (pill): 1.0 — backdrop owns the full screen at full
-    ///   opacity.
-    /// - progress = `chatSemiProgress` (semi-expanded): 0.65 — backdrop
-    ///   is dimmed to read against the floating chat panel. The
-    ///   mid-knot is the live semi anchor's resolved progress (now
-    ///   geometry-dependent because the semi anchor sits at
-    ///   `containerHeight - topInset`), not the legacy 0.52 ratio.
-    /// - progress 1 (expanded): 1.0 — backdrop is hidden behind the
-    ///   opaque chat anyway, so the value doesn't really matter; we
-    ///   leave it at 1 so a flick-up from semi past expanded settles
-    ///   without an extra dim transition during the last few percent.
-    ///
-    /// The curve is piecewise-linear between these three points so the
-    /// dim feels coupled to the chat's height rather than snapping at
-    /// state boundaries.
+    /// Piecewise dimming tracks the live geometry-dependent semi anchor. Return to full opacity
+    /// behind expanded Chat to avoid an extra transition near the end of an upward drag.
     private var backdropOpacity: Double {
         let p = chatProgress
         let mid = max(0.001, min(0.999, chatSemiProgress))
         if p <= mid {
-            // 0 → mid: dim from 1.0 down to 0.65 as the chat grows.
             let t = p / mid
             return 1.0 + (0.65 - 1.0) * t
         } else {
-            // mid → 1: dim back up to 1.0 (effectively unused — the
-            // expanded chat covers the backdrop).
             let t = (p - mid) / (1 - mid)
             return 0.65 + (1.0 - 0.65) * t
         }
     }
 
-    /// Hit-testing on the backdrop turns off the moment the expanded
-    /// chat covers (or is about to cover) it, so a drag that lands at
-    /// the very top of the screen doesn't end up dispatched to the
-    /// applet underneath. Mirrors the pre-change behavior where the
-    /// `.expanded` state disabled hit-testing wholesale; here we just
-    /// drive it from the live progress so the transition is continuous.
+    /// Disable applet hit-testing before expanded Chat fully covers it, preventing stray drag delivery.
     private var backdropHitTestingEnabled: Bool {
         chatProgress < 0.95
     }
 
     var body: some View {
-        // The applet itself is rendered by an inner `.equatable()`
-        // ``AppletHost`` that EXCLUDES `chatProgress`. A drag/keyboard
-        // morph changes `chatProgress` every frame, so this body re-applies
-        // only the cheap `.opacity`/`.allowsHitTesting` modifiers — it does
-        // NOT re-invoke `activeApplet.rootView()` (the whole applet tree, an
-        // `AnyView` that can't be diffed). Before this split the backdrop
-        // re-rendered the entire hidden applet ~once per frame during a drag
-        // (~130 rebuilds per drag), the dominant cause of the overlay
-        // lag/hang.
+        // AppletHost excludes drag progress from equality, avoiding an AnyView rebuild every frame.
         AppletHost(
             activeApplet: activeApplet,
             activeAppletID: activeAppletID,
@@ -1189,10 +749,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
         .allowsHitTesting(backdropHitTestingEnabled)
         .overlay {
             if chatState == .semiExpanded {
-                // Transparent tap-target sits above the dimmed applet only
-                // while semi-expanded. Attached to the settled semi anchor
-                // (not `chatProgress`) so it's gone the instant the overlay
-                // snaps elsewhere rather than armed during the whole drag.
+                // Arm only at the settled semi anchor, not during the whole drag.
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { onBackdropTap() }
@@ -1201,14 +758,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
     }
 }
 
-/// Renders the active applet's `rootView()` with the theme trio applied.
-/// Split out of ``BackdropLayer`` and gated with `.equatable()` keyed on
-/// applet identity + theme/appearance/typography ONLY — deliberately NOT
-/// `chatProgress` — so the per-frame morph dim (opacity, applied by
-/// `BackdropLayer` *outside* this view) never re-invokes `rootView()`.
-/// `rootView()` returns an `AnyView`, so a re-invocation rebuilds the whole
-/// applet tree undiffed; keeping this body skipped during a drag is the
-/// fix for the overlay lag/hang.
+/// Excludes chat progress from equality so per-frame dimming never rebuilds the AnyView applet tree.
 private struct AppletHost: View, @MainActor Equatable {
     let activeApplet: (any MiniApplet)?
     let activeAppletID: String?
@@ -1225,9 +775,7 @@ private struct AppletHost: View, @MainActor Equatable {
 
     var body: some View {
         if let activeApplet {
-            // The rootView keeps the safe area so each applet can place its
-            // own top chrome below the status bar / Dynamic Island and clear
-            // the shell's floating hamburger.
+            // Preserve the safe area for applet chrome below the status bar and shell hamburger.
             activeApplet.rootView()
                 .superTheme(theme)
                 .superFontScale(appearance.fontScale)
@@ -1236,17 +784,6 @@ private struct AppletHost: View, @MainActor Equatable {
     }
 }
 
-/// Chat overlay layer. Hosts `ChatOverlay` plus the two
-/// `ChatProgressPreferenceKey` observers that surface the live morph
-/// progress back to the shell (via the `onProgressChange` /
-/// `onSemiProgressChange` closures).
-///
-/// Owns the binding to the shell's `@FocusState composerIsFocused`
-/// — this is the layer that genuinely needs to re-render on focus
-/// flip (the `TextField` itself lives further down in `ChatOverlay
-/// → ChatScreen → ChatComposer`). The other layers also re-render
-/// on each `AppShell.body` re-eval because their closure inputs
-/// aren't equatable, but their bodies are small.
 private struct ChatLayer: View {
     let viewModel: ChatScreenViewModel?
     let bootstrapError: String?
@@ -1262,9 +799,7 @@ private struct ChatLayer: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Discriminant for the chat-overlay vs error vs splash fallback so
-    /// `.animation(value:)` can cross-fade the inner swap without forcing
-    /// either branch's value type to be `Equatable`.
+    /// Enables cross-fading without requiring the branch view types to be Equatable.
     private var innerDiscriminant: Int {
         if viewModel != nil { 0 }
         else if bootstrapError != nil { 1 }
@@ -1272,7 +807,6 @@ private struct ChatLayer: View {
     }
 
     var body: some View {
-        // Per-branch .transition + outer .animation = real cross-fade.
         Group {
             if let viewModel {
                 ChatOverlay(
@@ -1296,9 +830,7 @@ private struct ChatLayer: View {
                 FailureScreen(message: bootstrapError)
                     .transition(.opacity)
             } else {
-                // Pin Light: matches the outer per-target content view splash before
-                // user settings load, so the fallback during the brief
-                // pre-ensureViewModel window doesn't flash a wrong theme.
+                // Match the outer launch splash until persisted appearance loads, avoiding a theme flash.
                 SplashView()
                     .superTheme(.make(.vellumLight))
                     .transition(.opacity)
@@ -1311,19 +843,14 @@ private struct ChatLayer: View {
     }
 }
 
-/// Shell-chrome layer: the top-left hamburger. Aligned to topLeading
-/// inside the safe area so the status bar doesn't sit on top of it.
 private struct HamburgerLayer: View {
     let theme: SuperTheme
-    /// `false` while an applet has requested immersive (chrome-hidden)
-    /// content — the button slides up off the top edge and fades out.
     let chromeVisible: Bool
     let onTap: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// How far up to slide the button when hidden — its height plus the top
-    /// safe area / Dynamic Island so it clears the screen on every iPhone.
+    /// Clears the button height plus the top safe area.
     private static let hideDistance: CGFloat = 120
 
     var body: some View {
@@ -1340,53 +867,29 @@ private struct HamburgerLayer: View {
         .offset(y: chromeVisible ? 0 : -Self.hideDistance)
         .opacity(chromeVisible ? 1 : 0)
         .animation(SuperMotion.chrome(hiding: !chromeVisible, reduceMotion: reduceMotion), value: chromeVisible)
-        // Offset + opacity hide the button visually but leave it in the
-        // accessibility tree; drop it from VoiceOver too so a swipe can't
-        // reach an off-screen control while chrome is hidden.
+        // Opacity and offset leave the off-screen button in VoiceOver unless hidden explicitly.
         .accessibilityHidden(!chromeVisible)
     }
 }
 
-/// Composer-accessory layer: the optional hovering flank buttons (today the
-/// Bible reader's previous / next chapter chevrons) above the minimized chat
-/// pill. A ZStack sibling of `ChatLayer`, deliberately NOT subject to the
-/// immersive `.offset` that slides the pill off — so when the pill hides on
-/// scroll, these buttons stay and drop into the slot it vacated.
-///
-/// Reads `store.buttons` (an applet writes it) for the glyphs / actions and the
-/// shell's live `chatProgress` / `composerHidden` for visibility and the
-/// vertical anchor. Renders nothing when the store is empty. Chat owns the glass
-/// chrome via ``ComposerAccessoryFlank``; this layer only positions it.
+/// Positions applet accessories outside ChatLayer's immersive offset so they remain
+/// visible and move into the hidden pill's slot. ComposerAccessoryFlank owns their chrome.
 private struct ComposerAccessoryLayer: View {
     let store: ComposerAccessoryStore
-    /// Live chat morph (0 = pill … 1 = expanded). Drives the fade-out as the
-    /// chat opens; holds at 0 through immersive scroll so the buttons stay.
+    /// 0 = pill, 1 = expanded; stays at 0 while immersive reading hides the pill.
     let chatProgress: Double
-    /// True when the minimized pill has slid off for immersive reading. Drops
-    /// the buttons down into the vacated slot.
     let composerHidden: Bool
     let theme: SuperTheme
     let typography: SuperTypography
     let reduceMotion: Bool
 
-    /// Horizontal inset of each chevron from the screen edge — aligned with the
-    /// composer capsule's own outer side padding so the chevrons line up with
-    /// the pill's edges.
+    /// Matches the composer capsule's side padding.
     private static let sidePadding: CGFloat = 20
-    /// Resting bottom inset (measured from the safe-area bottom, i.e. above the
-    /// home indicator — the same region the composer occupies). The minimized
-    /// pill occupies the bottom `minimizedBaseHeight` of that region, so this
-    /// clears the pill and lifts the chevrons to hover above it.
+    /// Measured above the home indicator; clears the pill and lifts the accessories above it.
     private static let restingInset: CGFloat = ChatPresentationState.minimizedBaseHeight + 36
-    /// Bottom inset when the buttons occupy the vacated pill slot (pill hidden
-    /// in immersive mode) — roughly the composer capsule's own resting bottom
-    /// padding, so they land where the pill was.
+    /// Matches the hidden composer's resting bottom padding.
     private static let vacatedInset: CGFloat = 16
 
-    /// Full at the pill, fading out as the chat expands. Continuous in
-    /// `chatProgress` so a drag up fades the chevrons with the morph (same
-    /// cadence as the composer's own pill label) rather than snapping at a
-    /// state boundary. Stays 1 through immersive scroll (progress holds at 0).
     private var accessoryOpacity: Double {
         1 - Self.smoothstep(chatProgress, from: 0, to: 0.12)
     }
@@ -1394,9 +897,7 @@ private struct ComposerAccessoryLayer: View {
     var body: some View {
         let buttons = store.buttons
         if !buttons.isEmpty {
-            // No `.ignoresSafeArea()`: the layer lives inside the safe area so
-            // the bottom inset is measured from the home-indicator top (where
-            // the composer content begins), matching the pill's own frame.
+            // Measure from the safe-area bottom, matching the composer rather than the screen edge.
             ComposerAccessoryFlank(buttons: buttons)
                 .superTheme(theme)
                 .superTypography(typography)
@@ -1404,10 +905,7 @@ private struct ComposerAccessoryLayer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, composerHidden ? Self.vacatedInset : Self.restingInset)
                 .opacity(accessoryOpacity)
-                // Gate hit-testing and VoiceOver on the same threshold so a
-                // faded chevron is never tappable-but-invisible to a screen
-                // reader during the chat expansion fade. Individual controls
-                // manage their own visibility inside ComposerAccessoryFlank.
+                // Pair hit-testing and accessibility gates during the fade; controls also manage their own visibility.
                 .allowsHitTesting(accessoryOpacity > 0.5)
                 .accessibilityHidden(accessoryOpacity < 0.5)
                 .animation(
@@ -1425,9 +923,6 @@ private struct ComposerAccessoryLayer: View {
     }
 }
 
-/// Sidebar drawer layer. Renders `SidebarDrawer` whenever
-/// `sidebarViewModel` is non-nil; `SidebarDrawer` itself handles
-/// the `isPresented == false` case internally.
 private struct SidebarLayer: View {
     @Binding var sidebarOpen: Bool
     let sidebarViewModel: SidebarViewModel?
@@ -1464,19 +959,7 @@ private struct SidebarLayer: View {
     }
 }
 
-/// Settings sheet layer — the content of the shell's native `.sheet`, so
-/// it's only instantiated while the sheet is presented (the system owns the
-/// present / dismiss lifecycle now). Body only renders content once
-/// `settingsViewModel` is wired.
-///
-/// `makeDatabaseContext` is a factory closure (not a stored value) so
-/// the `.readOnly { ... }` allocation is skipped during the bootstrap
-/// window where `settingsViewModel` is still nil. Once the view model
-/// is wired, this body re-runs on each `AppShell.body` re-eval (closure
-/// inputs aren't equatable, so SwiftUI can't skip it) and a fresh
-/// `DatabaseContext` is constructed per render — same per-frame churn
-/// the pre-extraction inline `SettingsSheet(...)` call already had, so
-/// no behavior regression vs. before the extraction.
+/// Defer the database-context factory until the settings model is ready.
 private struct SettingsLayer: View {
     @Binding var settingsOpen: Bool
     let settingsViewModel: SettingsViewModel?

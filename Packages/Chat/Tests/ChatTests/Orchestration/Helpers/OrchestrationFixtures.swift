@@ -3,14 +3,7 @@ import Foundation
 
 @testable import Chat
 
-/// Factories shared by the orchestration test suites: an in-memory GRDB
-/// stack, a freshly-seeded conversation, and a default `LLMModel`.
-///
-/// Tests use `FixedClock` (from Core's `Ambient/`) — every `now()` call
-/// returns the same instant. This is intentional: the repositories order
-/// rows by `(createdAt, rowid)` so insertion order resolves ties, which
-/// means tests don't need a special monotonic clock and any production
-/// time-tie regression would surface immediately here too.
+// FixedClock deliberately creates timestamp ties to exercise repository rowid ordering.
 enum OrchestrationFixtures {
     static func makeDatabase() throws -> ChatDatabase {
         try ChatDatabase.makeInMemory()
@@ -57,8 +50,6 @@ enum OrchestrationFixtures {
         return conversation
     }
 
-    /// Build a `Compactor` wired to the supplied database/registry. The
-    /// estimator is the production default (`HeuristicTokenEstimator`).
     static func makeCompactor(
         database: ChatDatabase,
         llmRegistry: LLMProviderRegistry,

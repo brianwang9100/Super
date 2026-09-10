@@ -2,12 +2,6 @@ import Core
 import Foundation
 import GRDB
 
-/// GRDB-backed `BibleHighlightRepository` over the `bibleHighlight` table.
-///
-/// Both writes upsert a single row per `(bookId, chapterNumber, verseNumber)`:
-/// `setHighlight` updates an existing row's colour (clearing any `deletedAt`)
-/// or inserts a fresh one; `clearHighlight` soft-deletes the active row. New
-/// rows get a UUID from the injected `IDGenerator`.
 public struct GRDBBibleHighlightRepository: BibleHighlightRepository {
     private let queue: DatabaseQueue
     private let ids: any IDGenerator
@@ -114,8 +108,7 @@ public struct GRDBBibleHighlightRepository: BibleHighlightRepository {
         }
     }
 
-    /// The verse's highlight row regardless of soft-delete state — there is at
-    /// most one, so both writes resolve it the same way.
+    // Include cleared rows so re-highlighting restores the original identity.
     private static func verseRow(
         _ db: Database,
         bookId: String,

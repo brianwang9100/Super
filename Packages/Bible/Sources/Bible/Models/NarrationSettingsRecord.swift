@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// One installation's narration permission, credential reference, and playback preferences.
 public struct NarrationSettingsRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "narrationSettings"
     public var id: String

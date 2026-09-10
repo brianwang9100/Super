@@ -3,7 +3,6 @@ import Synchronization
 import Testing
 @testable import Core
 
-/// Verifies ordered ownership and observable delivery across deferred UI drains.
 @Suite("OrderedInbox")
 @MainActor
 struct OrderedInboxTests {

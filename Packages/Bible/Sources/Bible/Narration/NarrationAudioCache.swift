@@ -3,7 +3,6 @@ import CryptoKit
 import Darwin
 import Foundation
 
-/// Cache boundary, injectable so playback tests do not write to the filesystem.
 public protocol NarrationAudioCaching: Sendable {
     func audio(for key: String) async throws -> Data?
     func save(_ audio: Data, for key: String) async throws
@@ -35,7 +34,6 @@ struct NarrationAudioFile: Sendable {
     let accessedAt: Date
 }
 
-/// Bounded audio clips stored atomically in Caches, with an equivalent in-memory fallback.
 public actor NarrationAudioCache: NarrationAudioCaching {
     private struct Entry: Sendable {
         let byteCount: Int

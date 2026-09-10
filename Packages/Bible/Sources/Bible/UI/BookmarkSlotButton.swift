@@ -1,32 +1,16 @@
 import Core
 import SwiftUI
 
-/// One colour slot in the bookmark sheet's 2×3 grid: a centred ribbon glyph
-/// (filled in the colour's tint when assigned, a pale wash of that colour when
-/// empty), the colour name, and the assigned chapter's citation (or a muted
-/// "Empty").
-///
-/// The card applies its own interactive glass (`superGlassButton`), but the
-/// sheet wraps all six cards in one shared `SuperGlassContainer` so they
-/// sample a single glass region — independent sampling would cast the
-/// fragmented per-cell shadows documented in `BibleBookSheet.chapterGrid`.
+// Host inside a shared SuperGlassContainer to avoid independent per-card shadow artifacts.
 struct BookmarkSlotButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    // OS Dynamic Type bases, composing with the app font-scale slider that
-    // `typography.font(size:)` folds in — the dual-axis pattern from
-    // `BibleBookSheet`.
     @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 14
     @ScaledMetric(relativeTo: .caption) private var citationSize: CGFloat = 12
 
     let color: BibleBookmarkColor
-    /// Citation of the chapter this colour currently marks, `nil` when the
-    /// slot is empty.
     let assignedCitation: String?
-    /// Whether the slot's assignment is the chapter the sheet was opened
-    /// for — tapping then removes rather than moves.
     let isCurrentChapter: Bool
-    /// The presented chapter's citation, for the VoiceOver label.
     let currentCitation: String
     let onTap: () -> Void
 
@@ -58,8 +42,7 @@ struct BookmarkSlotButton: View {
         ))
     }
 
-    /// VoiceOver label spelling out what the tap will do — assign, move, or
-    /// remove — since the card's visual state alone doesn't say.
+    // Announce the tap outcome; assignment state alone does not distinguish move from remove.
     static func label(
         color: BibleBookmarkColor,
         assignedCitation: String?,

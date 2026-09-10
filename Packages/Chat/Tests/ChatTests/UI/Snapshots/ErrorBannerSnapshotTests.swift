@@ -6,20 +6,11 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `ErrorBanner`'s detail-disclosure states: collapsed (the
-/// "Details" affordance visible) and expanded (the full provider body shown
-/// inline). The expanded state is driven by the `initiallyExpanded` test seam,
-/// since it's otherwise reachable only by tapping. The plain summary-only
-/// banner (no `detail`) is already covered by `MessageListSnapshotTests`.
-// `.serialized` for the same shared-`__Snapshots__/`-directory reason as the
-// other snapshot suites in this folder.
 @Suite("ErrorBanner snapshots", .serialized)
 @MainActor
 struct ErrorBannerSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
-    /// A provider error with a multi-line body — the shape Gemini returns on a
-    /// 400, and the case the expandable detail exists for.
     private var errorState: MessageList.ErrorState {
         MessageList.ErrorState(
             message: "The model provider returned an error (HTTP 400).",

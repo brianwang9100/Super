@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Exact preview handoffs reconcile with persisted history without losing queued selection or translation.
 @Suite("Bible reader reference history")
 @MainActor
 struct BibleReaderReferenceHistoryTests {
@@ -30,6 +29,7 @@ struct BibleReaderReferenceHistoryTests {
         #expect(model.translation == .asv)
         #expect(model.selectedVerses == verses)
         #expect(model.pendingScrollVerse == verses.min())
+        #expect(!model.isActionSheetPresented)
         let saved = try #require(await repository.currentRecord())
         #expect(history(saved).entries == [genesis, romans, john])
         #expect(saved.translationId == "ASV")
@@ -58,6 +58,7 @@ struct BibleReaderReferenceHistoryTests {
         #expect(model.translation == .web)
         #expect(model.selectedVerses == verses)
         #expect(model.pendingScrollVerse == verses.min())
+        #expect(!model.isActionSheetPresented)
         let saved = try #require(await repository.currentRecord())
         #expect(history(saved).entries == [genesis, romans, john, psalm])
         #expect(saved.translationId == "WEB")
@@ -96,10 +97,13 @@ struct BibleReaderReferenceHistoryTests {
         await load.value
         model.selectChapter(bookId: john.bookId, chapterNumber: john.chapterNumber)
         model.goBack()
+        model.toggleVerse(1)
+        #expect(model.isActionSheetPresented)
         model.openReference(BibleReaderReference(position: romans, translation: .asv, selectedVerses: verses))
         await model._waitForPendingPersist()
 
         #expect(model.selectedVerses == verses)
+        #expect(!model.isActionSheetPresented)
         #expect(model.forwardDestination == john)
         let saved = try #require(await repository.currentRecord())
         #expect(history(saved).entries == [genesis, romans, john])
@@ -119,6 +123,7 @@ struct BibleReaderReferenceHistoryTests {
         #expect(model.translation == .bsb)
         #expect(model.selectedVerses == [35, 36])
         #expect(model.pendingScrollVerse == 35)
+        #expect(!model.isActionSheetPresented)
     }
 
     @Test("later explicit translation wins over an exact intent drained after failed restoration")

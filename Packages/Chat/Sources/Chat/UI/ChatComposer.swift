@@ -1,11 +1,7 @@
 import Core
 import SwiftUI
 
-/// Internal override for the recording-pulse animation. Defaults to
-/// `nil` so the composer uses the system `\.accessibilityReduceMotion`
-/// value at render time. Snapshot tests inject a non-nil value because
-/// SwiftUI's accessibility env values aren't writable from a test
-/// wrapper, so we can't otherwise pin the reduce-motion baseline.
+/// Snapshot seam: SwiftUI's accessibilityReduceMotion environment value is read-only.
 private struct ChatComposerReduceMotionOverrideKey: EnvironmentKey {
     static let defaultValue: Bool? = nil
 }
@@ -17,42 +13,9 @@ extension EnvironmentValues {
     }
 }
 
-/// Rounded composer capsule that doubles as the chat's minimized pill at
-/// `progress == 0`. Renders:
-///
-/// - A `ZStack`-stacked editor slot in the top row: a multi-line text
-///   editor (visible at full progress) and a "Chat with Super" pill
-///   label behind it (visible at low progress). The single trailing
-///   34pt circle button morphs between mic (empty composer), send
-///   (non-empty), recording-stop (mid-dictation), or cancel (mid-LLM-
-///   stream) and stays on this row at every progress so the pill keeps
-///   its right-side affordance.
-/// - A footer row below the editor — `ChatComposerFooter` (model pill +
-///   context meter) and an optional minimize bar — whose opacity and height
-///   interpolate with `progress` so the row collapses smoothly to zero in pill mode.
-///
-/// Behavior:
-/// - Return inserts a newline; submission is driven by the trailing
-///   send button. (iOS's multi-line `TextField(axis: .vertical)` always
-///   consumes Return as a newline on the software keyboard, so there is
-///   no Enter-to-send path here.)
-/// - Submitting a slash command (`/compact`, `/...`) is the parent's
-///   responsibility; this view just hands the trimmed text up via
-///   `onSubmit(_:)`.
-/// - Mic taps fire `onMicTap`; while recording the trailing button
-///   becomes a stop affordance wired to `onStopRecording`.
-/// - When `isMicAvailable == false` the mic renders dimmed + disabled;
-///   used for the on-device-recognizer-not-installed case from M11.
-/// - At `progress < 0.15` the text editor is disabled so taps fall
-///   through to the chat-screen's pill-surface tap-or-drag overlay.
-///
-/// Mirrors `Composer` in `.design-tmp/chat/project/src/chat-view.jsx`.
+/// Return inserts a newline; the send button submits trimmed text for the host to interpret.
 public struct ChatComposer: View {
     @Binding public var text: String
-    /// Focus state owned by the parent (`ChatScreen`) so taps outside the
-    /// composer (transcript area, hamburger button) can dismiss the
-    /// keyboard by setting this to `false`. The composer mirrors the value
-    /// onto its `TextField` via `.focused(...)`.
     @FocusState.Binding public var isFocused: Bool
     public let isStreaming: Bool
     public let isRecording: Bool
@@ -73,18 +36,10 @@ public struct ChatComposer: View {
     public let onDragChanged: ((_ translation: CGSize) -> Void)?
     /// Snaps the host using the drag's final and predicted translations.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
-    /// `0` renders the composer as the minimized pill ("Chat with Super"
-    /// label + mic, no footer); `1` renders the full composer (multi-line
-    /// editor, footer with model selector + context meter, send/mic
-    /// button). Intermediate values cross-fade the label out and the
-    /// editor in, fade the footer's opacity, and collapse its height so
-    /// the chat surface resizes smoothly under a drag.
+    /// Zero is the minimized pill; one is the full composer. Intermediate values drive the morph.
     public let progress: Double
 
-    /// Verse-reference pills attached in the composer. Rendered in a strip
-    /// above the text editor; empty for an ordinary message.
     public let references: [VerseReferencePillModel]
-    /// Invoked with a pill's id when the user taps its × control.
     public let onRemoveReference: (String) -> Void
 
     public init(
@@ -135,11 +90,7 @@ public struct ChatComposer: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Editor base size, declared via `@ScaledMetric` so the system-font
-    /// pill label and text editor compose OS Dynamic Type on top of the
-    /// app font-scale that `SuperTypography` folds in. The typography
-    /// system path ignores `relativeTo`, so this metric is how the
-    /// composer opts into Dynamic Type for its body text.
+    /// System faces ignore relativeTo, so ScaledMetric adds Dynamic Type to app font scaling.
     @ScaledMetric(relativeTo: .subheadline) private var editorBase: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
@@ -175,69 +126,40 @@ public struct ChatComposer: View {
         #endif
     }
 
-    /// Effective reduce-motion flag — test override wins when set, the
-    /// system env value is the default. Lets snapshot tests pin the
-    /// no-pulse rendering even though `\.accessibilityReduceMotion`
-    /// isn't writable.
     private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var hasContent: Bool { !trimmed.isEmpty }
 
-    // MARK: - Progress-driven interpolations
-    //
-    // The thresholds below tune the crossfade timing so the pill label
-    // disappears just as the editor becomes interactive (≈ 0.15), the
-    // footer takes a little longer to appear (≈ 0.15 → 0.45) so the row
-    // doesn't pop into view before there's vertical space to host it,
-    // and the outer gradient backdrop only shows once the transcript
-    // above is also coming in (≈ 0.3).
+    // Delay the footer until the morph provides space; show the backdrop with the transcript.
 
-    /// Visible at low progress; faded as the editor takes over.
     private var pillLabelOpacity: Double {
         1 - Self.smoothstep(progress, from: 0, to: 0.2)
     }
 
-    /// Visible at high progress; hidden in pill mode.
     private var editorOpacity: Double {
         Self.smoothstep(progress, from: 0, to: 0.2)
     }
 
-    /// Footer fades in over a wider band than the editor so the model
-    /// pill and context meter slide in *after* the editor has settled,
-    /// giving the morph a clear "first the text field, then the
-    /// metadata" cadence.
     private var footerOpacity: Double {
         Self.smoothstep(progress, from: 0.15, to: 0.45)
     }
 
-    /// Collapse the metadata and optional minimize target together so the
-    /// extra control leaves no height or spacing behind in pill mode.
-    /// The compact metadata slot halves the gap above the minimize bar.
-    /// Its 44pt touch region extends into the metadata row and bottom gutter
-    /// while occupying a compact 12pt layout slot above the keyboard.
+    /// Collapse metadata and the minimize target together, leaving no footer space in pill mode.
+    /// The 44pt touch target extends beyond its 12pt layout slot.
     private var footerHeight: CGFloat {
         CGFloat(footerOpacity) * (onMinimize == nil ? 34 : 40)
     }
 
-    /// Disables the text editor below the threshold so a tap or drag on
-    /// the pill surface falls through to the chat-screen overlay rather
-    /// than landing on a barely-visible text field.
+    /// Let taps and drags reach the pill overlay while the editor is barely visible.
     private var editorInteractive: Bool {
         progress > ChatPresentationState.editorInteractiveThreshold && !isRecording
     }
 
-    /// Composer outer gradient backdrop — the transcript-to-composer
-    /// fade. Hidden in pill mode because there's no transcript above to
-    /// fade from; fades in alongside the transcript.
     private var gradientOpacity: Double {
         Self.smoothstep(progress, from: 0.3, to: 0.6)
     }
 
-    /// Capsule padding interpolates between the prior `MinimizedChatPill`
-    /// values (18 horizontal / 12 vertical) and the full composer's
-    /// values (16 leading / 10 trailing, 10 top / 8 bottom, or 2 bottom
-    /// when the minimize handle is present).
     private var capsuleLeadingPadding: CGFloat {
         Self.lerp(progress, 18, 16)
     }
@@ -251,15 +173,7 @@ public struct ChatComposer: View {
         Self.lerp(progress, 12, onMinimize == nil ? 8 : 2)
     }
 
-    /// Outer padding around the capsule: in pill mode the chat-surface
-    /// itself is small (no transcript fade above), so we drop the top
-    /// padding; in full mode we restore the top/bottom ring that matches the
-    /// prior composer.
     private var outerTopPadding: CGFloat { Self.lerp(progress, 0, 10) }
-    /// A flat 16pt at every progress (was 12 pill / 14 full): a slightly
-    /// narrower pill so its edges line up with the accessory flank chevrons'
-    /// own 20pt screen-edge inset (see `ComposerAccessoryLayer`). Applies to
-    /// both targets — SuperOS's composer narrows by the same few points.
     private var outerSidePadding: CGFloat { Self.lerp(progress, 16, 16) }
     private var outerBottomPadding: CGFloat { Self.lerp(progress, 14, 14) }
 
@@ -279,13 +193,7 @@ public struct ChatComposer: View {
                 bottom: capsuleBottomPadding,
                 trailing: capsuleTrailingPadding
             ))
-            // Composer body is passive Liquid Glass — a raised glass capsule
-            // that casts a real elevation shadow. The shadow is intentional: in
-            // pill mode it falls on the applet behind the floating composer. The
-            // chat panel inflates its `.mask` in pill / full-screen states (see
-            // `ChatScreen.verticalMaskBleed`) so that shadow reaches the applet
-            // instead of being clipped to the panel. The mic keeps its own tinted
-            // glass; the hairline overlay below is the focus affordance.
+            // ChatScreen.verticalMaskBleed leaves room for this glass shadow over the applet.
             .superGlassSurface(in: RoundedRectangle(cornerRadius: 26, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
@@ -307,30 +215,16 @@ public struct ChatComposer: View {
             )
             .opacity(gradientOpacity)
         )
-        // A simple tap when the composer becomes active (the user tapped in to
-        // type). Fires on the focus-gain edge, so it also marks a programmatic
-        // focus (e.g. auto-focus after New Chat). That New Chat path is a
-        // deliberate two-stage feel: `.primary` (heavy) when the create button
-        // is pressed, then this `.selection` (medium) ~a beat later when the
-        // composer is focused and ready — "created … now type." Intentional, not
-        // a stray double-buzz.
+        // New Chat intentionally plays creation feedback first, then focus feedback when ready to type.
         .onChange(of: isFocused) { _, focused in
             if focused { hapticsEngine.play(.selection) }
         }
     }
 
-    /// Accent glow shown only while the editor is focused — pure focus
-    /// feedback layered on top of the glass capsule. Unfocused it's `.clear`,
-    /// leaving just the capsule's own glass elevation shadow at rest.
     private var focusGlowColor: Color {
         isFocused ? theme.accent.opacity(0.12) : .clear
     }
 
-    /// Horizontal strip of attached verse-reference pills above the text
-    /// editor. Hidden in pill mode (`editorOpacity` near zero) — there's
-    /// no room — so references added while the composer is minimized
-    /// surface only once it expands. Scrolls horizontally when the pills
-    /// overflow the composer width.
     @ViewBuilder
     private var referencesStrip: some View {
         if !references.isEmpty && editorOpacity > 0.05 {
@@ -352,10 +246,7 @@ public struct ChatComposer: View {
     @ViewBuilder
     private var editorSlot: some View {
         ZStack(alignment: .leading) {
-            // Pill label sits behind the editor in the same slot so the
-            // trailing button stays on the right at every progress and
-            // the row's height doesn't jump as the morph crosses the
-            // transition band.
+            // Share one slot to keep the trailing button and row height stable through the morph.
             Text("Chat with Super")
                 .font(typography.font(size: editorBase))
                 .foregroundStyle(theme.inkFaint)
@@ -365,9 +256,7 @@ public struct ChatComposer: View {
             editor
                 .opacity(editorOpacity)
                 .disabled(!editorInteractive)
-                // Keep the editor out of the accessibility tree below the
-                // interactivity threshold so VoiceOver doesn't read an
-                // invisible text field over the pill label.
+                // Exclude the invisible editor from VoiceOver.
                 .accessibilityHidden(!editorInteractive)
         }
     }
@@ -407,11 +296,8 @@ public struct ChatComposer: View {
         }
         .frame(height: footerHeight, alignment: .top)
         .opacity(footerOpacity)
-        // Clip the slot so the partially-faded footer doesn't bleed
-        // outside its allotted height during the morph.
         .clipped()
-        // Stops VoiceOver/Switch Control from focusing the dropdown when
-        // it's visually collapsed in pill mode.
+        // Hide the collapsed dropdown from accessibility while allowing an active drag to finish.
         .allowsHitTesting(footerOpacity > 0.05 || isMinimizeDragging)
         .accessibilityHidden(footerOpacity <= 0.05)
     }
@@ -515,19 +401,12 @@ public struct ChatComposer: View {
         .accessibilityLabel("Voice input")
     }
 
-    /// Dimmed mic for the on-device-recognizer-unavailable case. Same
-    /// shape as `micButton` but disabled and painted in faded ink so the
-    /// button still anchors the trailing slot without inviting taps.
     private var micButtonDimmed: some View {
         Button(action: {}) {
             Image(systemName: "mic.slash")
                 .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft.opacity(0.4))
                 .frame(width: 34, height: 34)
-                // Passive glass: this button is `.disabled(true)`, so the
-                // interactive variant's touch response + hit-shape would be
-                // dead weight. Same tinted regular glass as `micButton`, minus
-                // the interactivity.
                 .superGlassSurface(in: Circle())
         }
         .buttonStyle(.plain)
@@ -536,11 +415,6 @@ public struct ChatComposer: View {
         .accessibilityHint("On-device speech recognition isn't available for your language.")
     }
 
-    /// Mid-dictation stop affordance: accent-tinted call-to-action glass with a
-    /// stop glyph and an animated outer ring that pulses outward to signal
-    /// "still recording." The pulse overlay is suppressed when Reduce
-    /// Motion is on; the static button still flips so the user gets the
-    /// affordance change either way.
     private var recordingButton: some View {
         Button(action: onStopRecording) {
             Image(systemName: "stop.fill")
@@ -586,18 +460,12 @@ public struct ChatComposer: View {
         onSubmit(value)
     }
 
-    // MARK: - Math helpers
-
-    /// Linear interpolation between `a` and `b` by `t` (clamped to [0, 1]).
     private static func lerp(_ t: Double, _ a: CGFloat, _ b: CGFloat) -> CGFloat {
         let clamped = min(1, max(0, t))
         return a + (b - a) * CGFloat(clamped)
     }
 
-    /// Hermite (3t² − 2t³) smoothstep mapping `value` from `[from, to]`
-    /// onto `[0, 1]`. Outside that band the result clamps. Used to fade
-    /// composer subviews around progress milestones without the kink a
-    /// linear ramp would leave at the band endpoints.
+    /// Smooth endpoints avoid the visual kink of a linear opacity ramp.
     private static func smoothstep(_ value: Double, from: Double, to: Double) -> Double {
         guard to > from else { return value >= to ? 1 : 0 }
         let t = min(1, max(0, (value - from) / (to - from)))

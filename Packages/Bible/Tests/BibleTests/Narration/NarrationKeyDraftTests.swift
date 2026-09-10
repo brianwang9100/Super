@@ -1,7 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Protects saved-key masking, replacement, and draft cleanup without reading a Keychain secret.
 @Suite("Narration key draft")
 struct NarrationKeyDraftTests {
     @Test func savedKeyShowsOnlySyntheticBullets() {

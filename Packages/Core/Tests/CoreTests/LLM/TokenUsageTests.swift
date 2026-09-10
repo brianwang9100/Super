@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Core
 
-/// Coverage for `TokenUsage`'s cache-token fields: backward-compatible Codable
-/// decoding of pre-cache payloads, round-tripping with the new fields, and the
-/// defaulted-init `Equatable` behavior the provider tests rely on.
 @Suite("TokenUsage cache fields")
 struct TokenUsageTests {
     @Test("legacy JSON without cache keys decodes with nil cache fields")

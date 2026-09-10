@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `FinishedRunsRequest` — the hub's "Recently finished" source:
-/// terminal, non-cancelled runs newest-completed-first, each projected with its
-/// book names and unit tallies.
 @Suite("FinishedRunsRequest")
 struct FinishedRunsRequestTests {
     private func makeFixture() throws -> (GRDBBulkAnnotationLedger, BibleDatabase) {
@@ -91,17 +88,15 @@ struct FinishedRunsRequestTests {
     @Test("active and cancelled runs are excluded; terminal runs sort newest-first")
     func excludesActiveAndCancelledAndSorts() async throws {
         let (ledger, database) = try makeFixture()
-        // Active (running) — excluded.
         try await ledger.createRun(
             run("active", status: .running, completedAt: nil),
             units: [unit("a0", run: "active", ordinal: 0, book: "ROM", name: "Romans", chapter: 1, state: .generating)]
         )
-        // Cancelled — terminal but a deliberate abort, excluded.
+        // Cancelled runs are deliberate aborts and stay out of history.
         try await ledger.createRun(
             run("cancelled", status: .cancelled, completedAt: Date(timeIntervalSince1970: 50)),
             units: [unit("c0", run: "cancelled", ordinal: 0, book: "GEN", name: "Genesis", chapter: 1, state: .done, produced: 2)]
         )
-        // Two completed runs at different times.
         try await ledger.createRun(
             run("older", status: .completed, completedAt: Date(timeIntervalSince1970: 100)),
             units: [unit("o0", run: "older", ordinal: 0, book: "ROM", name: "Romans", chapter: 1, state: .done, produced: 1)]

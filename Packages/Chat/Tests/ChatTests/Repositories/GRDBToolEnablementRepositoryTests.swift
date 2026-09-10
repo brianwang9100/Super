@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBToolEnablementRepository` — conformance to Core's
-/// `ToolEnablementRepository` and persistence of toggles.
 @Suite("GRDBToolEnablementRepository")
 struct GRDBToolEnablementRepositoryTests {
 

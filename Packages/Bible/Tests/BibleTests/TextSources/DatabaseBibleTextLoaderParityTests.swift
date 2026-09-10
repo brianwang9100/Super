@@ -3,9 +3,7 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Exhaustive bundled database/JSON equality and verse-contiguity checks share
-/// one decode of each JSON book. All 4,756 chapters remain covered; each
-/// translation owns an independent database connection and test invocation.
+/// Share one JSON decode per book across parity and continuity checks; each translation owns its DB connection.
 @Suite("DatabaseBibleTextLoader parity with the JSON oracle")
 struct DatabaseBibleTextLoaderParityTests {
     @Test("every chapter matches JSON and preserves verse continuity", arguments: BibleTranslation.allCases)
@@ -45,8 +43,7 @@ struct DatabaseBibleTextLoaderParityTests {
         #expect(storedCount == compared)
     }
 
-    /// Preserves the BSB ingest regression: multiple verse markers on one source
-    /// line previously disappeared. Only documented textual variants may be gaps.
+    /// Multiple verse markers on one source line previously disappeared during BSB ingestion.
     private func expectContiguousVerses(
         _ chapter: BibleChapter, bookId: String, translation: BibleTranslation
     ) {
@@ -71,18 +68,14 @@ struct DatabaseBibleTextLoaderParityTests {
         }
     }
 
-    /// A `(book, chapter, verse)` position absent from one or more critical-
-    /// text translations but present in the Textus-Receptus-based KJV.
     private struct TextualVariant: Hashable {
         let book: String
         let chapter: Int
         let verse: Int
     }
 
-    /// The 16 textual-variant verses critical-text translations (ASV, BSB) and
-    /// the partially-hybrid WEB omit. KJV (Textus Receptus) includes all of
-    /// them; ASV and BSB omit all 16; WEB omits a subset of 4. Any verse-gap
-    /// outside this set in any bundled translation indicates a converter bug.
+    /// These textual variants account for the only allowed gaps: ASV/BSB omit all 16,
+    /// WEB omits four, and KJV includes all. Other gaps indicate converter bugs.
     private static let textualVariantOmissions: Set<TextualVariant> = [
         TextualVariant(book: "MAT", chapter: 17, verse: 21),
         TextualVariant(book: "MAT", chapter: 18, verse: 11),

@@ -1,8 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleBookmarkColor` — the stable raw values persisted in
-/// `BibleBookmarkRecord.colorId`, and the theme-aware ribbon tint.
 @Suite("BibleBookmarkColor")
 struct BibleBookmarkColorTests {
     @Test("the raw values are the stable identifiers persisted to the database")

@@ -4,27 +4,12 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for the note surface on `BibleScreenViewModel`:
-///
-/// - list / compose presentation (`presentNoteList`, `composeNote`,
-///   `composeNoteForSelection`, `dismissNoteList`)
-/// - per-row CRUD (`createNote`, `updateNote`, `deleteNote`) driving the
-///   injected repository, with trimming, blank-body guards, and the
-///   failure toast
-/// - `citationLabel(for:)` formatting for note specs
-///
-/// Note-write tests drain the chained write task via
-/// `_waitForPendingNoteWrite()` before asserting, so a captured-state read
-/// never races the task that mutates it (AGENTS.md §2).
 @Suite("BibleScreenViewModel notes")
 @MainActor
 struct BibleScreenViewModelNotesTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// Strict in-memory note-repository double capturing each write. An
-    /// actor so the VM's `@Sendable` write closures reach it across the
-    /// concurrency boundary; `list` traps because the VM never reads through
-    /// the repository (reads are the list sheet's `@Query`).
+    // The sheet reads through @Query; view-model repository reads must fail the spy.
     private actor SpyNoteRepository: BibleNoteRepository {
         struct UpdateCall: Sendable {
             let id: String
@@ -48,8 +33,6 @@ struct BibleScreenViewModelNotesTests {
         func deleteOne(id: String) async throws { deleted.append(id) }
     }
 
-    /// A note repository whose every write throws — drives the failure-toast
-    /// path. `Equatable`-free sentinel error; the message text is what matters.
     private struct WriteFailed: Error {}
     private actor FailingNoteRepository: BibleNoteRepository {
         func list(
@@ -110,7 +93,6 @@ struct BibleScreenViewModelNotesTests {
     func composeForSelectionUsesBoundingRange() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // A gapped selection (16, 18) collapses to one note on 16–18.
         viewModel.toggleVerse(18)
         viewModel.toggleVerse(16)
         viewModel.composeNoteForSelection()
@@ -141,9 +123,7 @@ struct BibleScreenViewModelNotesTests {
     func selectionSpecBoundsGappedSelectionWithoutSideEffects() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        // Gapped (16, 18) collapses to the bounding span 16–18, and — unlike
-        // composeNoteForSelection — reading the spec must not clear the
-        // selection (the action sheet captures it, then dismisses itself).
+        // Reading a gapped selection's bounding span must not clear the selection before sheet dismissal.
         viewModel.toggleVerse(18)
         viewModel.toggleVerse(16)
         #expect(viewModel.selectionNoteSpec
@@ -247,11 +227,6 @@ struct BibleScreenViewModelNotesTests {
 
     @Test("a note created through the view model is visible through ChapterNotesRequest.fetch")
     func createIsObservableThroughReaderQuery() async throws {
-        // The integration the reader relies on: the VM's create path lands a
-        // row in the same table the chapter reader's `ChapterNotesRequest`
-        // `@Query` observes, so the trailing note glyph appears without the
-        // reader reloading. Uses the real GRDB repository + an in-memory DB
-        // rather than a spy, since the point is the round-trip.
         let database = try BibleDatabase.makeInMemory()
         let repository = GRDBBibleNoteRepository(database: database)
         let viewModel = makeViewModel(

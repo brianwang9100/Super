@@ -8,9 +8,7 @@ import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request that observes every non-deleted label, ordered by
-/// name (case-insensitive). `@Query(ActiveLabelsRequest())` in a SwiftUI
-/// view re-renders automatically when labels change.
+/// Observes non-deleted labels in case-insensitive name order.
 public struct ActiveLabelsRequest: ValueObservationQueryable {
     public static var defaultValue: [LabelRecord] { [] }
 

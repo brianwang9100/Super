@@ -3,15 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// End-to-end tests for `AnthropicNativeLLMProvider`. Exercises the request
-/// shape (URL, `x-api-key` + `anthropic-version` headers, `max_tokens`
-/// derivation, thinking/temperature interaction, system/tool/search-result
-/// translation) and the full streaming pipeline by replaying recorded Messages
-/// SSE (Server-Sent Events) fixtures through a fake HTTP client. No real
-/// network — ever (per Chat `AGENTS.md`).
-///
-/// **Stream contract**: every test asserts the stream terminates with
-/// `.messageComplete`; failures surface as `.error` events, never throws.
 @Suite("AnthropicNativeLLMProvider")
 struct AnthropicNativeLLMProviderTests {
     private let baseURL = URL(string: "https://api.anthropic.com/v1")!
@@ -72,9 +63,7 @@ struct AnthropicNativeLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
-    /// The `message_start` cache-token counts (`cache_creation_input_tokens` /
-    /// `cache_read_input_tokens`) surface on the terminal `.messageComplete`
-    /// usage. Anthropic reports them outside `inputTokens`, so all three coexist.
+    /// Anthropic reports cache counts outside inputTokens; all three coexist.
     @Test func cachedFixtureSurfacesCacheTokensInUsage() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-cached"))
         let provider = makeProvider(http: http)
@@ -93,10 +82,7 @@ struct AnthropicNativeLLMProviderTests {
         )))
     }
 
-    /// The latch is first-non-nil-wins: when `message_delta` carries cache
-    /// counts that differ from `message_start`, the `message_start` values are
-    /// kept and the delta's are dropped. Guards the latch against a future
-    /// refactor that would otherwise leave every other test green.
+    /// Cache usage is first-non-nil-wins, even when later deltas disagree.
     @Test func messageDeltaCacheTokensDoNotClobberMessageStartCounts() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-cached-latch"))
         let provider = makeProvider(http: http)
@@ -107,8 +93,6 @@ struct AnthropicNativeLLMProviderTests {
             temperature: 0.5
         ))
 
-        // Fixture: message_start reports read=200/creation=100; message_delta
-        // reports read=888/creation=999. First-wins → 200/100 survive.
         #expect(events.last == .messageComplete(usage: TokenUsage(
             inputTokens: 12,
             outputTokens: 3,
@@ -117,8 +101,6 @@ struct AnthropicNativeLLMProviderTests {
         )))
     }
 
-    /// Chunked delivery must produce the identical event stream — proves the SSE
-    /// parser's partial-frame handling holds for the Messages framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {
         let whole = try await collect(makeProvider(http: FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
@@ -136,10 +118,6 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.0
         ))
 
-        // The `signature_delta` accumulates on the thinking block and is
-        // emitted once at close-out (just before `.messageComplete`) so
-        // `ChatSession` can persist it for verbatim replay; thinking and
-        // text occupy distinct normalized block indices (0 then 1).
         #expect(events.map(Self.kind) == [
             "messageStart",
             "contentBlockStart(thinking)",
@@ -159,11 +137,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func redactedThinkingSuppressesTheSignature() async throws {
-        // A turn containing a `redacted_thinking` block is not replayable
-        // from our persistence model (the opaque payload can't round-trip),
-        // so no `.thinkingSignature` may be emitted — the request gate then
-        // falls back to thinking-off on the follow-up instead of shipping a
-        // partial (rejected) replay.
+        // Redacted payloads cannot round-trip through persistence. Withholding a signature
+        // makes the continuation disable thinking instead of sending a rejected partial replay.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-thinking-redacted"))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "hi")],
@@ -171,15 +146,11 @@ struct AnthropicNativeLLMProviderTests {
         ))
 
         #expect(!events.map(Self.kind).contains("thinkingSignature"))
-        // The visible thinking trace still streams.
         #expect(events.contains(.thinkingDelta(index: 0, text: "partially visible")))
     }
 
     @Test func signedToolLoopHistoryReplaysThinkingBlockFirstAndKeepsThinkingEnabled() async throws {
-        // The Messages API requires the last assistant turn of a tool loop
-        // to START with its original signed thinking block, verbatim. With
-        // a replayable history, `thinking` stays enabled and the block
-        // leads the assistant content on the wire.
+        // A tool continuation must lead with its original signed thinking block, verbatim.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "weather?"),
@@ -207,11 +178,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func unsignedToolLoopHistoryOmitsThinkingParameter() async throws {
-        // Legacy rows (pre-v8), redacted turns, and other providers' traces
-        // carry no signature — the block can't be replayed, and shipping
-        // the continuation with `thinking` enabled would 400. The request
-        // must omit the `thinking` parameter (the API tolerates thinking-off
-        // against a thinking-bearing history) and skip the unsigned block.
+        // Legacy, redacted, and foreign traces lack replayable signatures. Disable thinking
+        // and omit unsigned blocks to avoid a rejected tool continuation.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "weather?"),
@@ -229,7 +197,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         #expect(body["thinking"] == nil)
-        // Temperature comes back (it is only omitted alongside thinking).
         #expect(body["temperature"] != nil)
         let messages = try #require(body["messages"] as? [[String: Any]])
         let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
@@ -237,9 +204,7 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func toolFreeThinkingHistoryKeepsThinkingEnabled() async throws {
-        // The gate only bites on the tool-continuation shape: a plain
-        // history whose last assistant turn issued no tool calls keeps
-        // thinking enabled even when its trace is unsigned.
+        // Unsigned history only disables thinking for tool continuations.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "hello"),
@@ -263,14 +228,12 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [.nativeSearchSentinel], temperature: 0.7
         ))
 
-        // searchStarted carries the server_tool_use query and precedes the text.
         #expect(events.contains(.searchStarted(query: "mars rover news")))
         let searchIndex = events.firstIndex(of: .searchStarted(query: "mars rover news"))
         let firstTextIndex = events.firstIndex { if case .textDelta = $0 { return true } else { return false } }
         #expect(searchIndex != nil && firstTextIndex != nil && searchIndex! < firstTextIndex!)
 
-        // The server_tool_use / web_search_tool_result blocks consume no
-        // normalized index, so the visible text block is index 0.
+        // Server-side search blocks consume no normalized content index.
         #expect(events.contains(.textDelta(index: 0, text: "The rover found ice.")))
 
         let citations = events.flatMap { event -> [SourceCitation] in
@@ -281,8 +244,7 @@ struct AnthropicNativeLLMProviderTests {
         #expect(citation.url == URL(string: "https://www.nasa.gov/mars")!)
         #expect(citation.title == "NASA Mars")
         #expect(citation.snippet == "found ice")
-        // The encrypted echo is stashed from the result block by URL and the
-        // index from the citation — both must round-trip verbatim.
+        // Encrypted content comes from the result; the encrypted index comes from its citation.
         #expect(citation.providerEcho?.kind == AnthropicWebSearch.echoKind)
         #expect(citation.providerEcho?.encryptedContent == "ENC_NASA")
         #expect(citation.providerEcho?.encryptedIndex == "IDX_1")
@@ -296,8 +258,6 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.0
         ))
 
-        // The tool block is opened on content_block_start and the `.toolUse`
-        // payload emitted on content_block_stop (args fully accumulated).
         #expect(events.map(Self.kind) == [
             "messageStart", "contentBlockStart(toolUse)", "toolUse", "contentBlockStop", "messageComplete",
         ])
@@ -328,8 +288,7 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func sseErrorAfterAnOpenTextBlockClosesItBeforeTheError() async throws {
-        // The SSE `error` path must close an open block before the error so the
-        // later `closeOut()` doesn't emit `.contentBlockStop` after `.error`.
+        // Close the open block before the error; closeOut() must not emit a late stop.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-error-after-text"))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -342,9 +301,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func transportErrorAfterAnSSEErrorDoesNotDoubleReport() async throws {
-        // An SSE `error` fires, then the transport also drops. The catch must
-        // not yield a second, less-specific error over the already-surfaced
-        // provider error (`ChatSession` keeps the last one).
+        // ChatSession keeps the last error. A later transport failure must not overwrite
+        // the more specific SSE error.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("anthropic-error-only").utf8)],
             error: HTTPError.badStatus(500, body: "")
@@ -360,10 +318,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func transportErrorWithPartialToolCallDoesNotEmitASpuriousDecodingError() async throws {
-        // A `tool_use` whose argument deltas are mid-stream when the transport
-        // drops: the open block's start is balanced with a stop, but no
-        // `.toolUse` (and no `.decodingFailed`) is emitted — only the transport
-        // error, which `ChatSession` keeps.
+        // Balance the partial tool block without emitting a call or a decoding error;
+        // the transport failure must remain the reported error.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("anthropic-partial-toolcall").utf8)],
             error: HTTPError.badStatus(503, body: "")
@@ -382,9 +338,6 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func unsupportedModelYieldsErrorBeforeCompletion() async throws {
-        // A model whose id isn't in `supportedModels` is rejected before any
-        // request is issued; the failure still rides the stream contract
-        // (messageStart-first, error immediately before the terminal).
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let unknown = LLMModel(id: "claude-not-configured", displayName: "Nope", maxContextTokens: 200_000)
         let events = try await collect(makeProvider(http: http).stream(
@@ -418,7 +371,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let request = try #require(http.observed.all.first)
         #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/messages")
-        // Anthropic authenticates with x-api-key + a version header, NOT bearer.
         #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk-test")
         #expect(request.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
@@ -440,10 +392,8 @@ struct AnthropicNativeLLMProviderTests {
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
         ))
         let body = try Self.decodeBody(http)
-        // min(200_000 / 4, 4096) = 4096.
         #expect(body["max_tokens"] as? Int == 4096)
-        // Thinking-capable model: thinking enabled, temperature omitted (the API
-        // rejects any value other than 1 with thinking).
+        // Thinking rejects temperatures other than 1, so omit the parameter.
         let thinking = try #require(body["thinking"] as? [String: Any])
         #expect(thinking["type"] as? String == "enabled")
         #expect(thinking["budget_tokens"] as? Int == 2048)
@@ -457,7 +407,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         #expect(body["thinking"] == nil)
-        // Anthropic accepts [0, 1]; out-of-range clamps rather than rejects.
         #expect(body["temperature"] as? Double == 1.0)
     }
 
@@ -471,8 +420,6 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.5
         ))
         let body = try Self.decodeBody(http)
-        // An untagged (.volatile) system message becomes a single unmarked
-        // text block — no `cache_control`.
         let system = try Self.systemBlocks(body)
         #expect(system.count == 1)
         #expect(system[0]["type"] as? String == "text")
@@ -500,7 +447,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let system = try Self.systemBlocks(body)
-        // Stable bucket first (carrying the ephemeral marker), volatile second.
         #expect(system.count == 2)
         #expect(system[0]["text"] as? String == "Stable briefing.")
         let marker = try #require(system[0]["cache_control"] as? [String: Any])
@@ -525,9 +471,7 @@ struct AnthropicNativeLLMProviderTests {
         #expect((system[0]["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
     }
 
-    /// Defensive demotion: once a volatile system block appears, a later
-    /// stable-hinted one demotes into the volatile bucket (in order, unmarked),
-    /// so the stable bucket stays a contiguous leading run.
+    /// Demote misplaced stable hints to keep the cached prefix contiguous.
     @Test func stableSystemAfterVolatileDemotesToVolatileBucket() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         _ = try await collect(makeProvider(http: http).stream(
@@ -544,7 +488,6 @@ struct AnthropicNativeLLMProviderTests {
         #expect(system.count == 2)
         #expect(system[0]["text"] as? String == "Stable A.")
         #expect((system[0]["cache_control"] as? [String: Any]) != nil)
-        // B and the misplaced C join the volatile bucket, in order, unmarked.
         #expect(system[1]["text"] as? String == "Volatile B.\n\nMisplaced stable C.")
         #expect(system[1]["cache_control"] == nil)
     }
@@ -559,7 +502,6 @@ struct AnthropicNativeLLMProviderTests {
         let messages = try #require(body["messages"] as? [[String: Any]])
         let lastContent = try #require(messages.last?["content"] as? [[String: Any]])
         let lastBlock = try #require(lastContent.last)
-        // The marker is additive — the underlying text block is unchanged.
         #expect(lastBlock["type"] as? String == "text")
         #expect(lastBlock["text"] as? String == "hi")
         #expect((lastBlock["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
@@ -581,17 +523,12 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let messages = try #require(body["messages"] as? [[String: Any]])
-        // The trailing tool result rides a user message; its last block (the
-        // tool_result) carries the moving breakpoint.
         let lastContent = try #require(messages.last?["content"] as? [[String: Any]])
         let lastBlock = try #require(lastContent.last)
         #expect(lastBlock["type"] as? String == "tool_result")
         #expect((lastBlock["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
     }
 
-    /// `.cached` encodes its inner block verbatim plus a merged
-    /// `cache_control` field — the encoder-merge contract the moving
-    /// breakpoint relies on.
     @Test func cachedBlockEncodesInnerBlockPlusMergedCacheControl() throws {
         let data = try JSONEncoder().encode(AnthropicContentBlock.cached(.text("hello")))
         let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -600,14 +537,9 @@ struct AnthropicNativeLLMProviderTests {
         #expect((json["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
     }
 
-    /// The native adapter doesn't override the options overload — it uses
-    /// explicit `cache_control`, not a routing key — so the protocol default
-    /// forwards the 5-arg call to the 4-arg and `options` never touches the
-    /// wire (the conversation id must not leak into an Anthropic request).
+    /// Anthropic uses cache_control; the conversation routing key must not reach the wire.
     @Test func optionsOverloadLeavesTheAnthropicRequestUnchanged() async throws {
-        // Compared as parsed JSON (NSDictionary deep-equality) rather than raw
-        // bytes: Foundation's JSONEncoder doesn't guarantee keyed-container
-        // order, so the byte stream can differ while the request is identical.
+        // Compare parsed JSON because keyed-container encoding order is unspecified.
         func body(passingOptions: Bool) async throws -> NSDictionary {
             let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
             let provider = makeProvider(http: http)
@@ -643,8 +575,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let tools = try #require(body["tools"] as? [[String: Any]])
-        // The custom tool serializes with input_schema; the sentinel becomes the
-        // versioned web_search server tool and never appears as a custom tool.
         let names = tools.compactMap { $0["name"] as? String }
         #expect(names.contains("get_weather"))
         #expect(names.contains("web_search"))
@@ -666,9 +596,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func toolResultRidesAUserMessageAndMergesWithAdjacentUserText() async throws {
-        // Anthropic has no `tool` role: a Core `.tool` message becomes a
-        // `user`-role message with a tool_result block, and an immediately
-        // following user message merges into it (strict role alternation).
+        // Anthropic has no tool role. Results use user blocks and merge with adjacent
+        // user messages to preserve role alternation.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "weather?"),
@@ -686,7 +615,6 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let messages = try #require(body["messages"] as? [[String: Any]])
-        // user, assistant, then a single merged user (tool_result + "thanks").
         #expect(messages.map { $0["role"] as? String } == ["user", "assistant", "user"])
 
         let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
@@ -703,12 +631,8 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func assistantFirstHistoryGetsASyntheticUserOpener() async throws {
-        // The Messages API requires the first message to be `user`-role,
-        // and `.system` rows (compaction-checkpoint summaries included)
-        // are hoisted into the top-level `system` parameter. A checkpoint
-        // persisted by an older build can open the post-checkpoint window
-        // on an assistant turn — the adapter must repair that shape
-        // rather than replay it verbatim.
+        // Old checkpoints may leave an assistant-first window after system rows are
+        // hoisted. Repair it to satisfy the API requirement for a leading user message.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .system, text: "Summary of earlier conversation (compacted): stuff happened."),
@@ -725,15 +649,12 @@ struct AnthropicNativeLLMProviderTests {
         ))
         let body = try Self.decodeBody(http)
         let messages = try #require(body["messages"] as? [[String: Any]])
-        // Synthetic user opener, then assistant tool_use, then the
-        // tool_result riding a user message.
         #expect(messages.map { $0["role"] as? String } == ["user", "assistant", "user"])
         let opener = try #require(messages[0]["content"] as? [[String: Any]])
         #expect(opener[0]["type"] as? String == "text")
         #expect(opener[0]["text"] as? String == "(Conversation resumed after context compaction.)")
         let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
         #expect(assistantContent.contains { $0["type"] as? String == "tool_use" })
-        // The summary still rides the system param, untouched by the repair.
         #expect(try Self.systemText(body).contains("stuff happened"))
     }
 
@@ -755,10 +676,7 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func searchResultBlockReplaysAsWebSearchToolResultWithEncryptedContent() async throws {
-        // A prior assistant turn's stored citations (with the Anthropic echo)
-        // ride back as a `.searchResult` block, which must serialize into a
-        // `web_search_tool_result` content block carrying the verbatim
-        // `encrypted_content` before the assistant's text.
+        // Replay the opaque search result before text so its citations remain valid.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let cited = SourceCitation(
             id: "c1",
@@ -785,11 +703,9 @@ struct AnthropicNativeLLMProviderTests {
         let body = try Self.decodeBody(http)
         let messages = try #require(body["messages"] as? [[String: Any]])
         let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
-        // web_search_tool_result precedes the text.
         #expect(assistantContent[0]["type"] as? String == "web_search_tool_result")
         #expect(assistantContent[1]["type"] as? String == "text")
-        // The synthetic tool_use_id is deterministic (FNV-1a over the result
-        // URLs) so the payload is reproducible — see the adapter's stableHash.
+        // Stable FNV-1a URL IDs let replayed citations reference their synthetic server tool.
         let toolUseID = try #require(assistantContent[0]["tool_use_id"] as? String)
         #expect(toolUseID.hasPrefix("srvtoolu_"))
         #expect(toolUseID != "srvtoolu_")
@@ -800,8 +716,6 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func searchResultWithoutAnthropicEchoIsNotReplayed() async throws {
-        // Citations from another provider (no Anthropic echo) replayed into an
-        // Anthropic turn produce no web_search_tool_result — only the text.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let foreign = SourceCitation(
             id: "c1", title: "T", url: URL(string: "https://example.com/a")!
@@ -825,10 +739,7 @@ struct AnthropicNativeLLMProviderTests {
 
     // MARK: - Tool wire-name sanitization (dot-namespaced tool IDs)
 
-    /// Regression: Anthropic rejects dot-namespaced names
-    /// (`tools.0.custom.name: String should match pattern
-    /// '^[a-zA-Z0-9_-]{1,128}$'`), which 400'd every turn that advertised
-    /// Super's `time.now`-style tools.
+    // Anthropic tool names reject dots; encode local IDs for the wire.
     @Test func dotNamespacedToolNameIsSanitizedInToolDefinitions() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         _ = try await collect(makeProvider(http: http).stream(
@@ -841,8 +752,6 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func dotNamespacedHistoryToolCallEncodesTheSanitizedWireName() async throws {
-        // The replayed assistant `tool_use` block must carry the same
-        // sanitized wire name as the tool definition.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
         let history: [LLMMessage] = [
             LLMMessage(role: .user, text: "time?"),
@@ -864,8 +773,7 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func streamedToolCallNameIsRestoredToTheRegistryName() async throws {
-        // The model calls back with the wire name; the emitted `.toolUse`
-        // must carry the original dot name for the `ToolRegistry` lookup.
+        // Restore the original local ID before ToolRegistry lookup.
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-toolcall-dotname"))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "time?")],
@@ -886,13 +794,10 @@ struct AnthropicNativeLLMProviderTests {
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    /// The request's `system` field as the typed block array it now always is
-    /// (`[{type:"text", text:…, cache_control?:…}]`).
     private static func systemBlocks(_ body: [String: Any]) throws -> [[String: Any]] {
         try #require(body["system"] as? [[String: Any]])
     }
 
-    /// All `system` block text joined with "\n\n" — the bytes the model sees.
     private static func systemText(_ body: [String: Any]) throws -> String {
         try systemBlocks(body).compactMap { $0["text"] as? String }.joined(separator: "\n\n")
     }

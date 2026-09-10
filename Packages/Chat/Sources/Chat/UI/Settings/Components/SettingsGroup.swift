@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Rounded card container that hosts one or more `SettingsRow`s. Mirrors
-/// `SettingsGroup` from `settings.jsx`: 14pt radius, `--bg-raised` fill,
-/// 1pt faint border, hairline dividers between rows handled by the rows
-/// themselves via `borderBottom`.
 struct SettingsGroup<Content: View>: View {
     private let content: Content
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bounds correction to the tapped turn/layout context and stops at rendered arrival.
+/// Retries a bottom seek only while its original turn and layout remain current, stopping after rendered arrival.
 struct MessageListBottomScrollRequest<Content: Equatable> {
     private var requestedContent: Content?
     private var attempts = 0

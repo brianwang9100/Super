@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Binds local reading state to the reactive chapter column without shell or narration lifecycle effects.
 struct BibleChapterContent: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -33,17 +32,10 @@ struct BibleChapterContent: View {
                 navigation: navigation,
                 layout: layout,
                 currentNarratingVerse: currentNarratingVerse,
-                // Per spec: auto-scroll only when the user hasn't picked
-                // a selection of their own.
+                // Do not let narration auto-scroll override an active verse selection.
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 pendingScrollVerse: viewModel.pendingScrollVerse,
-                // `bottomOverlayKind` tells the reader which sheet is up so its
-                // paired selection scroll runs only for the action sheet —
-                // lifting the just-selected verse clear of the sheet — while
-                // narration's own follow-scroll stays the sole driver as it
-                // plays. It also sizes the reader's bottom scroll reserve to the
-                // presented sheet's height, so the last verses scroll clear of
-                // the floating, scrim-less sheet instead of hiding behind it.
+                // Selection and narration use different scroll drivers; reserve the active sheet's height.
                 bottomOverlayKind: overlayKind,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
@@ -62,12 +54,9 @@ struct BibleChapterContent: View {
                 onScroll: onScroll,
                 onFooterVisible: onFooterVisible
             )
-            // A fresh identity per chapter resets the scroll offset to the
-            // top and re-subscribes the highlight `@Query` when the reader
-            // steps.
+            // A chapter identity resets scroll position and the highlight query.
             .id(viewModel.position)
-            // Swap chapters instantly even when the jump happens inside the
-            // book picker's slide-down animation transaction.
+            // Do not inherit the book picker's dismissal animation.
             .transition(.identity)
         } else {
             unavailable

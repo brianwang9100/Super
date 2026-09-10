@@ -1,9 +1,7 @@
 import Testing
 @testable import Core
 
-/// Tests for `InMemoryKeychainClient`'s set / get / delete semantics. The
-/// real `AppleKeychainClient` isn't tested here because it requires a
-/// signed test target with keychain entitlements.
+// `AppleKeychainClient` requires a signed target with Keychain entitlements.
 @Suite("InMemoryKeychainClient")
 struct KeychainClientTests {
     @Test func setAndGetRoundTrips() async throws {

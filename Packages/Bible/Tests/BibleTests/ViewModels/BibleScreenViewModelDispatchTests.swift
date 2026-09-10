@@ -3,28 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleScreenViewModel`'s headless-dispatch surface added in
-/// PR 4 — the path that replaces the PR 3 "ships in a later update"
-/// toast with a real `bibleAnnotateRequested` publish + per-target
-/// dispatch tracking + retry.
-///
-/// Synchronization (per AGENTS.md §2 — no `Task.yield()` polling, no
-/// `async let` for subscription):
-///
-/// - **Capturing a *published* request**: subscribe in the *test* task
-///   (`let stream = await bus.events()`) *before* invoking the
-///   trigger. The actor call completes synchronously w.r.t. the test
-///   task, so the subscription is registered in the bus's continuations
-///   dict before the view-model's fire-and-forget publish task can fan
-///   out. `async let` for the subscription would re-introduce the race
-///   the in-tree review feedback already flagged.
-///
-/// - **Waiting for a *received* completion to flip view-model state**:
-///   register `viewModel._onNextDispatchCompletion` (test seam) before
-///   publishing. The callback fires after the *completion* envelope
-///   has been processed and the state updated — request echoes are
-///   filtered out so the callback doesn't race ahead of the actual
-///   completion.
 @Suite("BibleScreenViewModel headless dispatch")
 @MainActor
 struct BibleScreenViewModelDispatchTests {
@@ -52,11 +30,8 @@ struct BibleScreenViewModelDispatchTests {
         return viewModel
     }
 
-    /// Drain `stream` until the next `bibleAnnotateRequested` envelope
-    /// arrives. The caller must have subscribed to the bus
-    /// synchronously in the test task before invoking the publishing
-    /// action; otherwise the publish task may fan out before the
-    /// subscription is registered and the stream hangs.
+    /// Subscribe in the test task before triggering publication. An async-let subscription
+    /// can lose the event and hang this drain.
     private func drainNextRequest(stream: AsyncStream<SuperEvent>) async -> RecordReference {
         for await event in stream {
             if case .bibleAnnotateRequested(let reference) = event {
@@ -70,13 +45,8 @@ struct BibleScreenViewModelDispatchTests {
         )
     }
 
-    /// Publish a *completion* `event` and await the view model's
-    /// dispatch subscription processing it. Uses
-    /// `_onNextDispatchCompletion` as a continuation handle so the
-    /// assertion that follows sees the post-event state
-    /// deterministically. Request envelopes routed through this helper
-    /// will never resume the continuation (the seam filters them out)
-    /// — pass them to `bus.publish` directly instead.
+    /// Awaits completion processing through _onNextDispatchCompletion. Request envelopes
+    /// are filtered by that seam and would hang here; publish those directly.
     private func publishAndAwaitDispatch(
         _ event: SuperEvent,
         on bus: SuperEventBus,
@@ -108,8 +78,6 @@ struct BibleScreenViewModelDispatchTests {
         #expect(reference.displayLabel == "Romans 8")
         #expect(viewModel.dispatchStatusByTarget[spec] == .running(requestId: reference.id))
         #expect(viewModel.presentedAnnotationTarget == spec)
-        // The PR 3 toast must NOT fire on the dispatch path —
-        // user-visible feedback is the sheet, not a stub message.
         #expect(viewModel.toast == nil)
     }
 
@@ -118,7 +86,6 @@ struct BibleScreenViewModelDispatchTests {
         let bus = SuperEventBus()
         let viewModel = await makeViewModel(bus: bus)
 
-        // Verse-range target → the exact numbered text for that range.
         let verseStream = await bus.events()
         viewModel.triggerAnnotationGeneration(
             for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
@@ -128,7 +95,7 @@ struct BibleScreenViewModelDispatchTests {
         #expect(verseRef.snapshot.contains("\n29. "))
         #expect(verseRef.snapshot.contains("\n30. "))
 
-        // Whole-book target → no snapshot (the full book would be enormous).
+        // Full-book text would make the snapshot unbounded.
         let bookStream = await bus.events()
         viewModel.triggerAnnotationGeneration(for: .book(bookId: "ROM"))
         let bookRef = await drainNextRequest(stream: bookStream)
@@ -177,8 +144,6 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        // Drive the target into a real `.failed` status the way a
-        // regenerate-over-populated failure would.
         let stream = await bus.events()
         viewModel.triggerAnnotationGeneration(for: spec)
         let reference = await drainNextRequest(stream: stream)
@@ -191,11 +156,8 @@ struct BibleScreenViewModelDispatchTests {
 
         viewModel.clearFailedDispatchStatus(for: spec)
 
-        // No toast: a regenerate that fails over present cards is silent —
-        // the previous cards stay on screen and speak for themselves.
+        // Failed regeneration over existing cards stays silent and restores those cards.
         #expect(viewModel.toast == nil)
-        // Status cleared so the sheet keeps showing the still-present
-        // previous cards and never flips to the inline error state.
         #expect(viewModel.dispatchStatusByTarget[spec] == nil)
         #expect(viewModel.dispatchStatus(for: spec) == nil)
     }
@@ -240,9 +202,6 @@ struct BibleScreenViewModelDispatchTests {
             on: bus,
             through: viewModel
         )
-        // The running entry stays because no entry matched the
-        // unknown id — and it still carries the original request id,
-        // not the unrelated one.
         #expect(viewModel.dispatchStatusByTarget[spec] == .running(requestId: request.id))
     }
 

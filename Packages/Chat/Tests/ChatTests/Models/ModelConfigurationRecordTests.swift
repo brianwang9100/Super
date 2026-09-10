@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Unit coverage for `ModelConfigurationRecord` → Core `ModelConfiguration`
-/// projection, focused on the fields the record threads through verbatim.
 @Suite("ModelConfigurationRecord projection")
 struct ModelConfigurationRecordTests {
     private func record(searchBackend: String?) -> ModelConfigurationRecord {

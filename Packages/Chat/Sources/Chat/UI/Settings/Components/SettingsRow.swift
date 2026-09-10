@@ -1,22 +1,11 @@
 import SwiftUI
 
-/// One row inside a `SettingsGroup`. Mirrors `SettingsRow` from
-/// `settings.jsx`: leading icon · label · trailing value · trailing affordance
-/// (chevron when tappable, custom view when supplied).
-///
-/// Layout numbers track the React source: 14pt vertical padding, 18pt
-/// horizontal padding, 14pt gap between leading slot + label, 1pt
-/// `border-faint` hairline below when not the last row.
 struct SettingsRow<Trailing: View>: View {
     let icon: AnyView?
     let label: String
     let value: String?
     let isInteractive: Bool
     let borderBottom: Bool
-    /// Optional override for the spoken label. Use when the trailing slot
-    /// is a destructive affordance (e.g. the red "Delete" pill on the Data
-    /// pane) so VoiceOver hears "Clear chat history, deletes all chats"
-    /// instead of just "Clear chat history".
     let accessibilityHint: String?
     let trailing: Trailing
     let action: () -> Void
@@ -54,10 +43,6 @@ struct SettingsRow<Trailing: View>: View {
                         .accessibilityHidden(true)
                 }
                 Text(label)
-                    // Relative style so Dynamic Type scales the row label
-                    // alongside the rest of the system. Pixel reference is
-                    // 15.5pt at 1.0× — `.callout` is the closest stock
-                    // metric (16pt) that respects accessibility scaling.
                     .font(typography.font(.callout))
                     .foregroundStyle(theme.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -2,7 +2,6 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Covers the composer-safe-area geometry observed in the running shell.
 struct ScrollToBottomVisibilityTests {
     @Test("a focused short response does not count the composer inset twice")
     func focusedShortResponse() {

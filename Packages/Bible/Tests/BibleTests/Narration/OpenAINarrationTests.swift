@@ -5,7 +5,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Exercises opt-in persistence, credential ownership, bounded caching, and cancellation before audible playback.
 @Suite("OpenAI narration")
 @MainActor
 struct OpenAINarrationTests {
@@ -54,8 +53,7 @@ struct OpenAINarrationTests {
         service.skipToPreviousVerse()
         _ = await events.next()
         #expect(await events.next() == .started(verseNumber: 1))
-        // Completed buffers outside the current window cannot accumulate in
-        // memory; without a disk cache this older verse needs a fresh download.
+        // Without disk caching, a verse evicted from the bounded window must download again.
         #expect(await generator.requests == ["One", "Two", "One"])
         service.stop()
     }
@@ -410,7 +408,6 @@ struct OpenAINarrationTests {
         service.pause()
         #expect(await iterator.next() == .paused)
         await generator.complete()
-        // Wait until the service reaches its paused playback gate, with no scheduler polling.
         await service._waitUntilReadyWhilePaused()
         #expect(player.playCount == 0)
         service.resume()
@@ -567,7 +564,6 @@ struct OpenAINarrationTests {
         #expect(await events.next() == .started(verseNumber: 1))
         await generator.waitUntilSubmitted()
         let submitted = try #require(service._pendingPrefetch)
-        // Double-Previous at the first verse is a no-op, including its look-ahead.
         service.skipToPreviousVerse()
         #expect(!submitted.isCancelled)
         #expect(player.playCount == 1)
@@ -714,7 +710,6 @@ struct OpenAINarrationTests {
         let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
         let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One")]
         var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
-        // No audible start should be emitted for either preparation or play refusal.
         #expect(await events.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
         #expect(await events.next() == nil)
         #expect(try await cache.audio(for: key) == nil)

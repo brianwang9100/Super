@@ -1,8 +1,6 @@
 import Core
 import SwiftUI
 
-/// Brief confirmation pill shown after a mutation (the design's `flash()`).
-/// `TodoScreen` schedules its own dismissal; this view is purely visual.
 struct TodoToast: View {
     let text: String
 

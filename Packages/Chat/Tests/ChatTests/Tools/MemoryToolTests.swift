@@ -3,9 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `MemoryTool` — descriptor shape, op enum dispatch, parameter
-/// validation, repository error mapping, and artifact emission so the
-/// transcript pill can render without parsing natural language.
 @Suite("MemoryTool")
 struct MemoryToolTests {
 
@@ -88,12 +85,7 @@ struct MemoryToolTests {
     }
 
     @Test func saveTrimsSurroundingWhitespaceBeforeStoring() async throws {
-        // Regression for PR #72: `stringValue` returned the raw
-        // (untrimmed) string, so an LLM payload like
-        // `"  prefer metric  "` stored verbatim with its spaces while
-        // SettingsViewModel.updateMemory trimmed before writing —
-        // leaving the two write paths with different byte sequences
-        // for logically equivalent text.
+        // Tool and Settings writes must trim text consistently.
         let (tool, repository, _) = try makeTool()
 
         let result = try await tool.execute(input: [
@@ -199,9 +191,7 @@ struct MemoryToolTests {
     }
 
     @Test func forgetUnknownIdSucceedsSilently() async throws {
-        // `delete` is no-op on missing rows in the repository, and the
-        // tool surfaces that as a clean success — the LLM should not
-        // re-try on a forget that already happened.
+        // Forgetting an already missing entry succeeds so the model does not retry it.
         let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: [
             "op": .string("forget"),

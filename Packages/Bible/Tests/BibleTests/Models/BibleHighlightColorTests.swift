@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleHighlightColor` — the stable raw values persisted in
-/// `BibleHighlightRecord.colorId`, and the two-tier rendering (vivid swatch
-/// vs. the page-aware verse tint).
 @Suite("BibleHighlightColor")
 struct BibleHighlightColorTests {
     @Test("the raw values are the stable identifiers persisted to the database")

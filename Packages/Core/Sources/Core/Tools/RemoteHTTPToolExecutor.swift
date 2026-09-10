@@ -1,8 +1,6 @@
 import Foundation
 
-/// HTTP (HyperText Transfer Protocol) endpoint a remote tool POSTs to. The
-/// optional `apiKeyRef` is a Keychain reference; if present and resolvable,
-/// the executor attaches the value as `Authorization: Bearer <key>`.
+/// apiKeyRef resolves through Keychain for a bearer token, subject to URLSecurity policy.
 public struct RemoteToolEndpoint: Sendable, Equatable {
     public let url: URL
     public let apiKeyRef: String?
@@ -15,13 +13,6 @@ public struct RemoteToolEndpoint: Sendable, Equatable {
     }
 }
 
-/// `ToolExecutor` that POSTs the tool's input to a remote HTTP endpoint and
-/// decodes the response as a `ToolResult`.
-///
-/// Scaffolded in M1 but not yet wired into any registered tool — the path
-/// exists so the registry can grow remote tools later without an
-/// architectural change. Tests cover the request/response shape via the
-/// URLProtocol stub.
 public struct RemoteHTTPToolExecutor: ToolExecutor {
     public let toolID: String
     public let endpoint: RemoteToolEndpoint
@@ -40,23 +31,14 @@ public struct RemoteHTTPToolExecutor: ToolExecutor {
         self.keychain = keychain
     }
 
-    /// POSTs `{ "toolID": ..., "input": ... }` to `endpoint.url` and decodes
-    /// the response as JSON.
-    ///
-    /// - Parameter input: The tool's argument object.
-    /// - Returns: A `ToolResult` whose `toolID` is set to this executor's
-    ///   `toolID` regardless of what the server echoes back.
-    /// - Throws: Any error from the underlying `HTTPClient` (network /
-    ///   non-2xx), or `HTTPError.transport` wrapping a JSON decode failure.
+    /// Replaces any server-echoed tool identifier with this executor's `toolID`.
     public func execute(input: [String: JSONValue]) async throws -> ToolResult {
         var request = URLRequest(url: endpoint.url)
         request.httpMethod = "POST"
         request.timeoutInterval = endpoint.timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Only attach the bearer when the endpoint is HTTPS or a
-        // loopback / `*.local` host. See `URLSecurity.swift` for the
-        // policy rationale.
+        // URLSecurity restricts credentials to HTTPS or trusted local hosts.
         if let ref = endpoint.apiKeyRef,
            isCleartextSafeForCredentials(endpoint.url),
            let key = try await keychain.getString(ref: ref) {

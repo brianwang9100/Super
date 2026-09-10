@@ -4,7 +4,6 @@ import GRDB
 import Testing
 @testable import Chat
 
-/// Model key ownership survives failed writes, failed cleanup, and termination around a database commit.
 @Suite("Model key staging")
 @MainActor
 struct ModelKeyStagingTests {
@@ -46,7 +45,7 @@ struct ModelKeyStagingTests {
 
         await fixture.rotate()
 
-        #expect(await fixture.keys.writeCount == 1) // Only the original seeded secret.
+        #expect(await fixture.keys.writeCount == 1)
         #expect(try await fixture.pendingRefs().isEmpty)
         #expect(try await fixture.repository.fetch(id: "model") == fixture.original)
         #expect(fixture.viewModel.modelEditError != nil)
@@ -342,7 +341,6 @@ private struct ModelKeyFixture {
     }
 }
 
-/// Deterministic in-memory secret storage with precise failure and suspension seams.
 private actor ModelStagingKeychain: KeychainClient {
     enum Failure: Error, Sendable { case write, deletion }
     private var values: [String: String] = [:]

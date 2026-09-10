@@ -1,40 +1,20 @@
 import Foundation
 import Observation
 
-/// Drives the Settings → Annotations surfaces: the hub (coverage + job), the
-/// Generate sheet (book/chapter selection + estimate), and per-book progress.
-///
-/// Coverage is read separately by the hub view via a GRDBQuery `@Query`
-/// (`AnnotationCoverageRequest`) — it's a pure DB projection, so it doesn't live
-/// here. This view model owns the run snapshot (mirrored from the injected
-/// `BulkAnnotationRunning`) and the in-flight selection draft, which merge
-/// DB-derived "done" state with non-persisted picking — exactly the imperative
-/// case the root guidance carves out from reactive `@Query`.
+/// Merges transient selection with query-derived done state; coverage remains a direct query binding.
 @MainActor
 @Observable
 public final class BulkAnnotationViewModel {
-    /// Live snapshot of the single active job, mirrored from the runner.
     public private(set) var run: BulkRunSnapshot?
 
-    /// The Generate sheet's draft selection.
     public var selection = BulkSelection()
-    /// Books expanded to reveal chapters in the Generate sheet.
     public var expandedBookIDs: Set<String> = []
-    /// The Generate sheet's "Overwrite existing annotations" toggle. `false` (the
-    /// default) preserves already-annotated slots — the runner skips them; `true`
-    /// regenerates and replaces. Kept sticky across sheet opens (not reset by
-    /// `generate()`), so a user who wants overwrite doesn't re-flip it each run.
+    /// Preserve/overwrite choice remains sticky across sheet openings.
     public var overwriteExisting = false
-    /// The Generate sheet's "Also annotate notable verses" toggle. `false` (the
-    /// default) keeps the run at book + chapter granularity; `true` also enqueues a
-    /// per-chapter `chapterVerses` unit that annotates the chapter's most notable
-    /// verse ranges. Sticky across sheet opens, like `overwriteExisting`.
+    /// Notable-verse choice remains sticky across sheet openings.
     public var annotateNotableVerses = false
 
-    /// Chapters that already carry annotations — drives the "Done" badges.
-    /// Injected from a query (or a fake in previews); empty by default.
     public var annotatedChapters: Set<ChapterRef> = []
-    /// Books fully annotated across every chapter — book-level "Done" badge.
     public var fullyAnnotatedBookIDs: Set<String> = []
 
     public let catalog: BibleBookCatalog
@@ -66,8 +46,6 @@ public final class BulkAnnotationViewModel {
     }
     public var canGenerate: Bool { !selection.isEmpty && !isRunning }
 
-    /// The book the per-book progress screen drills into: the one with work in
-    /// flight, else the first.
     public var activeBook: BulkBookProgress? {
         run?.books.first { $0.chapters.contains { $0.state == .generating || $0.state == .queued } }
             ?? run?.books.first
@@ -94,7 +72,6 @@ public final class BulkAnnotationViewModel {
         selection.toggleChapter(ref)
     }
 
-    /// `true` when every chapter of every book is selected.
     public var isAllSelected: Bool {
         catalog.books.allSatisfy {
             selection.bookSelectionState($0.id, chapterCount: $0.chapterCount) == .full
@@ -103,8 +80,7 @@ public final class BulkAnnotationViewModel {
 
     public var isAnySelected: Bool { !selection.isEmpty }
 
-    /// Select every chapter of every book, or clear the whole selection if it's
-    /// already complete. Does not expand the books in the picker.
+    /// Selects or clears all chapters without expanding books.
     public func toggleSelectAll() {
         if isAllSelected {
             selection = BulkSelection()
@@ -119,14 +95,11 @@ public final class BulkAnnotationViewModel {
 
     // MARK: - Run intents
 
-    /// Resolve the draft selection into a plan and start the single job.
     public func generate() {
         guard !selection.isEmpty else { return }
         let books: [BulkRunPlan.Book] = catalog.books.compactMap { summary in
             let chapters = selection.selectedChapters(in: summary.id).sorted()
             guard !chapters.isEmpty else { return nil }
-            // A whole-book pick also generates one book-level annotation; a
-            // partial chapter selection generates only the chosen chapters.
             let isWholeBook = selection.bookSelectionState(
                 summary.id, chapterCount: summary.chapterCount
             ) == .full
@@ -155,18 +128,13 @@ public final class BulkAnnotationViewModel {
 
     // MARK: - Finished-run intents
 
-    /// Re-adopt a finished run as the active job (the list's Retry control).
     public func retryFinishedRun(_ runID: String) { runner.resume(runID: runID) }
 
-    /// Remove a finished run from the list (its dismiss control).
     public func dismissFinishedRun(_ runID: String) { runner.dismissFinishedRun(id: runID) }
 
     // MARK: - Done-badge state
 
-    /// Fold the annotated-chapters query result into the per-chapter and
-    /// per-book "Done" badges. A book is done when *every* chapter it has carries
-    /// an annotation (derived against the catalog's chapter counts). Called by
-    /// the hub container whenever the `@Query` value changes.
+    /// A book is done only when every catalog chapter has an annotation.
     public func updateDoneState(annotatedChapters: Set<ChapterRef>) {
         self.annotatedChapters = annotatedChapters
         var fully: Set<String> = []

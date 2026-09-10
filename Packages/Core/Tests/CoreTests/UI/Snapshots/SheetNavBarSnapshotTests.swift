@@ -6,37 +6,9 @@ import Testing
 import UIKit
 @testable import Core
 
-/// Snapshots for `SheetNavBar` — the shared reader-sheet header (glass `X` +
-/// centered title + balancing trailing slot). Covers:
-///
-/// - the three themes, in the default `.expandable` sizing with no trailing
-///   control (the book / translation / verse-action shape);
-/// - a trailing-control variant, to guard that the fixed 44pt trailing slot
-///   keeps the title optically centered (narration's Stop shape);
-/// - a subtitle variant (the annotation / note-list shape), where a small
-///   centered caption stacks under the title beside a trailing control;
-/// - a `.fitsContent` variant, which pins the nav bar's top inset to 0 instead
-///   of 14 — the one visible difference the sizing axis owns;
-/// - a long title, exercising `lineLimit(1)` + `minimumScaleFactor(0.8)`;
-/// - a Dynamic Type XXL variant. The title resolves through
-///   `typography.font(.body)`, which maps to a *fixed* `.system(size: 17)` (no
-///   `relativeTo:`), so it deliberately does **not** scale with the OS text-size
-///   setting — this variant is a layout-stability regression check that the bar
-///   stays put under XXL, not an accessibility-scaling check;
-/// - a font-scale-max variant across the three themes. The same `.body` title
-///   *does* track the app font-scale slider (`size × fontScale`), so this grows
-///   the title at the `1.20` maximum — the live counterpart to the inert OS
-///   Dynamic Type axis above.
-///
-/// The glass `X` renders its deterministic solid stand-in here (Liquid Glass
-/// captures transparent in offscreen snapshots — see `SuperGlass.swift`).
 @Suite("SheetNavBar snapshots", .serialized)
 @MainActor
 struct SheetNavBarSnapshotTests {
-    /// The title resolves to a system face, so brand-font registration isn't
-    /// strictly required today — but registering keeps the suite robust if the
-    /// title ever moves to the brand serif, and matches the other UI suites'
-    /// process-global, idempotent setup.
     init() {
         Core.registerBundledFonts()
     }
@@ -53,10 +25,7 @@ struct SheetNavBarSnapshotTests {
 
     @Test("trailing control keeps the title centered")
     func trailing() {
-        // Default `.expandable` sizing so the only delta from `navbar_light` is
-        // the trailing control; the zero-inset `.fitsContent` axis is owned
-        // solely by the `fitsContent` test below. One `themeID` local ties the
-        // trailing ink and the snapshot theme together so they can't drift.
+        // Keep sizing fixed here; fitsContent separately covers the inset change.
         let themeID = SuperTheme.Identifier.vellumLight
         let bar = SheetNavBar(title: "John 3", onClose: {}) {
             Image(systemName: "stop.fill")
@@ -79,10 +48,6 @@ struct SheetNavBarSnapshotTests {
 
     @Test("subtitle — font scale max grows the title and subtitle together")
     func subtitleFontScaleMax() {
-        // The subtitle tracks the app font-scale slider just like the title, so
-        // the `1.20` maximum grows both. Locks that the caption scales *with*
-        // the title (not independently) — the live counterpart to the inert OS
-        // Dynamic Type axis the bar deliberately opts out of.
         let view = chrome(subtitleBar(theme: .vellumLight), theme: .vellumLight)
             .superTypography(.make(.serif, fontScale: 1.20))
         record(view, named: "navbar_subtitle_font_scale_max_light", function: #function)
@@ -115,8 +80,7 @@ struct SheetNavBarSnapshotTests {
         )
         .dynamicTypeSize(.xxLarge)
 
-        // `.dynamicTypeSize` must wrap the fully-chromed view, so this test
-        // bypasses `verify()` and calls `record()` on the wrapped view directly.
+        // Dynamic Type must wrap the completed chrome, so bypass verify.
         record(view, named: "navbar_light_xxl", function: function)
     }
 
@@ -132,9 +96,6 @@ struct SheetNavBarSnapshotTests {
 
     // MARK: - Helpers
 
-    /// The annotation / note-list shape: a title, a small centered caption
-    /// (note count / "ANNOTATIONS" label), and a trailing control. Built per
-    /// theme so the trailing glyph's ink matches the snapshot theme.
     private func subtitleBar(theme themeID: SuperTheme.Identifier) -> SheetNavBar<some View> {
         SheetNavBar(title: "1 Peter 2:1", subtitle: "1 Note", onClose: {}) {
             Image(systemName: "plus")
@@ -144,7 +105,6 @@ struct SheetNavBarSnapshotTests {
         }
     }
 
-    /// Default case: the no-trailing convenience init under `theme`.
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,
@@ -170,13 +130,6 @@ struct SheetNavBarSnapshotTests {
         record(chrome(bar, theme: theme), named: name, function: function, sourceLocation: sourceLocation)
     }
 
-    /// The title routes through `typography.font(.body)` at the default
-    /// `tracksFontScale: true`, so the app font-scale slider (a global size
-    /// control) grows it — 17 → 17 × 1.20 — independent of OS Dynamic Type.
-    /// This records a dedicated `navbar_font_scale_max_<theme>` baseline that
-    /// must differ from the `fontScale == 1.0` variants: the *live* counterpart
-    /// to the inert OS Dynamic Type axis the XXL test locks. `1.20` is the
-    /// slider's documented maximum (`SuperFontScale`).
     private func verifyFontScaleMax(
         theme: SuperTheme.Identifier,
         name: String,
@@ -188,8 +141,7 @@ struct SheetNavBarSnapshotTests {
         record(view, named: name, function: function, sourceLocation: sourceLocation)
     }
 
-    /// Pin the bar to the top of a themed card so its top inset (the one thing
-    /// `SheetSizing` varies) is visible as the gap above it.
+    // Top alignment makes the detent-specific inset visible.
     private func chrome(_ bar: SheetNavBar<some View>, theme themeID: SuperTheme.Identifier) -> some View {
         let theme = SuperTheme.make(themeID)
         return VStack(spacing: 0) {

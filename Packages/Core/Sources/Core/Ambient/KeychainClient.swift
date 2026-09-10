@@ -4,35 +4,21 @@ import os
 import Security
 #endif
 
-/// Keychain abstraction for storing API (Application Programming Interface)
-/// keys and other secrets.
-///
-/// Per BYOK (Bring Your Own Key), users supply their own LLM (Large Language
-/// Model) keys. Those secrets live in the Apple Keychain and are referenced
-/// by an opaque `ref` string (typically a UUID). Domain code stores the ref
-/// in GRDB, never the secret itself.
+/// Persist opaque references in applet databases, never secret values.
 public protocol KeychainClient: Sendable {
-    /// Returns the stored value for `ref`, or nil if no entry exists.
     func getString(ref: String) async throws -> String?
-    /// Inserts or updates the value for `ref`.
     func setString(_ value: String, ref: String) async throws
-    /// Removes `ref` if present. No-op when missing.
+    /// No-op for a missing reference.
     func delete(ref: String) async throws
 }
 
-/// Errors surfaced by `AppleKeychainClient`. `unhandledStatus` carries the
-/// raw OSStatus when the Security framework returns something we don't
-/// translate into a more specific case.
 public enum KeychainError: Error, Sendable, Equatable {
     case unhandledStatus(OSStatus)
     case unexpectedData
 }
 
 #if canImport(Security)
-/// Apple Keychain-backed conformer using `kSecClassGenericPassword`.
-///
-/// Items are scoped by the supplied `service` name plus the per-item `ref`
-/// account string, so multiple Super installs and test runs don't clash.
+/// Generic-password items scoped by service and account reference.
 public struct AppleKeychainClient: KeychainClient {
     public let service: String
 
@@ -63,14 +49,7 @@ public struct AppleKeychainClient: KeychainClient {
         }
     }
 
-    /// Insert or update the secret stored at `ref`.
-    ///
-    /// New items are written with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`,
-    /// which (a) requires the device to be unlocked at access time, and (b)
-    /// pins the entry to *this* device — it does not migrate via iCloud
-    /// Keychain and does not survive an encrypted backup restored to a
-    /// different device. This is the project-wide stance from
-    /// `docs/SECURITY.md` §2.1.4: BYOK keys never leave the user's hardware.
+    /// Uses WhenUnlockedThisDeviceOnly: no locked access, iCloud sync, or migration to another device.
     public func setString(_ value: String, ref: String) async throws {
         let data = Data(value.utf8)
         let query: [String: Any] = [
@@ -80,9 +59,7 @@ public struct AppleKeychainClient: KeychainClient {
         ]
         let updateAttrs: [String: Any] = [
             kSecValueData as String: data,
-            // Fix-up for items written by older Super builds that didn't
-            // pin the accessibility class — the next set rotates them onto
-            // the strict policy.
+            // Upgrade older items to the current accessibility class on their next write.
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         let updateStatus = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
@@ -117,8 +94,6 @@ public struct AppleKeychainClient: KeychainClient {
 }
 #endif
 
-/// In-memory conformer for previews, tests, and headless contexts. Shipped in
-/// Core (not test-only) so the Chat module can use it without redeclaring.
 public final class InMemoryKeychainClient: KeychainClient {
     private let store: OSAllocatedUnfairLock<[String: String]>
 

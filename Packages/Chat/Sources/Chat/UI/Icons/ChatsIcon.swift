@@ -1,17 +1,8 @@
 import SwiftUI
 
-/// Three-line list glyph — the Chats applet's sidebar-rail icon.
-///
-/// Three rounded horizontal strokes of decreasing width evoke a list of
-/// chat rows. Reads as a different shape than `SparkIcon` (the Chat
-/// overlay's burst) and `NewChatIcon` (a pencil) so the rail rows stay
-/// visually distinct.
 struct ChatsIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        // 24×24 canvas. Three rows at y = 7 / 12 / 17, full-width then
-        // 2/3 width then full-width — the broken rhythm makes the glyph
-        // read as "list" rather than three stacked equal lines.
         let unitX = rect.width / 24
         let unitY = rect.height / 24
         let strokes: [(start: CGPoint, end: CGPoint)] = [
@@ -33,7 +24,6 @@ struct ChatsIconShape: Shape {
     }
 }
 
-/// Chats applet glyph — used by `ChatsApplet.iconView(size:)`.
 public struct ChatsIcon: View {
     let size: CGFloat
     public init(size: CGFloat = 20) { self.size = size }

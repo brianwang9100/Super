@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Chapter history and a content-hugging passage/translation button share one glass surface.
 struct BibleNavigationSelector: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -55,9 +54,9 @@ struct BibleNavigationSelector: View {
 
     private var historyButtons: some View {
         HStack(spacing: 0) {
-            historyButton(image: "chevron.left", offset: 2, label: "Go back",
+            historyButton(image: "arrow.uturn.backward", offset: 2, label: "Go back",
                           destination: backLabel, action: onBack)
-            historyButton(image: "chevron.right", offset: -2, label: "Go forward",
+            historyButton(image: "arrow.uturn.forward", offset: -2, label: "Go forward",
                           destination: forwardLabel, action: onForward)
         }
     }
@@ -92,7 +91,7 @@ struct BibleNavigationSelector: View {
             .accessibilityHidden(true)
     }
 
-    /// Adjacent compact tap regions retain the approved 28 pt glyph-center spacing.
+    /// Keep compact spacing at standard sizes and let larger history glyphs expand their tap regions.
     private func historyButton(
         image: String, offset: CGFloat, label: String,
         destination: String?, action: @escaping () -> Void
@@ -101,8 +100,11 @@ struct BibleNavigationSelector: View {
             Image(systemName: image)
                 .font(typography.font(size: glyphSize, weight: .medium))
                 .foregroundStyle(theme.ink)
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 8)
                 .offset(x: offset)
-                .frame(width: 32, height: 44)
+                .frame(minWidth: 32, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))

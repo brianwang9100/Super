@@ -1,16 +1,5 @@
-// bulk/screens.jsx — phone surfaces for the *centralized* bulk-annotation
-// flow (MVP, slimmed). Everything lives in one Settings pane:
-//
-//   Settings → Annotations (synopsis + Generate)
-//     → Generate sheet (pick books, expand to chapters)
-//     → on confirm, the pane shows the single active job
-//       → tap the job → per-book chapter progress (mid / failed)
-//
-// One job at a time. Progress is counted in annotations, never "notes".
+// Centralized annotation flow: one active job, with progress counted in annotations.
 
-// ──────────────────────────────────────────────────────────
-// Shared — faint reader peeking behind a sheet/scrim.
-// ──────────────────────────────────────────────────────────
 function ReaderGhost({ t, opacity = 0.4 }) {
   return (
     <div style={{
@@ -27,10 +16,7 @@ function ReaderGhost({ t, opacity = 0.4 }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// 1) ENTRY — the real Settings screen, with an "Annotations" row added.
-//    Mirrors the live app: search field, grouped cards, no section labels.
-// ══════════════════════════════════════════════════════════
+// Settings entry
 function SettingsRootScreen({ t }) {
   return (
     <SettingsScaffold t={t} title="Settings" leading="close">
@@ -69,11 +55,7 @@ function SettingsRootScreen({ t }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// 2) THE HUB — Annotations pane. Synopsis (book/chapter/verse) at top, then
-//    either a Generate button (idle) or the single active job (running).
-//    Always ends with the destructive "Delete all annotations".
-// ══════════════════════════════════════════════════════════
+// Annotation hub
 function AnnotationsPaneScreen({ t, running = false }) {
   return (
     <SettingsScaffold t={t} title="Annotations" leading="back">
@@ -107,13 +89,8 @@ function AnnotationsPaneScreen({ t, running = false }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// 3) GENERATE SHEET — flat book list (no testament grouping). Each book
-//    expands to its chapters; already-annotated books/chapters show "Done".
-//    Pinned footer carries the live annotation estimate + Generate.
-// ══════════════════════════════════════════════════════════
+// Generate sheet
 function GenerateScopeScreen({ t }) {
-  // Romans is expanded to reveal chapters; some chapters already done.
   const romansCh = [1, 2, 3, 4, 5, 6, 7, 8];
   const romansDone = new Set([1, 2, 3]);
   const books = [
@@ -171,11 +148,7 @@ function GenerateScopeScreen({ t }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// 4) PER-BOOK PROGRESS — drill into the active job's current book. Summary
-//    header (ring + annotation count + pause/cancel) over a scrollable
-//    chapter list. phase: 'mid' | 'failed'.
-// ══════════════════════════════════════════════════════════
+// Per-book progress; phase is mid or failed.
 function GenerationProgressScreen({ t, phase = 'mid' }) {
   const spec = phase === 'failed' ? { doneCount: 9, failAt: 6 } : { doneCount: 7, failAt: null };
   const rows = romansChapters(spec);

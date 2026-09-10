@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBToolCallRepository` indexed lookups and status transitions.
 @Suite("GRDBToolCallRepository")
 struct ToolCallRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

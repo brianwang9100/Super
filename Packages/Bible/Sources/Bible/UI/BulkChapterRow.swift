@@ -1,9 +1,6 @@
 import Core
 import SwiftUI
 
-/// One line in the per-book progress list: a status leaf, the chapter
-/// reference, and a state-dependent right cell — annotation count (done),
-/// "generating" (active), "queued" (waiting), or a Retry pill (failed).
 struct BulkChapterRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -37,9 +34,7 @@ struct BulkChapterRow: View {
     private var rightCell: some View {
         switch chapter.state {
         case .done:
-            // One summary per chapter since the single-summary redesign —
-            // a count cell would always read "1", so the filled bubble
-            // alone marks the state.
+            // A chapter has one summary, so a filled bubble replaces the uninformative count of one.
             AnnotationBubble(state: .filled, size: 12)
         case .generating:
             Text("generating")

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shared response prose and activity indicator for live and saved answers.
 public struct ResponseTextBlock: View {
     private let text: String
     private let treatAsPartial: Bool
@@ -13,7 +12,6 @@ public struct ResponseTextBlock: View {
         self.isWorking = isWorking
     }
 
-    /// Keeps the response's geometry stable as streaming ends.
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !text.isEmpty {

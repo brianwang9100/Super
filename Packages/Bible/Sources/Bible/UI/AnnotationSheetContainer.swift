@@ -2,7 +2,6 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// Binds saved rows and a request-scoped draft to the annotation transcript.
 struct AnnotationSheetContainer: View {
     let spec: BibleAnnotationTargetSpec
     let citation: String

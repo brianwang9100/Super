@@ -1,19 +1,9 @@
 import Core
 import SwiftUI
 
-/// Root pane of the Settings sheet. Mirrors the root layout in
-/// `settings.jsx`: Models/Appearance group · System Prompt /
-/// Verbosity / Tools / Compaction group · Data / About group.
-///
-/// Row taps push panes via the view model's navigation helper so the
-/// `NavigationStack` in `SettingsSheet` animates the transition and
-/// external deep-links go through the same code path.
 struct SettingsRootPane: View {
     let viewModel: SettingsViewModel
 
-    /// Applet-contributed rows (e.g. Bible's "Annotations"), injected by the
-    /// composition root — rendered in their own group between the system group
-    /// and Data/About. Empty in previews/tests.
     @Environment(\.appletSettingsContributions) private var appletContributions
 
     var body: some View {

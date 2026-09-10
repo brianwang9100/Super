@@ -4,7 +4,6 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Guides the user through installing Apple's enhanced voices and links to the system voice settings.
 struct AppleNarrationSetupSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

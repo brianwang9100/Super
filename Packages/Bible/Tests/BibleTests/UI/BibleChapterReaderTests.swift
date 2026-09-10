@@ -1,10 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Unit tests for ``BibleChapterReader`` predicates — the bits of the
-/// reader's narrate-driven auto-scroll logic and action-sheet appear /
-/// dismiss decision that don't need a SwiftUI host. Tests for the actual
-/// scroll position live in the screen-level snapshot suite.
 @Suite("BibleChapterReader.shouldAutoScroll")
 @MainActor
 struct BibleChapterReaderTests {
@@ -19,14 +15,6 @@ struct BibleChapterReaderTests {
     }
 }
 
-/// Unit tests for the action-sheet appear predicate that decides when the
-/// reader scrolls the selected verse up under the floating sheet. Only the bare
-/// appear (`nil → .selection`) scrolls; dismiss no longer scrolls back (the
-/// reader stays where it scrolled to), and transitions that don't enter
-/// `.selection` from no sheet — including any `.narration` transition, so
-/// narration's own follow-scroll stays the sole driver — are `false`. The
-/// same-to-same no-op path (`.selection` → `.selection`) is deliberately covered
-/// here too. Covered without standing up the reader's SwiftUI host.
 @Suite("BibleChapterReader.shouldScrollSelectionIntoView")
 @MainActor
 struct BibleChapterSheetTransitionTests {
@@ -63,18 +51,13 @@ struct BibleChapterSheetTransitionTests {
     }
 }
 
-/// Regression coverage for the reader's bottom scroll reserve: the chapter
-/// footer must clear the floating controls and any presented sheet.
 @Suite("BibleChapterReader.bottomClearHeight")
 @MainActor
 struct BibleChapterReaderBottomReserveTests {
-    // CGFloat `==` evaluated directly inside `#expect` mis-reports on
-    // swift-testing/macOS (the documented in-tree quirk), so each equality is
-    // precomputed into a `Bool` and that is expected instead.
+    // swift-testing/macOS misreports direct CGFloat equality inside #expect; precompute Bool.
     @Test("the chapter footer clears the floating selection row above the chat pill")
     func noSheetClearsFloatingControls() {
-        // Shell placement: 60pt chat pill + 36pt inset + 44pt accessory row.
-        // Leave another 20pt between those controls and the chapter footer.
+        // Reserve the 60pt chat pill, 36pt inset, 44pt accessory row, and 20pt footer clearance.
         let clearsControls = BibleChapterReader.bottomClearHeight(for: nil) >= 60 + 36 + 44 + 20
         #expect(clearsControls)
     }
@@ -104,7 +87,6 @@ struct BibleChapterReaderBottomReserveTests {
     }
 }
 
-/// Hosts choose chrome clearance and navigation independently from chapter rendering.
 @Suite("BibleChapterReader host layout")
 @MainActor
 struct BibleChapterReaderLayoutTests {

@@ -4,7 +4,6 @@ import Testing
 import UIKit
 @testable import Bible
 
-/// Native appearance readiness survives rejected transition registration without duplicate callbacks.
 @Suite("Bible preview presentation observer", .serialized)
 @MainActor
 struct BiblePreviewPresentationObserverTests {
@@ -24,7 +23,9 @@ struct BiblePreviewPresentationObserverTests {
         appear(observer)
 
         #expect(preview.isReady)
-        #expect(reader.isActionSheetPresented)
+        #expect(!reader.isActionSheetPresented)
+        #expect(reader.selectedVerses == [28, 29, 30])
+        #expect(reader.pendingScrollVerse == 28)
         #expect(identities == [preview.identity])
         // UIKit may still invoke completion even when registration returned false.
         reader.dismissActionSheet()

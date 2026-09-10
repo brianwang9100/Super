@@ -1,47 +1,22 @@
 import SwiftUI
 
-/// Apple-style drag affordance pinned to the top of the chat surface. 36 ×
-/// 4.5pt rounded pill, tinted by the active drag tone (resting vs. actively
-/// dragged) per the 2026-05-13 design (`/tmp/super-design/super/project/ds/chat.jsx`).
-///
-/// Fires two callbacks the chat overlay wires together to resize the chat
-/// surface continuously under the finger and snap to the nearest anchor on
-/// release:
-///
-/// - `onDragChanged(translation)` — fires on every `DragGesture.onChanged`
-///   tick during a drag; the overlay updates `dragHeight` so the chat's
-///   frame tracks the finger.
-/// - `onDragEnded(translation, predictedEndTranslation)` — fires once on
-///   release with SwiftUI's predicted-end translation (the velocity proxy);
-///   the overlay computes the snap target from height + velocity.
 public struct ChatDragHandle: View {
-    /// Visible dimensions shared with the composer's minimize affordance.
     static let barWidth: CGFloat = 36
     static let barHeight: CGFloat = 4.5
 
-    /// Both handles use the same continuous capsule ends.
     static var barShape: Capsule { Capsule(style: .continuous) }
 
-    /// Resting tone is shown in the steady state. Active tone is shown
-    /// while the user is dragging the handle.
     public enum Tone: Sendable, Equatable {
         case resting
         case active
     }
 
-    /// Visual tint when not being dragged. The internal drag state takes
-    /// over while a gesture is in flight.
     public let restingTone: Tone
 
-    /// Fires on every `DragGesture.onChanged` tick with the live
-    /// translation. The chat overlay uses this to drive `dragHeight`
-    /// continuously so the chat surface tracks the finger. `nil` means
-    /// the handle is non-interactive.
+    /// Nil disables drag-change handling.
     public let onDragChanged: ((_ translation: CGSize) -> Void)?
 
-    /// Fires on `DragGesture.onEnded` with the gesture's translation +
-    /// predicted-end translation (the SwiftUI proxy for end velocity).
-    /// `nil` means the handle is non-interactive (M1 placeholder).
+    /// Predicted translation is SwiftUI's velocity proxy; nil disables drag-end handling.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
 
     public init(
@@ -56,14 +31,9 @@ public struct ChatDragHandle: View {
 
     @Environment(\.superTheme) private var theme
 
-    /// `true` while the user has the gesture active — drives the dragged
-    /// tint without bouncing through the parent's state.
     @State private var isDragging: Bool = false
 
     public var body: some View {
-        // Centered with explicit padding rather than `Spacer`s so the pill
-        // doesn't shift horizontally when the parent container's width
-        // changes between presentation states.
         VStack {
             Self.barShape
                 .fill(fillColor)
@@ -72,9 +42,7 @@ public struct ChatDragHandle: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
         .padding(.bottom, 4)
-        // Wide hit area: the drag handle is small but the hit target
-        // spans the top strip of the chat surface so the user doesn't
-        // have to hit the 36 × 4.5 pill precisely.
+        // Extend the hit target across the strip beyond the visible pill.
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .accessibilityElement()
@@ -86,29 +54,12 @@ public struct ChatDragHandle: View {
         let effective: Tone = isDragging ? .active : restingTone
         switch effective {
         case .resting:
-            // `ink-mute @ 55%` resting per design — falls back to `inkSoft`
-            // multiplied with an opacity since the theme doesn't expose a
-            // dedicated `ink-mute` token today. Visually matches the chat.jsx
-            // reference within a perceptual delta of <1%.
             return theme.inkSoft.opacity(0.55)
         case .active:
-            // `ink-faint @ 70%` while dragging.
             return theme.inkFaint.opacity(0.70)
         }
     }
 
-    /// The DragGesture instance. `minimumDistance: 0` so we capture taps
-    /// at the very start; the parent decides whether the drag commits
-    /// (height projection) or rubber-bands back (small jitter on tap).
-    ///
-    /// `coordinateSpace: .global` is load-bearing: the drag handle sits at
-    /// the top of the chat surface, which itself resizes (and so the
-    /// handle moves down or up) in response to the very drag this gesture
-    /// drives. In the default `.local` space the translation would be
-    /// reported relative to the moving handle frame, which closes a
-    /// feedback loop that makes the chat resize at half the finger
-    /// speed. `.global` reports true screen-pixel displacement, so the
-    /// chat tracks the finger 1:1.
     private var dragGesture: some Gesture {
         Self.resizeGesture()
             .onChanged { value in
@@ -121,7 +72,8 @@ public struct ChatDragHandle: View {
             }
     }
 
-    /// Both handles report displacement in screen coordinates as the panel moves.
+    /// Local coordinates feed back through the moving handle and halve finger tracking speed.
+    /// Both handles therefore report screen-space displacement.
     static func resizeGesture(minimumDistance: CGFloat = 0) -> DragGesture {
         DragGesture(minimumDistance: minimumDistance, coordinateSpace: .global)
     }

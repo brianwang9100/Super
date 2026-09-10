@@ -1,29 +1,17 @@
 import Core
 import SwiftUI
 
-/// The Annotations hub — the single home for bulk generation, reached from
-/// Settings → Annotations. A coverage synopsis on top, then either a Generate
-/// CTA (idle) or the one active job (running), and a destructive
-/// "Delete all annotations" at the bottom.
-///
-/// Coverage is passed in (the container binds it via `@Query` over
-/// `AnnotationCoverageRequest`) so this screen stays render-only and
-/// snapshot-testable.
 struct BulkAnnotationHubScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
     @Bindable var viewModel: BulkAnnotationViewModel
     let coverage: AnnotationCoverage
-    /// `true` for a remote BYOK model (Generate asks for confirmation first);
-    /// `false` for the free on-device model (Generate starts directly).
+    /// Remote BYOK generation requires confirmation; free on-device generation can start directly.
     let requiresCostConfirmation: Bool
-    /// Terminal runs (newest first) the "Recently finished" section lists — bound
-    /// by the container from `FinishedRunsRequest`. Empty hides the section.
     var finishedRuns: [FinishedRunSummary] = []
 
-    /// The two surfaces are mutually exclusive, so one `.sheet(item:)` drives
-    /// both rather than two `isPresented` sheets stacked on one view.
+    // One sheet item keeps Generate and Progress mutually exclusive.
     private enum ActiveSheet: Identifiable {
         case generate, progress
         var id: Self { self }

@@ -4,17 +4,9 @@ import Testing
 import os
 @testable import Core
 
-/// Tests for `AppleFoundationLLMProvider` streaming, error mapping, and
-/// transcript translation, all exercised against a scripted
-/// `LanguageSession` fake. The real `LanguageModelSession` would require
-/// Apple Intelligence to be enabled on the host, so the suite never
-/// constructs one.
 @Suite
 struct AppleFoundationLLMProviderTests {
 
-    /// Model used by every test that streams. Matches the provider's
-    /// `supportedModels` by `id`; `supportsTools` is irrelevant on the
-    /// way *in* (the provider only checks ids) so we hard-code false.
     private static let model = LLMModel(
         id: AppleFoundationLLMProvider.defaultModelID,
         displayName: AppleFoundationLLMProvider.defaultModelDisplayName,
@@ -25,10 +17,6 @@ struct AppleFoundationLLMProviderTests {
 
     @Test
     func injectedContextWindowSurfacesOnSupportedModel() {
-        // The designated init's `maxContextTokens` seam lets a caller pin the
-        // window deterministically (the production init reads the real
-        // `SystemLanguageModel.contextSize` instead). Mirrors how an iOS 26.4+
-        // device advertises the lifted 8192-token window.
         let provider = AppleFoundationLLMProvider(
             availability: .available,
             sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) },
@@ -40,8 +28,6 @@ struct AppleFoundationLLMProviderTests {
 
     @Test
     func contextWindowDefaultsToFallbackWhenNotInjected() {
-        // Omitting the seam falls back to the documented pre-26.4 floor, so
-        // existing tests and registry-less startup stay byte-identical.
         let provider = AppleFoundationLLMProvider(
             availability: .available,
             sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) }
@@ -70,7 +56,6 @@ struct AppleFoundationLLMProviderTests {
         }
         #expect(deltas == ["Hello", " world"])
 
-        // Boilerplate ordering: messageStart first, messageComplete last.
         guard case .messageStart(_, let modelId) = events.first else {
             Issue.record("expected .messageStart as first event, got \(events.first as Any)")
             return
@@ -97,11 +82,8 @@ struct AppleFoundationLLMProviderTests {
         ))
 
         #expect(!events.contains { if case .textDelta = $0 { return true }; return false })
-        // No content arrived, so contentBlockStart never fired and
-        // contentBlockStop never pairs with it.
         #expect(!events.contains { if case .contentBlockStart = $0 { return true }; return false })
         #expect(!events.contains { if case .contentBlockStop = $0 { return true }; return false })
-        // messageStart still bookends the stream — contract holds.
         guard case .messageStart = events.first else {
             Issue.record("expected messageStart first, got \(events.first as Any)")
             return
@@ -111,10 +93,7 @@ struct AppleFoundationLLMProviderTests {
 
     @Test
     func nonPrefixSnapshotIsDroppedToAvoidDoubleRender() async throws {
-        // If Apple's stream ever violates monotonicity, the diff fallback
-        // drops the new snapshot rather than yielding it whole — additive
-        // consumers (the Chat UI streaming overlay, persistence) would
-        // otherwise render the prior text twice.
+        // A full non-prefix snapshot would duplicate already emitted text in additive consumers.
         let session = MockLanguageSession(outcome: .snapshots(["Hello world", "completely different"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
@@ -130,7 +109,6 @@ struct AppleFoundationLLMProviderTests {
             if case .textDelta(_, let text) = event { return text }
             return nil
         }
-        // Only the first (monotonic) snapshot survives as a delta.
         #expect(deltas == ["Hello world"])
     }
 
@@ -201,8 +179,6 @@ struct AppleFoundationLLMProviderTests {
             temperature: 0.5
         ))
 
-        // Pre-stream failure produces the minimum 3-event shape:
-        // messageStart → error → messageComplete. No content block.
         guard case .messageStart(_, let modelId) = events.first else {
             Issue.record("expected messageStart first, got \(events.first as Any)")
             return
@@ -267,9 +243,7 @@ struct AppleFoundationLLMProviderTests {
             return nil
         }
         #expect(deltas == ["partial"])
-        // Every contentBlockStart must pair with contentBlockStop, even
-        // when the stream ends in error. The stop precedes the error so
-        // additive consumers see a clean block-close before the failure.
+        // Error exits must close any open content block before reporting failure.
         let startCount = events.filter { if case .contentBlockStart = $0 { return true }; return false }.count
         let stopCount = events.filter { if case .contentBlockStop = $0 { return true }; return false }.count
         #expect(startCount == 1)
@@ -394,7 +368,6 @@ struct AppleFoundationLLMProviderTests {
         ))
 
         let entries = Array(recorder.all[0])
-        // Phase 3 drops tool messages; only the prior `.user` survives.
         #expect(entries.count == 1)
         if case .prompt = entries[0] {} else {
             Issue.record("expected prompt entry, got \(entries[0])")
@@ -431,9 +404,6 @@ struct AppleFoundationLLMProviderTests {
             temperature: 0.5
         ))
 
-        // Factory receives exactly the two wrapped tools the orchestrator
-        // advertised — registry-built `DynamicLLMTool` instances exposing
-        // `name` from each `LLMTool`.
         let captured = recorder.allCalls
         #expect(captured.count == 1)
         let toolNames = captured[0].map(\.name).sorted()
@@ -442,10 +412,7 @@ struct AppleFoundationLLMProviderTests {
 
     @Test
     func publicInitForwardsCallerSuppliedID() async {
-        // Provider id must match the `ModelConfigurationRecord.id` it
-        // was built from — `LLMProviderRegistry.setActive(id:)` looks
-        // providers up by that identifier, so a static fallback id
-        // would silently fail to promote the seeded row to active.
+        // Configuration ID, not a provider-family constant, drives registry selection.
         let provider = AppleFoundationLLMProvider(
             id: "row-uuid-abc",
             availability: .available,
@@ -468,9 +435,6 @@ struct AppleFoundationLLMProviderTests {
         )
         #expect(withRegistry.supportedModels.first?.supportsTools == true)
         #expect(withoutRegistry.supportedModels.first?.supportsTools == false)
-        // Both still expose the same model id, so the orchestrator's
-        // id-based `supportedModels.contains` lookup keeps working
-        // whichever path the bootstrap takes.
         #expect(withRegistry.supportedModels.first?.id
                 == AppleFoundationLLMProvider.defaultModelID)
         #expect(withoutRegistry.supportedModels.first?.id
@@ -496,8 +460,6 @@ struct AppleFoundationLLMProviderTests {
             temperature: 0.5
         ))
 
-        // No registry → no dynamic tools, even though the orchestrator
-        // advertised one.
         #expect(recorder.allCalls[0].isEmpty)
     }
 
@@ -560,9 +522,6 @@ struct AppleFoundationLLMProviderTests {
 
 // MARK: - Fixtures
 
-/// Scripted `LanguageSession` substitute. `Outcome` captures the three
-/// shapes the provider tests exercise: snapshots-then-finish,
-/// snapshots-then-error, and immediate-error.
 struct MockLanguageSession: LanguageSession {
     enum Outcome: Sendable {
         case snapshots([String])
@@ -595,10 +554,7 @@ struct MockLanguageSession: LanguageSession {
     }
 }
 
-/// Records every `Transcript` handed to the test factory so assertions
-/// can verify the provider's history translation. `OSAllocatedUnfairLock`
-/// gives us synchronous atomic mutation without an actor hop — required
-/// because the factory closure is `@Sendable` and synchronous.
+// Factories are synchronous Sendable closures, so recording cannot require an actor hop.
 final class TranscriptRecorder: Sendable {
     private let storage = OSAllocatedUnfairLock<[Transcript]>(initialState: [])
 
@@ -611,9 +567,6 @@ final class TranscriptRecorder: Sendable {
     }
 }
 
-/// Records every `[any FoundationModels.Tool]` array handed to the test
-/// factory so assertions can verify the provider built the right
-/// `DynamicLLMTool` wrappers from the advertised `LLMTool` list.
 final class ToolsRecorder: Sendable {
     private let storage = OSAllocatedUnfairLock<[[any FoundationModels.Tool]]>(initialState: [])
 
@@ -626,11 +579,6 @@ final class ToolsRecorder: Sendable {
     }
 }
 
-/// Per-case fixture for the `GenerationError` → `LLMError` mapping table.
-/// Constructs the framework error and the expected normalized mapping
-/// the provider should yield. Lives next to the tests so adding a new
-/// AFM error case requires both updating the provider and updating this
-/// enum — the parameterized test would fail-build otherwise.
 enum GenerationErrorCase: CaseIterable, Sendable {
     case exceededContextWindowSize
     case assetsUnavailable
@@ -706,9 +654,6 @@ enum GenerationErrorCase: CaseIterable, Sendable {
     }
 }
 
-/// Collect all events from an `AsyncThrowingStream` into an array.
-/// Wrapping in a free helper keeps each test's body focused on the
-/// shape of the result rather than the iteration boilerplate.
 private func collect<E: Sendable>(_ stream: AsyncThrowingStream<E, Error>) async throws -> [E] {
     var out: [E] = []
     for try await event in stream {

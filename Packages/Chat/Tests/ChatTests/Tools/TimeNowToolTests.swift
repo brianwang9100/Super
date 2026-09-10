@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `TimeNowTool` — descriptor shape, deterministic output via
-/// `FixedClock` + fixed `TimeZone`, IANA (Internet Assigned Numbers
-/// Authority) timezone override, invalid-zone soft failure, and missing /
-/// non-string parameter handling.
 @Suite("TimeNowTool")
 struct TimeNowToolTests {
     private static let fixedInstant = Date(timeIntervalSince1970: 1_750_000_000)
@@ -53,7 +49,6 @@ struct TimeNowToolTests {
         #expect(result.isError == false)
         #expect(result.toolID == TimeNowTool.toolID)
         #expect(result.content.contains("America/Los_Angeles"))
-        // 2025-06-15 08:06:40 PDT — UTC-7 on this date
         #expect(result.content.contains("2025-06-15T08:06:40-07:00"))
         #expect(result.content.contains("Sunday"))
     }
@@ -69,8 +64,6 @@ struct TimeNowToolTests {
 
         #expect(result.isError == false)
         #expect(result.content.contains("Asia/Tokyo"))
-        // Same instant as the Pacific test above, expressed in Tokyo (+09:00):
-        // 2025-06-16 00:06:40 JST.
         #expect(result.content.contains("2025-06-16T00:06:40+09:00"))
         #expect(result.content.contains("Monday"))
     }
@@ -85,8 +78,7 @@ struct TimeNowToolTests {
         let result = try await executor.execute(input: ["timezone": .string("UTC")])
 
         #expect(result.isError == false)
-        // Foundation canonicalizes "UTC" → "GMT" on the resolved `TimeZone`'s
-        // identifier; either label is acceptable to the LLM.
+        // Foundation may canonicalize UTC to GMT; use the resolved identifier.
         let zoneLabel = TimeZone(identifier: "UTC")?.identifier ?? "UTC"
         #expect(result.content.contains(zoneLabel))
         #expect(result.content.contains("2025-06-15T15:06:40"))

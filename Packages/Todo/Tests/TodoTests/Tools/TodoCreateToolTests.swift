@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for `TodoCreateTool` — the `todo.create` LLM tool that parses a
-/// JSON-array `tasks` payload and inserts one or more `TaskRecord`s. Covers
-/// batch creation, per-item field parsing (priority / dueAt / notes),
-/// all-or-nothing validation, and the registration + artifact contracts.
 @Suite("TodoCreateTool")
 struct TodoCreateToolTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)

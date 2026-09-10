@@ -2,7 +2,6 @@ import Core
 import Testing
 @testable import Bible
 
-/// Native sheet handoffs capture targets, preserve glyph selection, and finish only after dismissal.
 @Suite("Bible study presentation")
 @MainActor
 struct BibleStudyPresentationTests {

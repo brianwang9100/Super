@@ -4,35 +4,11 @@ import os
 
 private let bulkRunnerLog = Logger(subsystem: "com.brianwang.Super", category: "bible-bulk-runner")
 
-/// The LLM-backed bulk-annotation engine — the production `BulkAnnotationRunning`
-/// the Settings → Annotations hub drives once a run is kicked off.
-///
-/// It walks a run's units one at a time in `ordinal` order, asking the injected
-/// `BibleAnnotateGenerating` (a `.userBulk`-stamped `BibleAnnotateDispatcher`,
-/// supplied at the composition root) to generate each chapter, and records every
-/// transition to the durable `BulkAnnotationLedger`. The published `snapshot` is
-/// projected from the in-memory unit copy the ledger writes mirror, so the hub
-/// and per-book progress read the same vocabulary the fake produced.
-///
-/// **Three failure tiers** (matching the design):
-/// - *Per-unit retry* — a `.retryable` outcome re-queues the same unit until
-///   `maxAttemptsPerUnit` is reached, then marks it `.failed`.
-/// - *Run-level circuit breaker* — a fatal `.fatalAuth` / `.fatalQuota` outcome
-///   halts the whole run immediately (`status .failed`, matching `haltReason`),
-///   and `consecutiveFailureLimit` retryable failures in a row trips
-///   `.consecutiveFailures`. All three protect the user's wallet by stopping the
-///   run rather than burning requests on a persistent error.
-/// - *Manual retry* — `retry(_:)` / `retryAllFailed()` revive `.failed` units.
-///
-/// A whole-book selection enqueues one **book-level** (`.bookPrologue`) unit
-/// ahead of that book's chapters; the engine generates it like any other unit
-/// (a `kind == "book"` reference). A run that opts into notable verses also
-/// enqueues a **`.chapterVerses`** unit after each chapter (a
-/// `kind == "chapterVerses"` reference whose dispatch turn fans out into one
-/// `bible.annotate` verse call per notable range). `BulkChapterProgress` can only
-/// carry a chapter number, so both book-level and chapterVerses units are
-/// intentionally absent from the live progress grid — they still generate,
-/// persist, and count toward run completion, just without a dedicated progress row.
+/// Runs units serially by ordinal and persists transitions. Retryable failures exhaust
+/// per-unit attempts; auth/quota failures or consecutive unit failures halt the run.
+/// Failed units remain manually retryable.
+/// Book prologues and notable-verse units participate in completion and persistence
+/// but have no separate rows in the live chapter progress grid.
 @MainActor
 public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
@@ -40,10 +16,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     private let ledger: any BulkAnnotationLedger
     private let generator: any BibleAnnotateGenerating
-    /// Reads whether a unit's target slot is already annotated, for preserve
-    /// mode's skip-before-generate check. The same `bible.sqlite` the generator
-    /// writes through, so a slot a prior unit in this run just filled reads as
-    /// occupied for a later same-slot unit.
+    // Share the generator's database so preserve checks see prior writes.
     private let annotationRepository: any BibleAnnotationRepository
     private let catalog: BibleBookCatalog
     private let translation: BibleTranslation
@@ -53,59 +26,31 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     private let currentModelID: @Sendable () async -> String
     private let maxAttemptsPerUnit: Int
     private let consecutiveFailureLimit: Int
-    /// How long a terminal run lingers in the "Recently finished" list before the
-    /// launch sweep removes it (default 24 h). Injectable so tests can sweep
-    /// without waiting.
     private let completedRunRetention: TimeInterval
 
-    /// Authoritative state lives in the ledger; these mirror it in memory so the
-    /// snapshot can be projected synchronously without a round-trip.
+    // In-memory mirrors permit synchronous snapshots; the ledger remains authoritative.
     private var runRecord: BulkAnnotationRunRecord?
     private var units: [BulkAnnotationRunUnitRecord] = []
     private var consecutiveFailures = 0
 
-    /// `true` once the run row has actually been written to the ledger
-    /// (`createRun` returned). Guards `cancel()` from persisting a `.cancelled`
-    /// row for a run that was torn down before it ever reached the ledger —
-    /// otherwise a cancel during `start`'s async setup leaves a phantom row in
-    /// `completedRuns()`.
+    // Cancel before createRun completes must not persist a phantom cancelled run.
     private var runPersisted = false
 
-    /// The in-flight work loop, retained until it actually exits so
-    /// `waitUntilIdle()` can await it. Pause/cancel signal the loop through run
-    /// state (below) rather than Task cancellation, so the loop is never torn
-    /// down mid-unit and a superseded second loop can't appear.
+    // Retain until actual exit so tests can drain even a cooperatively cancelled call.
     private var driver: Task<Void, Never>?
 
-    /// `true` while a work loop is live (from the moment one is kicked off until
-    /// it returns). The single source of truth for "is the engine already
-    /// draining?": `startDriver()` no-ops when it's set, so resume/retry while a
-    /// unit is mid-flight let the existing loop pick up the new work instead of
-    /// spawning a second concurrent loop (which would double-generate and corrupt
-    /// the breaker counter). Cleared in `runLoop`'s `defer`, synchronously at
-    /// every exit, so it's reliably `false` the instant no loop is running.
+    // Claim synchronously before async setup. Clear at actual loop exit to prevent
+    // overlapping generation when resume/retry arrives during an in-flight unit.
     private var isDriving = false
 
-    /// Set when a background task runs out of time (`requestExpirationStop()`):
-    /// the live loop stops before the next unit — leaving the run `.running` so a
-    /// later foreground or background resume continues it. Cleared at the top of
-    /// every fresh loop, and by `resumeActiveRun()` (which cancels a pending stop
-    /// rather than letting a just-arrived foreground race the loop into a wedged
-    /// state).
+    // Stop before the next unit while leaving the run active. Resume clears this
+    // even if the current loop has not yet exited, avoiding a stranded run.
     private var backgroundStopRequested = false
 
-    /// Set by `requestExpirationStop()` when an expiration lands while a unit is
-    /// still `.generating`: that unit was returned to the queue immediately
-    /// (without waiting out its LLM call), so the loop must **discard** the
-    /// abandoned call's eventual outcome — writing nothing further — when the
-    /// `generate` finally returns. Cleared the moment the loop acts on it (it then
-    /// re-evaluates from the top) and at the top of every fresh loop.
+    // Expiration requeues immediately; discard the abandoned call's eventual result without writes.
     private var expirationAbandoned = false
 
-    /// Serialized tail of all ledger writes. Each write chains on the previous so
-    /// upserts apply in issue order (a pause's `saveRun` before a later resume's),
-    /// and `waitUntilIdle()` can await the durable state having caught up — even
-    /// for writes kicked off by the synchronous `BulkAnnotationRunning` mutators.
+    // Serialize ledger writes in issue order; draining the tail makes synchronous mutations durable.
     private var lastWrite: Task<Void, Never>?
 
     public init(
@@ -139,13 +84,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     // MARK: - BulkAnnotationRunning
 
     public func start(_ plan: BulkRunPlan) {
-        // One active run at a time. The hub already gates this on `!isRunning`;
-        // guarding here too keeps the engine from leaking a loop or creating a
-        // second ledger row if `start` is ever called while a run exists. The
-        // `!isDriving` clause closes the kickoff window: `start`/`resume` both
-        // claim the engine by setting `isDriving = true` synchronously before
-        // their async setup, so a near-simultaneous Generate-then-Retry (or
-        // double-Generate) can't both pass while `runRecord` is still nil.
+        // runRecord alone misses async kickoff/adoption. isDriving reserves that window
+        // so simultaneous Generate/Retry cannot claim two runs.
         guard runRecord == nil, !isDriving, !plan.isEmpty else { return }
         let now = clock.now()
         let runID = idGenerator.nextID()
@@ -153,10 +93,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         var newUnits: [BulkAnnotationRunUnitRecord] = []
         var ordinal = 0
         for book in plan.books {
-            // A whole-book selection generates one book-level annotation first
-            // (ordinal ahead of its chapters), so it lands before — and the run
-            // finalizes together with — the visible chapter rows. `bookPrologue`
-            // units carry no `chapterNumber`.
             if book.includesBookLevel {
                 newUnits.append(
                     BulkAnnotationRunUnitRecord(
@@ -188,10 +124,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                     )
                 )
                 ordinal += 1
-                // When the run opts into notable verses, each chapter also gets a
-                // `chapterVerses` unit right after its summary unit, so a chapter's
-                // verse annotations land just after — and finalize together with —
-                // its chapter card.
                 if plan.includesNotableVerses {
                     newUnits.append(
                         BulkAnnotationRunUnitRecord(
@@ -212,9 +144,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         }
         guard !newUnits.isEmpty else { return }
 
-        // `modelId` is filled in by the async driver (it needs the actor-isolated
-        // registry); the snapshot doesn't depend on it, so the placeholder never
-        // surfaces. Project immediately so the hub shows queued rows at once.
+        // Resolve model metadata asynchronously; publish queued progress immediately.
         runRecord = BulkAnnotationRunRecord(
             id: runID,
             status: .running,
@@ -236,11 +166,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         guard var run = runRecord else { return }
         switch run.status {
         case .running:
-            // Signal the loop to stop after the current unit via run state — the
-            // loop checks `status` before each unit and after each generate, and
-            // returns the in-flight unit to the queue. We don't cancel the driver
-            // (cancellation can't interrupt the in-flight LLM call anyway, and
-            // leaving the loop intact lets a fast resume continue on it).
+            // Pause through run state, preserving the driver so a fast resume can reuse it.
+            // If still paused after generation, the unit returns to the queue.
             run.status = .paused
             run.updatedAt = clock.now()
             runRecord = run
@@ -267,10 +194,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     public func cancel() {
-        // Tearing down the run state stops the loop (it bails on `runRecord ==
-        // nil` after the in-flight generate returns); the `cancel()` is a
-        // best-effort cooperative abort of that call. We keep `driver` so
-        // `waitUntilIdle()` can await the loop's actual exit.
+        // Clear run state as the authoritative stop signal; Task cancellation is best-effort.
+        // Retain driver until its in-flight work exits.
         driver?.cancel()
         if var run = runRecord, runPersisted {
             let now = clock.now()
@@ -288,32 +213,22 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Finished runs (hub "Recently finished" list)
 
-    /// Re-adopt a finished run as the active job and resume it. Claims the engine
-    /// synchronously (`isDriving`) so it can't race a near-simultaneous `start`;
-    /// the actual reload + revive happens off the spawned Task.
+    /// Claims the engine synchronously before asynchronously loading and reviving a finished run.
     public func resume(runID: String) {
         guard runRecord == nil, !isDriving else { return }
         isDriving = true
         driver = Task { [weak self] in await self?.adoptFinished(runID: runID) }
     }
 
-    /// Delete a finished run from the ledger (the list's dismiss control). The
-    /// reactive `FinishedRunsRequest` drops the row from the section.
     public func dismissFinishedRun(id: String) {
-        // The active run is never in the finished list; guard so a stale id can't
-        // tear down a freshly-started run sharing it.
         guard runRecord?.id != id else { return }
         enqueueWrite { [ledger] in try await ledger.deleteRun(id: id) }
     }
 
-    /// Reload a terminal run, revive its failed (and crash-orphaned `.generating`)
-    /// units to `.queued`, flip the run back to `.running`, and resume the loop.
-    /// Owns `isDriving` (claimed by `resume`) exactly like `persistThenRun`:
-    /// cleared on every early return, handed to `runLoop` on the happy path.
+    // Clear the adopted isDriving claim on every early return; runLoop owns it after handoff.
     private func adoptFinished(runID: String) async {
         guard runRecord == nil else { isDriving = false; return }
-        // Drain any still-pending terminal write for this run so the reload below
-        // reads its settled state rather than a row mid-transition.
+        // Settle pending terminal writes before reloading this run.
         await lastWrite?.value
         guard runRecord == nil else { isDriving = false; return }
         guard let run = try? await ledger.run(id: runID), run.completedAt != nil else {
@@ -340,7 +255,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                 break  // terminal — a re-adopt leaves a skipped unit skipped.
             }
         }
-        // A clean completion has nothing to redo — leave it terminal in the list.
         guard hasWork else { isDriving = false; return }
 
         var revived = run
@@ -349,9 +263,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         revived.completedAt = nil
         revived.updatedAt = now
 
-        // Persist the revival before taking ownership (awaited directly, as in
-        // `restore()` — nothing else mutates state during adoption). The run row
-        // dropping its `completedAt` removes it from the finished list.
+        // Persist revival before adopting it in memory; direct writes settle before the loop starts.
         await performLogged("saveRun(revived)") { try await ledger.saveRun(revived) }
         for unit in loaded where unit.state == .queued {
             await performLogged("saveUnit(revived)") { try await ledger.saveUnit(unit) }
@@ -367,33 +279,18 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Background execution
 
-    /// Drive the active run for a background task: pick up an in-memory run whose
-    /// loop a prior expiration stopped (or, after a cold relaunch, the one
-    /// `restore()` loads from the ledger), then await the loop to its next
-    /// stopping point — the run draining, halting, or a fresh
-    /// `requestExpirationStop()`. Safe to call with no active run (returns at
-    /// once).
+    /// Restores/resumes available work, then awaits the driver and ledger-write tail.
     public func runInBackground() async {
         await restore()        // cold relaunch: load + resume an active run; no-op when one's already in memory.
         resumeActiveRun()      // suspended warm: restart a loop a prior expiration stopped; no-op when one's live.
         await driver?.value
-        // Drain the serialized write tail too, so the ledger reflects the run's
-        // settled state (e.g. a just-finalized `.completed`) before the caller
-        // decides whether to reschedule.
         await lastWrite?.value
     }
 
-    /// A background task ran out of time. Stop the loop before the next unit and —
-    /// crucially — return the unit currently `.generating` (if any) to the queue
-    /// **immediately**, without waiting out its in-flight LLM call: iOS gives only
-    /// a few seconds after expiration, far less than a 10–60 s generation, so
-    /// waiting would get the process watchdog-killed with the unit stranded
-    /// `.generating` and the task never marked complete. The run stays `.running`,
-    /// so `resumeActiveRun()` — on the next foreground or background task —
-    /// re-generates the re-queued unit. The abandoned call's eventual outcome is
-    /// discarded by the loop (`expirationAbandoned`) so nothing lands after the
-    /// task completes. Synchronous, so the re-queue is durable-in-memory the
-    /// instant the caller's expiration handler returns.
+    /// Requeues an in-flight unit immediately and requests a stop before the next unit.
+    /// iOS expiration cannot wait for LLM generation; its eventual outcome is discarded.
+    /// The run stays running for later resume. Call flushPendingWrites before completing
+    /// the background task to persist this synchronous in-memory transition.
     public func requestExpirationStop() {
         backgroundStopRequested = true
         guard let index = units.firstIndex(where: { $0.state == .generating }) else { return }
@@ -404,19 +301,13 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         projectSnapshot()
     }
 
-    /// Await the serialized ledger-write tail so durable state reflects every
-    /// issued write — the background scheduler calls this before marking a task
-    /// complete, so the expiration re-queue has landed on disk.
+    /// Persists every issued write, including expiration requeue, before task completion.
     public func flushPendingWrites() async {
         await lastWrite?.value
     }
 
-    /// Restart the work loop for an active `.running` run that has no live loop —
-    /// the app foregrounding after a background-stop, or a fresh background task
-    /// picking the run back up. Clearing `backgroundStopRequested` first cancels a
-    /// just-fired stop so a loop still winding down keeps going (rather than
-    /// exiting and leaving the run with no driver). No-op when there's no run, it
-    /// isn't running, or a loop is already draining.
+    /// Clears pending background stop and starts a driver only when none is live;
+    /// an existing loop can continue without waiting for another lifecycle event.
     public func resumeActiveRun() {
         guard let run = runRecord, run.status == .running else { return }
         backgroundStopRequested = false
@@ -425,26 +316,14 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Resume on launch
 
-    /// Reload the single active run (if any) and resume it. Any unit left
-    /// `.generating` by a crash mid-call is reset to `.queued` so it re-runs.
-    /// A `.paused` run is restored parked; a `.running` one resumes its loop.
+    /// Resets crash-orphaned generating units to queued. Running resumes; paused stays parked.
     public func restore() async {
-        // Launch-time sweep of stale finished runs (older than the retention
-        // window) — runs unconditionally, before the active-run guards, so it
-        // happens whether or not there's a run to resume.
+        // Sweep finished history on every launch, even without an active run.
         let cutoff = clock.now().addingTimeInterval(-completedRunRetention)
         await performLogged("deleteRunsCompleted") { try await ledger.deleteRunsCompleted(before: cutoff) }
 
-        // `restore` runs as a fire-and-forget Task at launch, concurrently with a
-        // live hub. A user-initiated `start`/`resume` claims the engine by setting
-        // `isDriving = true` synchronously before its async setup, *before* it
-        // assigns `runRecord`. So guarding on `runRecord == nil` alone isn't
-        // enough: restore could pass that guard while a `resume`'s `adoptFinished`
-        // is mid-setup, then adopt the orphaned active run and call `startDriver()`
-        // — which no-ops against the resume's claim, leaving a run with no loop
-        // (wedged until relaunch). Bailing on `!isDriving` cedes to the in-flight
-        // user action, which will drive its own (or, if it bails, a later launch
-        // restores cleanly).
+        // User actions claim isDriving before assigning runRecord. Restore must yield to
+        // that claim or it can adopt a run whose driver cannot start.
         guard runRecord == nil, !isDriving else { return }  // resume once; never clobber a live/claimed run.
         guard let run = try? await ledger.activeRun() else { return }
         guard runRecord == nil, !isDriving else { return }  // a run may have started/been claimed during the await.
@@ -453,15 +332,10 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         for index in loaded.indices where loaded[index].state == .generating {
             loaded[index].state = .queued
             loaded[index].updatedAt = now
-            // Awaited directly (not via the `enqueueWrite` chain) — these all
-            // settle before `startDriver()`, and nothing else mutates state
-            // during restore, so ordering holds without the serialized tail.
+            // Await restore writes before starting the loop, outside the normal write tail.
             await performLogged("saveUnit(restore)") { try await ledger.saveUnit(loaded[index]) }
         }
-        // Final re-check before taking ownership: from here to `startDriver()`
-        // (which claims `isDriving`) there is no suspension, so the claim is
-        // atomic on the MainActor and a concurrent `start`/`resume` either
-        // already tripped the guard above or will trip its own `runRecord == nil`.
+        // No suspension between this final guard and claim, so adoption is atomic on MainActor.
         guard runRecord == nil, !isDriving else { return }
         runRecord = run
         units = loaded
@@ -475,26 +349,18 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Work loop
 
-    // Ownership note: `isDriving` was set `true` synchronously by `start()` before
-    // this Task was spawned; this function owns clearing it. Every early return
-    // here must clear it explicitly; the happy path hands ownership to `runLoop`,
-    // whose `defer` clears it. It is deliberately NOT a `defer` at this function's
-    // top: that would fire after `await runLoop()` returns, and a resume landing
-    // in the await-resumption gap (its `startDriver` having set `isDriving = true`)
-    // would then be clobbered back to `false`, admitting a second loop. Any new
-    // early-return branch added before `runLoop` must clear `isDriving`.
+    // Clear isDriving on every early exit, then hand ownership to runLoop. Do not use
+    // a function-wide defer: after await runLoop returns, it could erase a newer resume
+    // claim made during the resumption gap and admit a second loop.
     private func persistThenRun() async {
         guard var run = runRecord else { isDriving = false; return }
         run.modelId = await currentModelID()
-        // `cancel()` can land during the await above. Don't resurrect a torn-down
-        // run — that would persist a job the user already cancelled.
+        // Cancellation during model lookup must not resurrect the cleared run.
         guard runRecord?.id == run.id else { isDriving = false; return }
         runRecord = run
         do {
             try await ledger.createRun(run, units: units)
         } catch {
-            // Couldn't persist the run — treat it as never-started so the hub
-            // returns to idle rather than showing a phantom job.
             bulkRunnerLog.error("bulk-annotation createRun failed: \(error.localizedDescription, privacy: .public)")
             runRecord = nil
             units = []
@@ -503,8 +369,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             notify()
             return
         }
-        // Or `cancel()` landed during `createRun` (it wrote nothing, since
-        // `runPersisted` was still false) — undo the just-persisted run row.
+        // Cancellation during createRun could not delete an unpersisted row; undo it now.
         guard runRecord?.id == run.id else {
             await performLogged("deleteRun(undo)") { try await ledger.deleteRun(id: run.id) }
             isDriving = false
@@ -514,10 +379,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         await runLoop()  // clears `isDriving` via its `defer`
     }
 
-    /// Kick a work loop unless one is already live. Single-flight: a resume or
-    /// retry that arrives while a unit is mid-flight no-ops here and lets the
-    /// running loop pick up the freshly-queued work, rather than starting a
-    /// second concurrent loop.
     private func startDriver() {
         guard !isDriving else { return }
         isDriving = true
@@ -525,13 +386,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     private func runLoop() async {
-        // A fresh loop never starts pre-stopped: clear any background-stop /
-        // abandoned-outcome latch left by a prior loop that has since exited.
         backgroundStopRequested = false
         expirationAbandoned = false
-        // Cleared synchronously at every exit, so `isDriving` is reliably `false`
-        // the instant the loop stops — which is what makes `startDriver()`'s
-        // single-flight guard correct.
         defer { isDriving = false }
         while !Task.isCancelled {
             guard runRecord?.status == .running else { return }
@@ -539,29 +395,16 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                 finalizeCompleted()
                 return
             }
-            // A background task that ran out of time asked us to wind down: stop
-            // before starting the next unit, leaving the run active for a later
-            // resume. Checked only once real work remains (an already-drained run
-            // still finalizes above), and after the in-flight unit's result was
-            // saved on the prior iteration — so no generation is wasted.
+            // Finalize drained work before honoring background stop; only new units must wait.
             if backgroundStopRequested { return }
 
-            // Preserve mode (the default): skip a unit whose work is already
-            // done, with no LLM call. For a `.chapter` / `.bookPrologue` unit the
-            // slot is deterministic (a `.chapter`/`.book` target card); a
-            // `.chapterVerses` unit picks its verse ranges at generate time, so
-            // "done" means the chapter already carries at least one verse
-            // annotation. `overwriteExisting` bypasses the check and regenerates
-            // as before.
             if runRecord?.overwriteExisting == false {
                 let occupied: Bool
                 do {
                     occupied = try await slotOccupied(for: units[index])
                 } catch {
-                    // An indeterminate read must not silently overwrite (the
-                    // whole point of preserve mode) nor silently skip. Surface it
-                    // as a unit failure — offered for manual retry, and a
-                    // systemic DB fault trips the breaker like a failed generate.
+                    // An uncertain preserve check must neither overwrite nor skip silently. Fail the
+                    // unit so manual retry and the run-level breaker handle database failures.
                     if runRecord == nil { return }
                     if runRecord?.status != .running { return }
                     failUnit(at: index, message: "Couldn't check existing annotations: \(error.localizedDescription)")
@@ -573,9 +416,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                     }
                     continue
                 }
-                // Cancel / pause may have landed during the read; bail the same
-                // way the post-generate block does (leave the unit `.queued` on
-                // pause so resume re-evaluates it).
+                // Recheck after the read; paused work must remain queued for resume.
                 if runRecord == nil { return }
                 if runRecord?.status != .running { return }
                 if occupied {
@@ -596,28 +437,16 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             let reference = makeReference(for: units[index])
             let outcome = await generator.generate(reference: reference)
 
-            // Cancel / pause may have landed while the request was in flight.
-            // Distinguish them by the state each leaves behind, not
-            // `Task.isCancelled`: `cancel()` clears `runRecord` (and also marks
-            // the Task cancelled, but that signal alone can't tell cancel from
-            // pause); `togglePause()` only sets the status to `.paused`.
+            // Run state distinguishes cancellation from pause after an in-flight request.
             if runRecord == nil { return }  // cancelled: run torn down, touch nothing.
             if expirationAbandoned {
-                // An expiration already returned this unit to the queue (see
-                // `requestExpirationStop`) and the task has been marked complete.
-                // Discard this abandoned outcome with no further write so nothing
-                // lands after completion, clear the latch, and re-evaluate from the
-                // top: if a foreground resume that arrived while we were suspended
-                // here already cleared `backgroundStopRequested`, the loop picks the
-                // re-queued unit straight back up (no wedge waiting on a future
-                // lifecycle event); otherwise the top-of-loop background-stop guard
-                // stops cleanly and a later resume starts a fresh loop.
+                // Expiration already requeued this unit. Discard the outcome and re-evaluate so
+                // a foreground resume during the await can continue without waiting for a new event.
                 expirationAbandoned = false
                 continue
             }
             if runRecord?.status != .running {
-                // Paused mid-flight: return the unit to the queue (discarding this
-                // outcome) so resume re-generates it instead of skipping it.
+                // Paused generation is discarded and requeued for resume.
                 units[index].state = .queued
                 units[index].updatedAt = clock.now()
                 saveUnit(at: index)
@@ -693,11 +522,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         finishActiveRun()
     }
 
-    /// Drop a just-finished run from the active slot so the hub returns to idle
-    /// (the Generate CTA comes back) and the run surfaces in the "Recently
-    /// finished" list instead. The terminal run row is already enqueued by the
-    /// caller; clearing the in-memory mirror here projects a `nil` snapshot. The
-    /// run lives on in the ledger until dismissed or swept.
+    // Terminal persistence is already queued; release only the active in-memory slot.
     private func finishActiveRun() {
         runRecord = nil
         units = []
@@ -735,10 +560,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Persistence
 
-    /// Append a write to the serialized chain so writes apply in issue order and
-    /// `waitUntilIdle()` can await them. A write that throws is logged (rather
-    /// than silently swallowed) so a failing disk leaves a breadcrumb explaining
-    /// why the in-memory mirror and the durable ledger have diverged.
+    // Chain writes in issue order. Log failures to diagnose divergence from the in-memory mirror.
     private func enqueueWrite(_ work: @escaping @Sendable () async throws -> Void) {
         lastWrite = Task { [prev = lastWrite] in
             await prev?.value
@@ -750,9 +572,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         }
     }
 
-    /// Await a one-off ledger write (outside the serialized chain — restore /
-    /// adopt time, where nothing else mutates state), logging a failure rather
-    /// than swallowing it with `try?`.
     private func performLogged(_ label: String, _ work: () async throws -> Void) async {
         do {
             try await work()
@@ -800,11 +619,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Target slot
 
-    /// Whether a unit's work is already done, for preserve mode's skip-before-
-    /// generate check. A `.bookPrologue` / `.chapter` unit writes a single
-    /// deterministic target slot, so the check is a `hasAnnotation` on that slot.
-    /// A `.chapterVerses` unit chooses its verse ranges at generate time, so it's
-    /// "done" once the chapter carries any verse annotation — `hasVerseAnnotations`.
+    // Chapter/book slots are deterministic. Notable ranges are chosen during generation,
+    // so any existing verse annotation satisfies their preserve check.
     private func slotOccupied(for unit: BulkAnnotationRunUnitRecord) async throws -> Bool {
         switch unit.kind {
         case .bookPrologue:
@@ -826,18 +642,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Reference
 
-    /// Build the per-unit `RecordReference` the dispatcher annotates — mirrors
-    /// `BibleScreenViewModel.makeAnnotateRequestReference` (same `kind` /
-    /// `sourceID` / `citation` shape per target) so the headless prompt names the
-    /// target identically to the single-shot spark-button path.
-    ///
-    /// A `.chapter` unit carries the chapter's verbatim, verse-numbered text in
-    /// `snapshot` so the generator annotates the actual translation rather than
-    /// its recollection. A `.chapterVerses` unit carries the same numbered text —
-    /// the model picks verse ranges from it — under a distinct `"chapterVerses"`
-    /// kind the dispatcher recognises as the rank-and-generate mode. A
-    /// `.bookPrologue` leaves `snapshot: ""` — the whole book would be an enormous
-    /// prompt, and book-level cards don't quote verses.
+    // Keep reference encoding aligned with single-target dispatch. Chapter and notable-verse
+    // units carry numbered text; book prologues omit it to bound prompt size.
     private func makeReference(for unit: BulkAnnotationRunUnitRecord) -> RecordReference {
         let kind: String
         let sourceID: String
@@ -872,9 +678,6 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         )
     }
 
-    /// The chapter's verbatim, verse-numbered text from the bundled translation,
-    /// or `""` if it can't be loaded (the dispatch then degrades to citation-only
-    /// rather than failing).
     private func chapterSnapshot(bookId: String, chapterNumber: Int) -> String {
         guard let chapter = (try? textLoader.loadChapter(
             bookId: bookId, chapterNumber: chapterNumber, translation: translation
@@ -884,10 +687,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Test seam
 
-    /// Await the current work loop and all issued ledger writes to settle
-    /// (completed, halted, paused, or cancelled). Lets tests drive the engine
-    /// deterministically with no sleeps. Underscore-prefixed per the test-only
-    /// seam convention (AGENTS.md §Testing).
+    /// Drains the current driver and every issued ledger write without scheduler polling.
     func _waitUntilIdle() async {
         await driver?.value
         await lastWrite?.value

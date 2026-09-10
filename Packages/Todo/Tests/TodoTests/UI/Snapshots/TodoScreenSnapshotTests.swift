@@ -7,21 +7,10 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoScreen` in its empty state — the "Tasks" header, the
-/// zero-count caption, the filter pill, the floating add button, and the
-/// empty-state copy.
-///
-/// Only the empty state is captured here: the screen binds its task list
+/// Only the empty state can be captured here: the screen binds its task list
 /// through a reactive `@Query`, which has no synchronous first-value path,
 /// so a `verifySnapshot` taken inline captures the empty `@Query` default.
-/// The *populated* list rendering — grouped section headers and task rows —
-/// is covered deterministically by `TodoSectionHeaderSnapshotTests` and
-/// `TodoTaskRowSnapshotTests` instead.
-///
-/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
-/// read/write the shared on-disk `__Snapshots__/` directory and touch
-/// process-global font registration, so the suites run serially to keep that
-/// setup deterministic — not to paper over a race in the code under test.
+/// Component suites cover the populated list deterministically.
 @Suite("TodoScreen snapshots", .serialized)
 @MainActor
 struct TodoScreenSnapshotTests {

@@ -1,21 +1,7 @@
 import Core
 import Foundation
 
-/// Stateful reducer that turns the OpenAI Chat Completions stream of
-/// `OpenAIStreamChunk`s into the normalized `LLMStreamEvent` sequence
-/// every Super UI consumer expects.
-///
-/// Why a struct: the reducer owns sequencing state for one in-flight
-/// response (block indices, partial tool-call buffers, captured token
-/// usage) but has no identity beyond the call site that drives it. That
-/// matches our project policy of structs-for-data, actors-for-identity.
-///
-/// The reducer is intentionally pure: callers feed parsed chunks in via
-/// `consume(_:)` and a final `finish()`, and receive flat `LLMStreamEvent`
-/// arrays back. Neither method throws — internal failures (a malformed
-/// tool-call argument string, etc.) are surfaced as `.error(...)` events
-/// inside the returned array so the caller can persist whatever did make
-/// it through. No I/O (Input/Output), no concurrency, easy to fixture-test.
+/// Normalizes one Chat Completions stream, including fragmented tool calls.
 struct OpenAIStreamReducer {
     let requiresCompleteResponse: Bool
     private var hasNativeCompletion = false
@@ -24,47 +10,26 @@ struct OpenAIStreamReducer {
         self.requiresCompleteResponse = requiresCompleteResponse
     }
 
-    /// True after we have emitted `.messageStart`. Prevents duplicate
-    /// emission across chunks (OpenAI repeats `id` and `model` on every
-    /// chunk; we emit on first-seen).
     private var emittedMessageStart = false
-    /// Captured from the first chunk that reports them; used to defer
-    /// `.messageStart` until any content event would be emitted, and to
-    /// fall back to empty strings when the upstream proxy strips the
-    /// identifying fields.
+    /// Defer messageStart until content; proxies that strip identifiers fall back to empty strings.
     private var capturedID: String?
     private var capturedModel: String?
 
-    /// Monotonic content-block index assigned to each new text / thinking /
-    /// tool-use block we open. Distinct from OpenAI's `choices[i].index`
-    /// (which is the choice index — always 0 for our `n=1` requests) and
-    /// distinct from `toolCalls[i].index` (which scopes argument fragments
-    /// to a tool call within a choice).
+    /// Our monotonic content index, independent of provider choice and tool-call indexes.
     private var nextBlockIndex = 0
     private var openTextBlock: Int?
     private var openThinkingBlock: Int?
 
-    /// Partial tool-call accumulators keyed by OpenAI's per-choice tool
-    /// index. Arguments arrive as a fragmented JSON string and are joined
-    /// here until the call is flushed at `finishReason` or `finish()`.
+    /// Keyed by the provider's tool index; arguments stay fragmented until flush.
     private var toolCallBuilders: [Int: ToolCallBuilder] = [:]
 
-    /// Latest `usage` block we have seen. OpenAI emits this on the final
-    /// chunk when `stream_options.include_usage = true`; absent on
-    /// intermediate chunks. Stashed here so `finish()` can attach it.
+    /// The final usage chunk is retained for messageComplete.
     private var capturedUsage: TokenUsage?
 
-    /// True after we have emitted `.messageComplete`. Guards against
-    /// double-emission if `finish()` is called more than once.
     private var emittedComplete = false
     private var hadError = false
 
-    /// Process one decoded SSE (Server-Sent Events) chunk and return the
-    /// normalized events it produced. Order within the returned array
-    /// reflects the order downstream consumers should observe them in.
-    /// `messageStart` is always emitted before any content event from the
-    /// same call, even when the upstream chunk lacks `id`/`model`
-    /// (placeholders are substituted so the contract holds).
+    /// Always emits `.messageStart` before content, even when identifiers are absent.
     mutating func consume(_ chunk: OpenAIStreamChunk) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
@@ -134,9 +99,7 @@ struct OpenAIStreamReducer {
                     events.append(.error(.providerError(code: "incomplete_response", message: "OpenAI response ended with \(reason).")))
                 }
             }
-            // The accumulated tool-call builders may have been populated by
-            // the same chunk's `delta.tool_calls`; we always merge first,
-            // then close on `finishReason`.
+            // Merge arguments from the same chunk before closing on finishReason.
             ensureMessageStart(into: &events)
             events.append(contentsOf: closeOpenContentBlocks())
             events.append(contentsOf: flushToolCalls())
@@ -145,11 +108,7 @@ struct OpenAIStreamReducer {
         return events
     }
 
-    /// Final-flush hook. Closes any blocks that were still open (e.g. when
-    /// the upstream stream ended without a `finish_reason`), flushes any
-    /// pending tool-call builders, and emits the terminal
-    /// `.messageComplete(usage:)`. Idempotent: returns an empty array on
-    /// subsequent calls.
+    /// Idempotent EOF flush, including unfinished blocks and tool calls.
     mutating func finish() -> [LLMStreamEvent] {
         if emittedComplete { return [] }
         var events: [LLMStreamEvent] = []
@@ -166,7 +125,6 @@ struct OpenAIStreamReducer {
         return events
     }
 
-    /// Whether a normalized failure has already surfaced.
     var hasErrored: Bool { hadError }
 
     /// Preserve an adapter's existing error when its final flush runs.
@@ -174,20 +132,12 @@ struct OpenAIStreamReducer {
         hadError = true
     }
 
-    /// Emits `.messageStart` once, before any content or terminal event,
-    /// substituting empty strings when the upstream chunk did not carry
-    /// `id`/`model`. The contract that consumers see `.messageStart` first
-    /// is enforced here so callers don't have to.
     private mutating func ensureMessageStart(into events: inout [LLMStreamEvent]) {
         guard !emittedMessageStart else { return }
         events.append(.messageStart(id: capturedID ?? "", model: capturedModel ?? ""))
         emittedMessageStart = true
     }
 
-    /// Opens a text block if none is open and returns its index. Returns
-    /// the existing block's index when one is already open. The caller
-    /// uses the returned index directly so we never need a force-unwrap on
-    /// `openTextBlock`.
     private mutating func openTextBlock(into events: inout [LLMStreamEvent]) -> Int {
         if let existing = openTextBlock { return existing }
         let index = nextBlockIndex
@@ -197,8 +147,6 @@ struct OpenAIStreamReducer {
         return index
     }
 
-    /// Opens a thinking block if none is open and returns its index.
-    /// Returns the existing block's index when one is already open.
     private mutating func openThinkingBlock(into events: inout [LLMStreamEvent]) -> Int {
         if let existing = openThinkingBlock { return existing }
         let index = nextBlockIndex
@@ -208,11 +156,6 @@ struct OpenAIStreamReducer {
         return index
     }
 
-    /// Closes whichever content block (text or thinking) is currently
-    /// open. `openTextBlock` and `openThinkingBlock` are mutually
-    /// exclusive by construction — `consume(_:)` closes thinking before
-    /// opening text, and never opens thinking after text in the same
-    /// stream — so the close order here is informational, not load-bearing.
     private mutating func closeOpenContentBlocks() -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
         if let thinking = openThinkingBlock {
@@ -226,13 +169,7 @@ struct OpenAIStreamReducer {
         return events
     }
 
-    /// Flushes accumulated tool-call builders in OpenAI-index order so the
-    /// emitted `.toolUse` events match the model's intent. Each tool call
-    /// gets its own block (start → toolUse → stop). A malformed argument
-    /// string surfaces as an `.error(.decodingFailed(...))` event in
-    /// place of the tool-use triplet — flushing continues for any
-    /// remaining well-formed calls so the consumer sees as much of the
-    /// turn as actually arrived.
+    /// Flushes in provider tool-index order. Malformed arguments emit an error while other calls continue.
     private mutating func flushToolCalls() -> [LLMStreamEvent] {
         guard !toolCallBuilders.isEmpty else { return [] }
         if requiresCompleteResponse && hadError {
@@ -263,16 +200,11 @@ struct OpenAIStreamReducer {
     }
 }
 
-/// Per-tool-call accumulator. OpenAI streams a tool call's `arguments`
-/// field as a sequence of JSON-string fragments; we glue them back together
-/// and parse once at flush time.
 private struct ToolCallBuilder {
     var id: String?
     var name: String?
     var arguments: String = ""
-    /// Google's thought signature (from `extra_content.google.thought_signature`),
-    /// captured whenever a fragment carries it so it survives multi-fragment
-    /// streaming. Replayed on the next turn's tool call. Nil for non-Gemini.
+    /// Gemini's thought signature must survive fragmented calls for next-turn replay.
     var signature: String?
 
     mutating func merge(_ fragment: OpenAIToolCallDelta) {
@@ -286,8 +218,7 @@ private struct ToolCallBuilder {
         }
     }
 
-    /// Parse the joined arguments string. Empty arguments map to
-    /// `.object([:])` so the caller always receives a usable shape.
+    /// Empty arguments become an empty object.
     func parsedArguments() throws -> JSONValue {
         let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .object([:]) }

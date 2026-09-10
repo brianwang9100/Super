@@ -1,32 +1,10 @@
 import FoundationModels
 import Foundation
 
-/// `LLMProvider` conformer for the on-device Apple Foundation Model (AFM)
-/// exposed by the `FoundationModels` framework.
-///
-/// **Tooling model:** AFM invokes registered tools in-band during
-/// `LanguageModelSession.streamResponse`, splicing the result back into
-/// the model's context invisibly to the caller. The provider therefore
-/// emits only `.textDelta` events to the outer stream — never
-/// `.toolUse`. Tool execution is exercised end-to-end (model →
-/// `DynamicLLMTool.call` → `ToolRegistry.execute` → registry's
-/// executor) but action-card UI for AFM-driven tool calls is a later
-/// phase. Other providers (`OpenAICompatibleLLMProvider`) keep yielding
-/// `.toolUse` and rely on the orchestrator's executeToolCalls loop.
-///
-/// **Stream contract** matches `OpenAICompatibleLLMProvider`: every
-/// stream ends with `.messageComplete(usage:)` and never throws.
-/// Failures arrive as `.error(...)` immediately before the terminal
-/// `.messageComplete`. `.contentBlockStart` is emitted lazily on the
-/// first non-empty delta and `.contentBlockStop` pairs with it on
-/// every exit path.
-///
-/// **Availability is snapshot at init.** A provider built when AFM is
-/// unavailable rejects every `stream(...)` call with the captured
-/// reason — toggling Apple Intelligence in Settings requires a
-/// relaunch. The Settings pane reads
-/// `SystemLanguageModel.default.availability` directly so the row
-/// subtitle stays live.
+/// AFM executes tools in-band; the outer stream receives text, not toolUse events.
+/// Every exit emits messageComplete; errors arrive immediately before it. Text
+/// blocks open lazily on nonempty output and close on exit. Availability is captured
+/// at init, so changing Apple Intelligence requires rebuilding the provider.
 public struct AppleFoundationLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -34,44 +12,18 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     private let availability: AppleFoundationAvailability
     private let sessionFactory: LanguageSessionFactory
     private let idGenerator: any IDGenerator
-    /// Shared dispatcher AFM tool calls fan out through. `nil` means
-    /// "no tools" — the model still streams text but never sees any
-    /// callable tools. The composition root passes the real registry
-    /// via `init(id:availability:toolRegistry:)`; tests can construct
-    /// the provider via the internal designated init with whatever
-    /// registry (or nil) they need.
     private let toolRegistry: ToolRegistry?
 
-    /// Stable identifier for the single model surface AFM exposes.
     public static let defaultModelID = "system-default"
-    /// User-facing display name.
     public static let defaultModelDisplayName = "Apple Intelligence"
-    /// Fallback context-window size for the on-device model, used only when a
-    /// live runtime read is unavailable (tests, and as the designated init's
-    /// default). The production path reads the real window from
-    /// `SystemLanguageModel.contextSize` instead — see `deviceContextTokens`,
-    /// `maxContextTokens`, and the production `init(id:availability:toolRegistry:)`.
+    /// Fallback window for injected/test construction; production reads the framework's live value.
     public static let defaultMaxContextTokens = 4_096
 
-    /// The on-device model's context window, read live from the framework (the
-    /// same back-deployed `contextSize` the production init uses). Exposed so the
-    /// settings UI and seeding can show/store the real window without
-    /// constructing a provider. `contextSize` is `@available(iOS 26.0)` with an
-    /// Apple-provided `@backDeployed` fallback, so no `#available` guard is
-    /// needed at our 26.0 target. Reports 4096 today; surfaces a larger window
-    /// automatically if a future OS reports one.
+    /// Reads the framework's live window without constructing a provider.
     public static var deviceContextTokens: Int { SystemLanguageModel.default.contextSize }
 
-    /// The context-window size advertised on this provider's `LLMModel`. The
-    /// production init reads it once from `deviceContextTokens` (the live
-    /// on-device window); tests inject a fixed value through the designated init.
     private let maxContextTokens: Int
 
-    /// The model surface exposed to the orchestrator. `supportsTools`
-    /// reflects whether a `ToolRegistry` was wired into this provider
-    /// instance — without one, AFM has no callable tools, so the
-    /// orchestrator should not advertise any. Computed per-instance so
-    /// the registry-less startup path is honest about its capabilities.
     public var supportedModels: [LLMModel] {
         [LLMModel(
             id: Self.defaultModelID,
@@ -82,10 +34,6 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         )]
     }
 
-    /// Designated initializer. Tests pass an explicit
-    /// `AppleFoundationAvailability`, a scripted `sessionFactory`, and
-    /// a `DeterministicIDGenerator` so message IDs are stable; the
-    /// `init()` convenience below resolves all three from real APIs.
     init(
         availability: AppleFoundationAvailability,
         sessionFactory: @escaping LanguageSessionFactory,
@@ -104,22 +52,12 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.maxContextTokens = maxContextTokens
     }
 
-    /// Production convenience used by the composition root.
-    ///
-    /// `id` must match the `ModelConfigurationRecord.id` that drives
-    /// the registration, mirroring `OpenAICompatibleLLMProvider`'s
-    /// behavior. `LLMProviderRegistry.setActive(id:)` looks providers
-    /// up by this identifier, so registering AFM under the static
-    /// `"apple-foundation"` would leave the seeded
-    /// `isSelected = true` row unable to promote itself to active.
+    /// id must match the persisted model-configuration row so registry selection can resolve it.
     public init(
         id: String,
         availability: AppleFoundationAvailability,
         toolRegistry: ToolRegistry? = nil
     ) {
-        // Read the real on-device window live from the framework (see
-        // `deviceContextTokens` for the back-deployment note). Reports 4096
-        // today; surfaces a larger window automatically if a future OS does.
         let resolvedContextTokens = Self.deviceContextTokens
         self.init(
             availability: availability,
@@ -144,12 +82,8 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 let messageID = idGenerator.nextID()
-                // Always emit `.messageStart` so the contract holds even
-                // for pre-stream failures.
+                // Pre-stream failures still need a message identity.
                 continuation.yield(.messageStart(id: messageID, model: model.id))
-                // Lazy text-block bookkeeping: `.contentBlockStart` only
-                // fires on the first non-empty delta, and
-                // `.contentBlockStop` pairs with it on every exit path.
                 var openedBlock = false
                 func closeBlockIfNeeded() {
                     if openedBlock {
@@ -204,13 +138,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         }
     }
 
-    /// Build one `DynamicLLMTool` per advertised `LLMTool`. A tool whose
-    /// schema fails to construct (malformed parameter set) is dropped
-    /// silently rather than failing the whole turn — the model loses
-    /// access to that tool but other tools still work. This matches the
-    /// OpenAI path's behavior, which serializes each tool independently.
-    /// Returns an empty array when no `ToolRegistry` was injected — AFM
-    /// streams text without any callable tools in that mode.
+    /// Malformed tool schemas are omitted independently; no registry means text-only generation.
     private func buildDynamicTools(from tools: [LLMTool]) -> [any FoundationModels.Tool] {
         guard let registry = toolRegistry else { return [] }
         return tools.compactMap { tool in
@@ -218,16 +146,8 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         }
     }
 
-    /// Pull the latest `.user` message out as the live prompt and
-    /// translate everything before it into a `Transcript`. The first
-    /// `.system` message becomes an `Instructions` entry; remaining
-    /// `.user` and `.assistant` text becomes `Prompt`/`Response`
-    /// entries. Tool-result and tool-use blocks are still dropped:
-    /// AFM tool calls happen in-band and never make it onto the
-    /// orchestrator's history, so a `.tool` message in `messages`
-    /// would only show up if a non-AFM turn ran earlier in the same
-    /// session and we're now resuming on AFM — that case is rare and
-    /// the safe default is to drop it.
+    // The latest user message is the live prompt; earlier text becomes transcript history.
+    // Tool/thinking blocks are omitted, including history from other provider families.
     private func translate(messages: [LLMMessage]) throws -> (Transcript, String) {
         guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else {
             throw LLMError.requestFailed("AppleFoundationLLMProvider requires a trailing user message")
@@ -268,13 +188,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         }.joined()
     }
 
-    /// Diff Apple's cumulative snapshots into a delta. The framework's
-    /// stream is monotonic by contract — every snapshot starts with the
-    /// previous one's content. On the (currently unobserved) non-prefix
-    /// case we drop the delta entirely rather than yielding the full
-    /// `current` snapshot: downstream consumers concatenate `textDelta`
-    /// events additively, so re-emitting the full text would double-render
-    /// everything that came before.
+    // Consumers concatenate deltas; replaying a non-prefix snapshot would duplicate prior text.
     private func diff(previous: String, current: String) -> String {
         guard current.hasPrefix(previous) else { return "" }
         return String(current.dropFirst(previous.count))
@@ -288,11 +202,6 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         return .requestFailed(error.localizedDescription)
     }
 
-    /// Map AFM's `GenerationError` cases to the normalized `LLMError`
-    /// surface every provider in Super shares. The Chat UI keys off
-    /// these cases for retry/banner behavior; mapping to `providerError`
-    /// with stable codes lets a follow-up PR add per-code UI without
-    /// touching the provider.
     private func mapGenerationError(_ error: LanguageModelSession.GenerationError) -> LLMError {
         switch error {
         case .exceededContextWindowSize:

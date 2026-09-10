@@ -2,35 +2,15 @@ import Core
 import Foundation
 import SwiftUI
 
-/// Routes `super://bible/verse?...` URL taps from the rendered chat
-/// transcript onto the cross-applet event bus as `SuperEvent.previewRecord`.
-/// The shell presents the applet's temporary preview above Chat, preserving
-/// the underlying reader and Chat state. External `https://...` links keep their existing system
-/// behaviour — they fall through to Safari.
-///
-/// The pure routing logic is exposed via ``BibleDeepLinkRouter`` so
-/// unit tests don't need a SwiftUI host to verify the event the tap
-/// produces. ``View/bibleDeepLinkRouting(eventBus:)`` is the SwiftUI
-/// wrapper that the chat transcript actually installs.
+/// Transcript Bible links request temporary previews above Chat, preserving the underlying reader.
 public enum BibleDeepLinkRouter {
-    /// Try to route `url` through the Bible deep-link path. Returns
-    /// `true` iff `url` parsed as a `super://bible/verse?...` URL and
-    /// a publish was scheduled on `eventBus`. Returns `false` for any
-    /// other URL — caller should fall through to system handling so
-    /// `https://...` keeps opening in Safari.
-    ///
-    /// The publish is fire-and-forget through an unstructured `Task`
-    /// because SwiftUI's `OpenURLAction` closure is synchronous; if
-    /// `eventBus` is `nil` (no bus injected, e.g. snapshot host) the
-    /// URL is reported handled so the system doesn't try to open the
-    /// nonexistent scheme.
+    /// Return false for URLs the system should handle. Bible links are consumed even without a bus.
+    /// Publish asynchronously because OpenURLAction is synchronous.
     @discardableResult
     public static func handle(url: URL, eventBus: SuperEventBus?) -> Bool {
         guard let link = BibleDeepLink(url: url) else { return false }
         guard let eventBus else {
-            // Bus-less context (preview, snapshot host) — swallow the
-            // tap so SwiftUI doesn't kick the URL out to the system
-            // with no app registered to receive it.
+            // Consume the link here; no system app handles this scheme in previews.
             return true
         }
         Task { await eventBus.publish(.previewRecord(reference: link.recordReference)) }
@@ -39,12 +19,7 @@ public enum BibleDeepLinkRouter {
 }
 
 public extension View {
-    /// Install an `OpenURLAction` on this subtree that intercepts
-    /// `super://bible/verse?...` markdown links emitted by
-    /// ``BibleReferenceLinkifier`` and routes them through
-    /// ``BibleDeepLinkRouter``. Apply at the chat transcript root —
-    /// non-Bible URLs fall through to the default system action so
-    /// `https://` links still open in Safari.
+    /// Install at the transcript root; non-Bible URLs retain system handling.
     func bibleDeepLinkRouting(eventBus: SuperEventBus?) -> some View {
         environment(\.openURL, OpenURLAction { url in
             if BibleDeepLinkRouter.handle(url: url, eventBus: eventBus) {

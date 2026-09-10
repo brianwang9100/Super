@@ -3,10 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `BibleAnnotationsByTargetRequest` — the single-target
-/// reactive feed that drives the annotation sheet's `@Query`. The query
-/// must return only rows matching the spec; any cross-target leakage
-/// breaks the sheet's card list.
 @Suite("BibleAnnotationsByTargetRequest")
 struct BibleAnnotationsByTargetRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -140,9 +136,7 @@ struct BibleAnnotationsByTargetRequestTests {
     @Test("multiple rows for one target return in (createdAt ASC, id ASC) order")
     func ordering() async throws {
         let (repository, database) = try makeFixture()
-        // Insert out-of-order createdAt + same-second IDs to lock both keys
-        // in — the older row sorts first; same-time IDs sort by id
-        // ascending ("a" before "c").
+        // Mix timestamps and same-time IDs to exercise both sort keys.
         try await repository.replace(
             target: .chapter, bookId: "ROM", chapterNumber: 8,
             verseStart: nil, verseEnd: nil,

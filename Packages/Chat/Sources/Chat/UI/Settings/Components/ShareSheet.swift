@@ -2,11 +2,7 @@
 import SwiftUI
 import UIKit
 
-/// A thin SwiftUI wrapper over `UIActivityViewController` so the system share
-/// sheet can be presented *programmatically* (via `.sheet`) once an async job
-/// produces its artifact — `ShareLink` only fires from a direct tap, so it
-/// can't front a spinner-then-share flow. UIKit-only; the package's macOS
-/// `swift build`/`swift test` compile this file out.
+/// Presents after asynchronous export completes; ShareLink requires a direct tap.
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [URL]
 

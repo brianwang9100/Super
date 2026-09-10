@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBMessageRepository` insert, ordered fetch, and conversation-
-/// scoped delete.
 @Suite("GRDBMessageRepository")
 struct MessageRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -97,23 +95,18 @@ struct MessageRepositoryTests {
             id: "c2", title: "Other", createdAt: now, updatedAt: now
         ))
 
-        // Empty conversation: false.
         #expect(try await repo.hasUserMessage(conversationId: "c1") == false)
 
-        // Only an assistant row: false.
         try await repo.save(MessageRecord(
             id: "m1", conversationId: "c1", role: .assistant, content: "hi", createdAt: now
         ))
         #expect(try await repo.hasUserMessage(conversationId: "c1") == false)
 
-        // User row added: true.
         try await repo.save(MessageRecord(
             id: "m2", conversationId: "c1", role: .user, content: "ping", createdAt: now.addingTimeInterval(1)
         ))
         #expect(try await repo.hasUserMessage(conversationId: "c1") == true)
 
-        // Scoped to conversationId — a user row in `c2` doesn't leak into `c1`'s
-        // answer and vice versa.
         try await repo.save(MessageRecord(
             id: "m3", conversationId: "c2", role: .user, content: "elsewhere", createdAt: now
         ))
@@ -140,10 +133,6 @@ struct MessageRepositoryTests {
     }
 
     @Test func deleteRemovesOnlyTheGivenIds() async throws {
-        // The Regenerate path calls `delete(ids:)` with the contiguous
-        // tail of messages from the targeted assistant onward. Survivors
-        // ahead of the trim must stay; the deleted ids must be gone in
-        // a single round trip.
         let (_, repo, _) = try await makeRepo()
         try await repo.save(MessageRecord(
             id: "m1", conversationId: "c1", role: .user, content: "first", createdAt: now
@@ -178,10 +167,7 @@ struct MessageRepositoryTests {
     }
 
     @Test func deleteCascadesToToolCallRows() async throws {
-        // The `toolCall.messageId` foreign key has `ON DELETE CASCADE`,
-        // so a Regenerate trim removes the assistant message's tool-call
-        // rows transitively. Worth pinning so the regen flow doesn't
-        // need a second explicit `ToolCallRepository.delete(...)` call.
+        // Regenerate relies on the foreign-key cascade to remove associated tool calls.
         let (db, repo, _) = try await makeRepo()
         let toolCalls = GRDBToolCallRepository(database: db)
         try await repo.save(MessageRecord(

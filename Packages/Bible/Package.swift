@@ -25,11 +25,8 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
             ],
-            // `.process` (not `.copy`) keeps the bundle codesign-valid on the
-            // iOS simulator — see the note in `Chat/Package.swift`. Ships the
-            // prebuilt `bible-text.sqlite` (the sole on-device source of Bible
-            // text) and `SystemPrompt.md`. The per-book JSON the sqlite is built
-            // from is no longer shipped — it lives in the test target's fixtures.
+            // `.process` keeps simulator bundles codesign-valid; `.copy` does not.
+            // Ship the text SQLite database; per-book JSON remains a test oracle.
             resources: [
                 .process("Resources"),
             ],
@@ -45,19 +42,12 @@ let package = Package(
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],
-            // Database and image snapshots are read from the source tree at test time
-            // via `#filePath`, not the bundle — exclude them from resource
-            // processing.
+            // Snapshots are read through #filePath, outside the resource bundle.
             exclude: [
                 "Database/__Snapshots__",
                 "UI/Snapshots/__Snapshots__",
             ],
-            // `Fixtures/Text/` holds the 264 per-book `<CODE>-<bookID>.json`
-            // (the parity oracle the shipped sqlite is generated from), and
-            // `Fixtures/WEB-BAD.json` is a deliberately malformed resource the
-            // loader's malformed-resource test reads. `.process` flattens them
-            // into the test bundle, where `BundledBibleTextLoader` looks them up
-            // by name.
+            // `.process` flattens fixtures for name-based lookup by BundledBibleTextLoader.
             resources: [
                 .process("Fixtures"),
             ],

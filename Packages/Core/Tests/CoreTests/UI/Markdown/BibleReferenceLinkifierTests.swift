@@ -1,11 +1,6 @@
 import Testing
 @testable import Core
 
-/// Tests for `BibleReferenceLinkifier`'s anchor and continuation
-/// matching, skip-region handling, and resilience to false positives.
-/// Each suite section maps to a scope bullet in the plan; failures are
-/// scoped to one assertion so a regression points straight at the rule
-/// that broke.
 @Suite("BibleReferenceLinkifier")
 struct BibleReferenceLinkifierTests {
     // MARK: - Anchor matching
@@ -88,15 +83,12 @@ struct BibleReferenceLinkifierTests {
     }
 
     @Test func sentenceBoundaryClearsInheritedBook() {
-        // The trailing `12:1-2` has no book context after the period and
-        // must stay as plain text.
         let output = BibleReferenceLinkifier.linkify("Romans 8:1. 12:1-2 is in Hebrews.")
         #expect(output.contains("[Romans 8:1]"))
         #expect(!output.contains("[12:1-2]"))
     }
 
     @Test func continuationRequiresColon() {
-        // Bare-chapter continuations are too ambiguous to autolink.
         let output = BibleReferenceLinkifier.linkify("Romans 8:1, 12 follows.")
         #expect(output == "[Romans 8:1](super://bible/verse?book=ROM&chapter=8&verses=1), 12 follows.")
     }
@@ -136,27 +128,19 @@ struct BibleReferenceLinkifierTests {
     }
 
     @Test func referenceStyleMarkdownLinkIsNotDoubleLinkified() {
-        // `[text][ref]` is the reference-link shape; the inner `Romans 8:1`
-        // must not become a tappable verse — that would produce nested
-        // brackets the renderer can't reconcile (CommonMark forbids
-        // nested links).
+        // Linkifying a reference label would create invalid nested links.
         let input = "See [Romans 8:1][rom] for one view."
         let output = BibleReferenceLinkifier.linkify(input)
         #expect(output == input)
     }
 
     @Test func collapsedReferenceMarkdownLinkIsNotDoubleLinkified() {
-        // `[text][]` — the collapsed-reference shape — has the same
-        // nesting hazard as the full reference shape.
         let input = "See [Romans 8:1][] for one view."
         let output = BibleReferenceLinkifier.linkify(input)
         #expect(output == input)
     }
 
     @Test func shortcutReferenceMarkdownLinkIsNotDoubleLinkified() {
-        // `[ref]` on its own (no following `(` or `[`) is the shortcut
-        // reference shape; scanning inside it for a verse would emit a
-        // tappable link nested in the reference label.
         let input = "See [Romans 8:1] for one view."
         let output = BibleReferenceLinkifier.linkify(input)
         #expect(output == input)
@@ -180,7 +164,6 @@ struct BibleReferenceLinkifierTests {
     // MARK: - Rejection / false-positive guards
 
     @Test func outOfRangeChapterStaysPlain() {
-        // Genesis has 50 chapters.
         let output = BibleReferenceLinkifier.linkify("Try Genesis 51:1.")
         #expect(output == "Try Genesis 51:1.")
     }
@@ -191,20 +174,16 @@ struct BibleReferenceLinkifierTests {
     }
 
     @Test func bookSeparatedByNewlineIsIgnored() {
-        // Citations don't span newlines — keeps `Romans\n8:1` from
-        // looking like a real reference when the LLM line-wraps mid-cite.
         let output = BibleReferenceLinkifier.linkify("Romans\n8:1 should not link.")
         #expect(output == "Romans\n8:1 should not link.")
     }
 
     @Test func bookEmbeddedInLargerWordIsIgnored() {
-        // `John` appearing inside `Johnson` must NOT become a link.
         let output = BibleReferenceLinkifier.linkify("Johnson 1:1 is not a book.")
         #expect(output == "Johnson 1:1 is not a book.")
     }
 
     @Test func lowercaseBookNameIsIgnored() {
-        // The system prompt requires canonical capitalization.
         let output = BibleReferenceLinkifier.linkify("see genesis 1:1.")
         #expect(output == "see genesis 1:1.")
     }
@@ -219,8 +198,6 @@ struct BibleReferenceLinkifierTests {
     @Test func fullSentenceWithMultipleRefsAndContinuations() {
         let input = "Romans 8:1; 12:1-2 are foundational, see also John 3:16-17, 5:24."
         let output = BibleReferenceLinkifier.linkify(input)
-        // Anchors + continuations all linkified, no double-links, no
-        // false continuations after the comma between two complete refs.
         #expect(output.contains("[Romans 8:1]"))
         #expect(output.contains("[12:1-2](super://bible/verse?book=ROM&chapter=12&verses=1-2)"))
         #expect(output.contains("[John 3:16-17]"))
@@ -238,10 +215,8 @@ struct BibleReferenceLinkifierTests {
         Also Romans 8:28.
         """
         let output = BibleReferenceLinkifier.linkify(input)
-        // The two prose references become links.
         let linkCount = output.components(separatedBy: "](super://").count - 1
         #expect(linkCount == 2)
-        // The code block keeps its content literal.
         #expect(output.contains("```\nPrint exactly: John 3:16\n```"))
     }
 }

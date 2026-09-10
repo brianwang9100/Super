@@ -1,8 +1,7 @@
 import Core
 import Foundation
 
-/// One ordered voice update. Consumers append `appendedText` to their own draft
-/// and render `preview` separately. State, append, and preview change atomically.
+/// One atomic state/text update; append appendedText and render preview separately.
 public struct VoiceInputUpdate: Sendable, Equatable {
     /// Monotonic delivery revision, including updates across recording sessions.
     public let revision: Int
@@ -14,12 +13,9 @@ public struct VoiceInputUpdate: Sendable, Equatable {
     public let state: VoiceInputController.State
 }
 
-/// Independent microphone component. Owns recognition and capture lifetime and
-/// publishes append-only phrases through `updates()`, without knowing composer text.
 @Observable
 @MainActor
 public final class VoiceInputController {
-    /// Capture and permission state projected by subscribers into their UI.
     public enum State: Equatable, Sendable {
         case idle
         case listening
@@ -40,7 +36,6 @@ public final class VoiceInputController {
         }
     }
 
-    /// Current provisional utterance, excluding all already-published phrases.
     public var partialTranscript: String { accumulator.partialTranscript }
 
     private let audioActivity: AudioActivity?
@@ -54,7 +49,6 @@ public final class VoiceInputController {
     private var subscribers: [Int: AsyncStream<VoiceInputUpdate>.Continuation] = [:]
     private(set) var revision = 0
 
-    /// Creates a component with an injectable recognition service and capture gate.
     public init(service: any VoiceInputService, audioActivity: AudioActivity? = nil) {
         self.service = service
         self.audioActivity = audioActivity

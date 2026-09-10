@@ -6,33 +6,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `MemoryUpdatedPill` covering the three save / update /
-/// forget headlines and the collapsed / expanded toggle. Collapsed pins
-/// the chip-only shape; expanded pins the inline detail line ("Saved
-/// memory — Prefers metric units."). Dark + sepia variants are recorded
-/// once on the populated `.save` case since the chrome is shared across
-/// ops.
-///
-/// `.serialized` — snapshot baselines are read/written per-test against
-/// the same on-disk `__Snapshots__/MemoryUpdatedPillSnapshotTests/`
-/// directory. Parallel execution races on the PNG files (TOCTOU), not on
-/// any async behavior in the code under test — serialization is the right
-/// tool. Matches every other snapshot suite in this directory; the
-/// codebase-wide convention is intentional, not a smell to fix per-file
-/// per AGENTS.md §Testing.2.
-///
-/// Reduce Motion is not recorded as a separate variant: the pill toggles
-/// `isExpanded` via a plain `Button` action with no `withAnimation` and
-/// no `.animation(...)` modifier, so the steady-state collapsed and
-/// expanded frames are pixel-identical regardless of the
-/// `accessibilityReduceMotion` env value. Same documented gap as
-/// `CompactionBannerSnapshotTests` (lines 56–65).
 @Suite("MemoryUpdatedPill snapshots", .serialized)
 @MainActor
 struct MemoryUpdatedPillSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     @Test("collapsed save in light")
     func collapsedSaveLight() {
@@ -72,11 +48,7 @@ struct MemoryUpdatedPillSnapshotTests {
 
     @Test("expanded forget in light")
     func expandedForgetLight() {
-        // Production `forget` tool calls only carry `id` (no `text`),
-        // so the parametersJSON the pill parses never has text to show
-        // even in the expanded state — verify renders "Forgot memory"
-        // alone. Earlier this test passed a synthetic `text` field the
-        // LLM would never produce, masking the production rendering.
+        // Forget inputs contain only an ID; synthetic text would hide the production empty-detail state.
         verify(
             op: .forget, text: nil,
             initiallyExpanded: true, theme: .vellumLight,
@@ -105,10 +77,6 @@ struct MemoryUpdatedPillSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        // Mirror the shape of the JSON the LLM actually sends: `forget`
-        // carries only `id`; `save` / `update` carry `text` (and `id`
-        // only on update). Building the parameters payload here keeps
-        // the test fixture honest against production.
         let parametersJSON: String
         switch op {
         case .save:
@@ -126,10 +94,6 @@ struct MemoryUpdatedPillSnapshotTests {
             resultText: "Memory \(op.rawValue) mem-1: \(text ?? "")",
             status: .success
         )
-        // Seed `@State isExpanded` via the underscore-prefixed test seam
-        // so the snapshot pins the actual production view, not a hand-
-        // rolled mirror — the previous local `ExpandedPill` could
-        // silently drift from the real layout on any future tweak.
         let view = MemoryUpdatedPill(call: call, _isExpanded: initiallyExpanded)
             .superTheme(.make(theme))
             .dynamicTypeSize(dynamicType)

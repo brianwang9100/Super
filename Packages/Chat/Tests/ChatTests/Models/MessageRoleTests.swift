@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `MessageRole` raw values, `LLMRole` translation in both
-/// directions.
 @Suite("MessageRole")
 struct MessageRoleTests {
 

@@ -2,7 +2,6 @@ import MarkdownUI
 import Testing
 @testable import Core
 
-/// Verifies that preview citations lose navigation semantics without losing prose formatting.
 @Suite("Markdown Bible citation policy")
 struct MarkdownBibleCitationPolicyTests {
     @Test("enabled policy preserves existing automatic linkification")

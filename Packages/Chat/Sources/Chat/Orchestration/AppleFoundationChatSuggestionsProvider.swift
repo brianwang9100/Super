@@ -1,18 +1,9 @@
 import Core
 import Foundation
 
-/// Generates empty-state chat starters on-device via Apple Foundation Models,
-/// falling back to the static applet actions on unavailability/error/timeout.
-///
-/// Context-safety: this builds its **own minimal prompt** (a single user
-/// message of examples + compact capabilities) and never goes through
-/// `ContextAssembler` or the chat system prompt — AFM's ~4k-token window can't
-/// absorb the full chat persona, so the suggestion call keeps its own tiny
-/// budget. `makePrompt` caps and truncates its inputs so the prompt stays small
-/// regardless of how many examples/capabilities it's handed.
+/// Use a separate bounded prompt: AFM's small window cannot fit the full Chat persona.
+/// Unavailability, errors, and timeouts return the supplied static actions.
 public struct AppleFoundationChatSuggestionsProvider: ChatSuggestionsProvider {
-    /// The AFM provider, or `nil` when Apple Intelligence is unavailable — in
-    /// which case `suggestions` returns the fallback without any generation.
     private let provider: (any LLMProvider)?
     private let capabilities: [String]
     private let count: Int
@@ -46,9 +37,6 @@ public struct AppleFoundationChatSuggestionsProvider: ChatSuggestionsProvider {
         }
     }
 
-    /// Consume the provider's stream to completion (accumulating text deltas),
-    /// racing it against `timeout`. A timeout or any stream error throws, which
-    /// `suggestions(fallback:)` maps to the static fallback.
     private func generate(
         _ messages: [LLMMessage],
         model: LLMModel,
@@ -72,16 +60,12 @@ public struct AppleFoundationChatSuggestionsProvider: ChatSuggestionsProvider {
                 try await Task.sleep(for: timeout)
                 throw SuggestionTimeout.timedOut
             }
-            // Whichever finishes first wins; cancel the loser on the way out.
             let result = try await group.next() ?? ""
             group.cancelAll()
             return result
         }
     }
 
-    /// Build the single-message generation prompt. Pure + bounded: examples and
-    /// capabilities are capped in count and per-line length so the estimated
-    /// token size stays small no matter how large the inputs are.
     static func makePrompt(examples: [String], capabilities: [String], count: Int) -> [LLMMessage] {
         let exampleLines = examples.prefix(6).map { String($0.prefix(40)) }
         let capabilityLines = capabilities.prefix(6).map { String($0.prefix(80)) }
@@ -97,9 +81,6 @@ public struct AppleFoundationChatSuggestionsProvider: ChatSuggestionsProvider {
         return [LLMMessage(role: .user, text: text)]
     }
 
-    /// Parse the model's reply into actions: one short line each, with leading
-    /// bullets/numbering stripped, blanks and over-long lines (paragraph dumps)
-    /// dropped, capped to `count`. The label is also the message sent.
     static func parse(_ text: String, count: Int) -> [SuggestedChatAction] {
         text
             .split(whereSeparator: \.isNewline)
@@ -119,5 +100,4 @@ public struct AppleFoundationChatSuggestionsProvider: ChatSuggestionsProvider {
     }
 }
 
-/// Thrown by the generation timeout race; mapped to the static fallback.
 private enum SuggestionTimeout: Error { case timedOut }

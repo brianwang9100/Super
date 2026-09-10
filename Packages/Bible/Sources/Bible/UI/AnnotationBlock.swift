@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Open reading surface shared by saved and streaming annotation presentations.
 struct AnnotationBlock: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

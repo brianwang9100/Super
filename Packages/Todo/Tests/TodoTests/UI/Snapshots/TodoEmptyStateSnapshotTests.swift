@@ -6,11 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoEmptyState` across Vellum light and dark plus a larger
-/// Dynamic Type size.
-// `.serialized` — snapshot baselines are read/written per-test against the
-// same on-disk `__Snapshots__/` directory; parallel execution races on the
-// PNG files. Matches every snapshot suite in the codebase.
 @Suite("TodoEmptyState snapshots", .serialized)
 @MainActor
 struct TodoEmptyStateSnapshotTests {

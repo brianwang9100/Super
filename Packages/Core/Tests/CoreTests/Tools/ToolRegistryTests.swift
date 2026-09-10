@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `ToolRegistry` registration, enable / disable, lookup, local
-/// dispatch, and `ToolEnablementRepository` integration.
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
     private func makeTool(id: String = "x.test", appletId: String = "x") -> LLMTool {

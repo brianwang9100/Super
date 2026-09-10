@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for the applet-lifetime annotation dispatcher shared by Bible readers.
 @Suite("BibleAnnotationDispatchViewModel")
 @MainActor
 struct BibleAnnotationDispatchViewModelTests {

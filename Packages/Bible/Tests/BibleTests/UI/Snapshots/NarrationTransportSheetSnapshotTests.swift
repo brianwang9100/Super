@@ -6,20 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of ``NarrationTransportSheet`` — the inline overlay card
-/// that hosts the full Narrate transport. Covers preparing, speaking,
-/// paused, and idle-after-Stop across Vellum light and dark,
-/// plus a Dynamic Type XXL variant in light that guards
-/// against squeezed labels in the header citation and dropdown chips.
-///
-/// State-bearing snapshots are driven via the controller's
-/// `_simulateEvent(_:)` test seam instead of yielding through the
-/// fake's `AsyncStream` + polling for the consumer Task to wake —
-/// per root AGENTS.md §Testing.2.
 @Suite("NarrationTransportSheet snapshots", .serialized)
 @MainActor
 struct NarrationTransportSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     // Buffering uses the system ProgressView, with no custom motion or layout branch.
@@ -63,11 +52,6 @@ struct NarrationTransportSheetSnapshotTests {
 
     @Test("the transport card renders post-Stop with Stop dimmed and play enabled in the light theme")
     func idleLight() {
-        // Verifies the Stop-keeps-the-card rule: the card stays up
-        // after Stop, the stop button reads as disabled (so the user
-        // can't no-op it), and the big play button is still tappable
-        // — calling it triggers the `onRestart` callback the screen
-        // wires to a fresh Narrate run.
         verify(theme: .vellumLight, state: .idle, currentVerse: 5, name: "idle_light")
     }
 
@@ -87,8 +71,6 @@ struct NarrationTransportSheetSnapshotTests {
         let theme = SuperTheme.make(themeID)
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
-        // For the .idle case skip the start/emit dance — a fresh
-        // controller is already in .idle.
         if state != .idle {
             controller.start(utterances: [
                 NarrationVerseUtterance(verseNumber: currentVerse, text: "scripture text"),
@@ -106,9 +88,6 @@ struct NarrationTransportSheetSnapshotTests {
             onRestart: {},
             onClose: {}
         )
-        // The card is rendered inside a container with 12pt horizontal
-        // padding on the production screen, so account for that here so
-        // the snapshot matches what users actually see.
         .padding(.horizontal, 12)
         .frame(width: 402, height: 320)
         .superTheme(theme)

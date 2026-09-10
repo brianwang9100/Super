@@ -1,13 +1,11 @@
 import Core
 import SwiftUI
 
-/// Composer-free annotation transcript, with the same response UI as Chat.
 struct AnnotationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.pasteboardClient) private var pasteboard
 
-    /// Persisted response projection supplied by the query container.
     struct Card: Sendable, Equatable {
         let title: String
         let verseText: String?

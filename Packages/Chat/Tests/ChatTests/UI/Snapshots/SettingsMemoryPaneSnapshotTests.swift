@@ -8,35 +8,11 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `SettingsMemoryPane` — the per-tool config
-/// pane reached from the gear affordance on the Memory row.
-///
-/// Three core states (empty, populated light, populated dark) plus a
-/// Dynamic Type XXL variant on the populated case. Post-`SuperTypography`
-/// that variant is a *fixed-chrome* sentinel, not a reflow check: settings
-/// text resolves through `typography.font(_ role:)`, whose system path
-/// passes `relativeTo: nil` (decision ④), so OS Dynamic Type does not
-/// enlarge it — the XXL baseline is byte-identical to the default render,
-/// and a diff would flag an accidental reintroduction of Dynamic Type
-/// scaling to settings chrome. The app font-scale slider, not OS Dynamic
-/// Type, is the axis settings panes respond to. All scenarios
-/// wire a fully-migrated in-memory `ChatDatabase` so the pane's
-/// `@Query` resolves through the real `MemoriesRequest` — recording
-/// against the request's `defaultValue` would mask binding regressions.
-///
-/// `.serialized` — snapshot baselines are read/written per-test against
-/// the same on-disk `__Snapshots__/SettingsMemoryPaneSnapshotTests/`
-/// directory. Parallel execution races on the PNG files (TOCTOU), not on
-/// any async behavior in the code under test — serialization is the right
-/// tool. Matches every other snapshot suite in this directory; the
-/// codebase-wide convention is intentional, not a smell to fix per-file
-/// per AGENTS.md §Testing.2.
+// Settings chrome tracks the app slider, so XXL is a stability check. Use a
+// migrated database so snapshots exercise @Query instead of its empty default.
 @Suite("SettingsMemoryPane snapshots", .serialized)
 @MainActor
 struct SettingsMemoryPaneSnapshotTests {
-    /// Register Core's bundled brand fonts before any render so this suite
-    /// is order-independent in the shared test process (the xctest host never
-    /// runs the app's font registration). See SnapshotFontRegistration.
     init() { SnapshotFontRegistration.ensureRegistered() }
     private static let frame = CGSize(width: 402, height: 874)
     private static let appInfo = SuperAppInfo(bundleName: "Super", version: "0.3.1", build: "1")
@@ -154,10 +130,6 @@ struct SettingsMemoryPaneSnapshotTests {
     }
 }
 
-/// Mirrors the harness in `SettingsSheetSnapshotTests` but accepts a
-/// `DatabaseContext` so the memory pane's `@Query` can observe a real
-/// in-memory database. The other snapshot suites pass `nil` and stay
-/// unchanged.
 private struct SettingsSheetSnapshotHarness: View {
     let viewModel: SettingsViewModel
     let initialPane: SettingsSheet.Pane
@@ -177,10 +149,7 @@ private struct SettingsSheetSnapshotHarness: View {
                 databaseContext: databaseContext
             )
         }
-        // Mirror the production composition root (`AppShell`), which builds
-        // `.superTypography` from the persisted settings. Without this the
-        // panes would render with the environment-default typography and a
-        // future font-scale variant would silently snapshot the wrong scale.
+        // Match persisted typography from the composition root instead of environment defaults.
         .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
     }
 }

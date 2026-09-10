@@ -6,15 +6,7 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Snapshots for `ToolCallBlock` — the generic expandable tool-call card.
-/// Focused on the `.awaitingConfirmation` status badge added with the native
-/// web-search cost gate: the native-search proposal renders its own
-/// `SearchConfirmationRow` and never reaches this card, so the badge is only
-/// exercised by a future destructive tool parked for approval — pin it now so
-/// that path ships with coverage. Light / dark / sepia per AGENTS.md §Testing.
-///
-/// `.serialized` for the same TOCTOU reason as the other snapshot suites
-/// (parallel writes race on the `__Snapshots__/` PNGs, not on code under test).
+// Native search uses SearchConfirmationRow; this fixture exercises generic approval chrome.
 @Suite("ToolCallBlock snapshots", .serialized)
 @MainActor
 struct ToolCallBlockSnapshotTests {
@@ -24,8 +16,6 @@ struct ToolCallBlockSnapshotTests {
         MessageList.ToolCallItem(
             id: "tc-1",
             toolName: "home.unlockDoor",
-            // No registered descriptor → display name falls back to the
-            // technical name (header renders it in the regular caption font).
             toolDisplayName: "home.unlockDoor",
             parametersJSON: #"{"door":"front"}"#,
             resultText: nil,
@@ -33,11 +23,6 @@ struct ToolCallBlockSnapshotTests {
         )
     }
 
-    /// A tool whose friendly `toolDisplayName` differs from its technical
-    /// `toolName` — the header shows the friendly name and the expanded body
-    /// surfaces the technical name under `FUNCTION` (the
-    /// `toolName != toolDisplayName` branch in `ToolCallBlock`). The
-    /// `awaiting*` fixtures set the two equal, so they never exercise it.
     private func renamedCall() -> MessageList.ToolCallItem {
         MessageList.ToolCallItem(
             id: "tc-2",
@@ -59,10 +44,6 @@ struct ToolCallBlockSnapshotTests {
         verify(call: awaitingCall(), theme: .vellumDark, name: "toolcall_awaiting_dark")
     }
 
-    // FUNCTION-detail card across the light / dark / sepia × default Dynamic
-    // Type matrix (AGENTS.md §3), plus an XXL variant for the extra row's
-    // reflow. Taller frame than the awaiting cards: this card adds the
-    // FUNCTION row above INPUT.
     @Test("friendly display name surfaces the FUNCTION detail, light")
     func functionDetailLight() {
         verify(call: renamedCall(), theme: .vellumLight, name: "toolcall_function_detail_light", height: 180)
@@ -89,8 +70,6 @@ struct ToolCallBlockSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) {
-        // `.verbose` so the card is expanded and the INPUT panel + badge both
-        // render in the frame.
         let view = ToolCallBlock(call: call, verbosity: .verbose)
             .superTheme(.make(theme))
             .dynamicTypeSize(dynamicType)

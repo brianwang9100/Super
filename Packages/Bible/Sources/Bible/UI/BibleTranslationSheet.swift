@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Bundled translation choices, embedded in the unified selector or presented on their own.
 struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -9,14 +8,10 @@ struct BibleTranslationSheet: View {
     @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 15
     @ScaledMetric(relativeTo: .footnote) private var detailSize: CGFloat = 13
 
-    /// Declared once and shared by the nav bar and the presentation so the two
-    /// can't drift; a short content-sized sheet.
     private let sizing = SheetSizing.fitsContent
 
-    /// The translation currently in use — its row renders as active.
     let current: BibleTranslation
-    /// Extra bottom padding so the last row clears the shell's minimized
-    /// chat pill; `0` in standalone (snapshot) contexts.
+    /// Reserve for the minimized chat pill; zero in standalone contexts.
     let bottomInset: CGFloat
     let onSelect: (BibleTranslation) -> Void
     let onClose: () -> Void

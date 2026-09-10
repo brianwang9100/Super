@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBConversationRepository` listing, soft-delete, and
-/// hard-delete behavior.
 @Suite("GRDBConversationRepository")
 struct ConversationRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -80,8 +78,6 @@ struct ConversationRepositoryTests {
 
     @Test func listActiveRecentHonorsLimitAndExcludesSoftDeleted() async throws {
         let (_, repo) = try makeRepo()
-        // Seed 15 active rows with strictly increasing updatedAt, plus one
-        // soft-deleted row that should never appear regardless of limit.
         for i in 0..<15 {
             try await repo.save(ConversationRecord(
                 id: "row-\(i)",
@@ -100,7 +96,6 @@ struct ConversationRepositoryTests {
 
         let limited = try await repo.listActiveRecent(limit: 10)
         #expect(limited.count == 10)
-        // Newest first: row-14, row-13, …, row-5.
         #expect(limited.map(\.id) == (5...14).reversed().map { "row-\($0)" })
         #expect(!limited.contains(where: { $0.id == "row-deleted" }))
     }

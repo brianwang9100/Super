@@ -1,6 +1,5 @@
 import CoreGraphics
 
-/// Host-owned top clearance and base bottom reserve for a chapter column.
 struct BibleChapterReaderLayout: Equatable {
     let topInset: CGFloat
     let bottomInset: CGFloat

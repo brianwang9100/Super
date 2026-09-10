@@ -6,11 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoTaskRow`. One stacked fixture per theme exercises the
-/// row's visual states together — an open row with a due-today badge and
-/// label chips, an open row with an upcoming due date, a completed (muted)
-/// row, and a cancelled (strikethrough) row — plus a larger Dynamic Type
-/// size. `now` / `calendar` are fixed so the due badges are deterministic.
 @Suite("TodoTaskRow snapshots", .serialized)
 @MainActor
 struct TodoTaskRowSnapshotTests {

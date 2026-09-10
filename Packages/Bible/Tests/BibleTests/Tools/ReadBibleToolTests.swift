@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `ReadBibleTool` — the `bible.read` multi-passage lookup: per-reference
-/// verse-range resolution, top-level translation validation and current-translation
-/// fallback, book/chapter/verse bounds, partial-success across a `references`
-/// array, and the numbered output contract.
 @Suite("ReadBibleTool")
 struct ReadBibleToolTests {
     private var johnBook: BibleBook {
@@ -41,9 +37,7 @@ struct ReadBibleToolTests {
         )
     }
 
-    /// Acts 8 with verse 37 omitted — a real textual variant some translations
-    /// (the bundled WEB) leave out, so `37` is a valid verse number that selects
-    /// no text.
+    // Acts 8:37 is an allowed textual omission in WEB; the number can be in bounds yet have no text.
     private var actsBookWithGap: BibleBook {
         BibleBook(
             id: "ACT",
@@ -79,7 +73,6 @@ struct ReadBibleToolTests {
         )
     }
 
-    /// A single reference object, with optional verse bounds.
     private func ref(_ book: String, _ chapter: Int, _ start: Int? = nil, _ end: Int? = nil) -> JSONValue {
         var fields: [String: JSONValue] = ["book": .string(book), "chapter": .int(chapter)]
         if let start { fields["startVerse"] = .int(start) }
@@ -87,14 +80,13 @@ struct ReadBibleToolTests {
         return .object(fields)
     }
 
-    /// A tool input wrapping one or more references, with optional top-level translation.
     private func input(_ references: JSONValue..., translation: String? = nil) -> [String: JSONValue] {
         var input: [String: JSONValue] = ["references": .array(references)]
         if let translation { input["translation"] = .string(translation) }
         return input
     }
 
-    // MARK: - Single-reference parity (byte-identical to the old single-passage output)
+    // MARK: - Single reference
 
     @Test("a single reference with no verse range returns every verse in the chapter, numbered")
     func wholeChapter() async throws {
@@ -182,11 +174,9 @@ struct ReadBibleToolTests {
         let result = try await makeTool(books: [johnBook]).execute(
             input: input(ref("John", 3, 16), ref("Genesis", 99, 1))
         )
-        // The whole call is not an error — the model gets the verse it could read.
         #expect(result.isError == false)
         #expect(result.content.hasPrefix("John 3:16 (KJV)"))
         #expect(result.content.contains("16. For God so loved the world."))
-        // …and a correctable note for the reference that failed.
         #expect(result.content.contains("Genesis"))
         #expect(result.content.contains("out of range"))
     }
@@ -198,7 +188,6 @@ struct ReadBibleToolTests {
         )
         #expect(result.isError == false)
         #expect(result.content.hasPrefix("John 3:16 (KJV)"))
-        // A count header introduces the bulleted, per-reference remediation notes.
         #expect(result.content.contains("2 of 3 references couldn't be read:"))
         #expect(result.content.contains("• Chapter 99 is out of range"))
         #expect(result.content.contains("• Unknown or ambiguous book 'Nephi'"))
@@ -354,8 +343,6 @@ struct ReadBibleToolTests {
     func rangeAcrossOmittedVerse() async throws {
         let result = try await makeTool(books: [actsBookWithGap]).execute(input: input(ref("Acts", 8, 36, 38)))
         #expect(result.isError == false)
-        // The citation reflects which verses are actually present (36 and 38),
-        // and the omitted verse 37 is absent from the body.
         #expect(result.content.hasPrefix("Acts 8:36, 38 (KJV)"))
         #expect(result.content.contains("36. "))
         #expect(result.content.contains("38. "))
@@ -373,8 +360,6 @@ struct ReadBibleToolTests {
 
 // MARK: - Test doubles
 
-/// A `BibleTextLoader` serving chapters from a fixed set of books; `nil` for any
-/// other book id or an absent chapter (mirroring the DB loader's missing-row case).
 private struct StubBibleTextLoader: BibleTextLoader {
     let books: [BibleBook]
     func loadChapter(

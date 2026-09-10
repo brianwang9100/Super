@@ -6,21 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `AnnotationBlock` — the single stateless study card
-/// rendered inside `AnnotationSheet`. Variants cover the three target
-/// shapes (verse range with quoted text, chapter, book — the latter two
-/// omit the verse-text region), a long markdown summary exercising the
-/// shared renderer's block chrome (headings, bold, bullets, blockquote,
-/// auto-linkified citation), and a Dynamic Type XXL pass because the
-/// summary prose reflows.
 @Suite("AnnotationBlock snapshots", .serialized)
 @MainActor
 struct AnnotationBlockSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let verseText = """
@@ -35,10 +23,7 @@ struct AnnotationBlockSnapshotTests {
     Christ, not pleasant circumstances.
     """
 
-    /// Long-form markdown exercising every renderer path the dispatcher
-    /// contract asks for: `###` headings, bold key terms, a bullet list,
-    /// a blockquote, and a full-book-name citation (`Hebrews 4:15`) that
-    /// the shared renderer auto-linkifies into a `super://bible/...` link.
+    // Exercise headings, bold, lists, blockquotes, and auto-linked citations.
     private static let longSummary = """
     ### Plain meaning
     Paul is not promising that everything will feel good, only that \

@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `ToolRegistration`'s default enablement, copy-on-toggle, and
-/// `.local` / `.remote` execution variants.
 @Suite("ToolRegistration")
 struct ToolRegistrationTests {
     private func makeTool() -> LLMTool {

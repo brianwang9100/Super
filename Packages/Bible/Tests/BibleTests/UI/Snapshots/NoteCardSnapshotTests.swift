@@ -6,19 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `NoteCard` — one row in `NoteListSheet`. Variants cover a
-/// user note (no footer) across the three themes, an assistant-written
-/// note (provenance footer), and a long body that exercises the 4-line
-/// clamp at default and Dynamic Type XXL so a font change can't silently
-/// drop the ellipsis or the footer.
 @Suite("NoteCard snapshots", .serialized)
 @MainActor
 struct NoteCardSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let userBody = "This is the hinge of the whole gospel. \"God so loved the world\" — the love comes first, before anything is asked of us. Come back here when belief starts to feel like effort."

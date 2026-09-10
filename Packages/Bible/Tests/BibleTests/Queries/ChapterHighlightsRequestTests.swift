@@ -4,9 +4,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `ChapterHighlightsRequest` — the GRDBQuery request the chapter
-/// renderer's `@Query` observes. The `fetch` body must scope to one chapter,
-/// drop cleared highlights, and verse-order the result.
 @Suite("ChapterHighlightsRequest")
 struct ChapterHighlightsRequestTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -33,7 +30,6 @@ struct ChapterHighlightsRequestTests {
         try await repository.setHighlight(
             bookId: "1PE", chapterNumber: 2, verseNumber: 9, color: .yellow, at: now
         )
-        // A different chapter and a different book must not leak in.
         try await repository.setHighlight(
             bookId: "1PE", chapterNumber: 3, verseNumber: 1, color: .green, at: now
         )

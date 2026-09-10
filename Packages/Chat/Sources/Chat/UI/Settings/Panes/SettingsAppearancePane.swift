@@ -1,20 +1,10 @@
 import Core
 import SwiftUI
 
-/// Look & Feel pane. Stacked controls for how the app looks and feels: a
-/// three-stop font-scale slider snapping to 0.80× / 1.00× / 1.20×
-/// (Small / Medium / Large), the haptics master toggle, and a grouped theme
-/// picker (one section per family — Vellum / Lapis / Scriptorium / Slate —
-/// each with a Light and Dark preview card). Spacing (line-spacing,
-/// paragraph margin, bubble paddings) is derived from the slider value
-/// inside `ChatAppearance`, so larger text automatically gets more
-/// breathing room and the pane stays to one knob.
 struct SettingsAppearancePane: View {
     @Bindable var viewModel: SettingsViewModel
 
-    /// Local mirror of the slider's value so we can defer the GRDB write
-    /// until `onEditingChanged(false)`. Seeded from the view model on
-    /// appear; committed on drag end.
+    /// Defer persistence until drag end instead of writing each intermediate value.
     @State private var localFontScale: Double = ChatSettings.default.fontScale
 
     @Environment(\.superTheme) private var theme
@@ -59,8 +49,6 @@ struct SettingsAppearancePane: View {
         .padding(.top, 16)
     }
 
-    /// Master on/off for in-app haptic feedback. Composes with the OS-level
-    /// "System Haptics" switch — both must be on for haptics to play.
     private var hapticsToggleRow: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
@@ -96,7 +84,6 @@ struct SettingsAppearancePane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Per-family section header (e.g. "Vellum") above its Light/Dark cards.
     private func familyLabel(_ text: String) -> some View {
         Text(text)
             .font(typography.font(.subheadline, weight: .semibold))
@@ -104,10 +91,6 @@ struct SettingsAppearancePane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Theme rows
-
-    /// A family's Light + Dark preview cards, side by side. `allCases` is
-    /// ordered light-then-dark per family, so the filter preserves that.
     private func themeRow(family: SuperTheme.Identifier.Family) -> some View {
         let variants = SuperTheme.Identifier.allCases.filter { $0.family == family }
         let columns = [
@@ -122,8 +105,6 @@ struct SettingsAppearancePane: View {
     }
 
     private func themeCard(variant: SuperTheme.Identifier, palette: SuperTheme) -> some View {
-        // `ThemeID` and `SuperTheme.Identifier` share rawValues, so we bridge
-        // by rawValue for selection state and the persisted write.
         let isSelected = viewModel.settings.themeId.rawValue == variant.rawValue
         let label = variant.modeName
 
@@ -178,12 +159,6 @@ struct SettingsAppearancePane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            // Neutral glass card. The colored preview swatch stays opaque on
-            // top, so glass frosts only the label footer (the dropped
-            // `backgroundRaised` fill); glass also supplies the unselected
-            // edge in place of the old neutral border. The selected accent
-            // border + halo layer over the glass to keep the picked theme
-            // reading as picked.
             .superGlassButton(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -200,8 +175,6 @@ struct SettingsAppearancePane: View {
         .accessibilityValue(isSelected ? "Selected" : "")
     }
 
-    // MARK: - Font scale
-
     private var fontScaleCard: some View {
         VStack(spacing: 6) {
             Slider(
@@ -209,8 +182,6 @@ struct SettingsAppearancePane: View {
                 in: 0.80...1.20,
                 step: 0.20,
                 onEditingChanged: { editing in
-                    // Commit only when the drag ends so we don't fire
-                    // one GRDB write per intermediate step.
                     if !editing {
                         Task { await viewModel.setFontScale(localFontScale) }
                     }

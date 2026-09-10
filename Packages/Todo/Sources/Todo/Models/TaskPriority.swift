@@ -12,7 +12,6 @@ public enum TaskPriority: Int, Codable, Sendable, CaseIterable, Equatable, Compa
         lhs.rawValue < rhs.rawValue
     }
 
-    /// Long-form label (filter sheet, edit modal).
     public var displayName: String {
         switch self {
         case .urgent: "Urgent"
@@ -21,8 +20,7 @@ public enum TaskPriority: Int, Codable, Sendable, CaseIterable, Equatable, Compa
         }
     }
 
-    /// Hue (0–360°) used to compute the task row's priority stripe color.
-    /// Matches the `PRI` hues in the design prototype.
+    /// Hue in degrees used to compute the task row's priority stripe color.
     public var hue: Double {
         switch self {
         case .urgent: 25

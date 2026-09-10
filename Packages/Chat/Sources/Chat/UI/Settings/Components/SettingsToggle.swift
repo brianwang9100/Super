@@ -1,24 +1,12 @@
 import SwiftUI
 
-/// Custom 44×26 iOS-style toggle. Mirrors `Switch` from `settings.jsx`:
-/// accent-filled track when on, `border` track when off, white thumb that
-/// translates 18pt with a `.linear(0.2)` ease.
-///
-/// SwiftUI's native `Toggle` would give us the right behaviour but the
-/// system style isn't accent-tinted in the same way and the disabled state
-/// is too dim against `--bg-raised`. The custom switch keeps pixel parity.
+/// Custom chrome retains the design's accent and disabled-state contrast.
 struct SettingsToggle: View {
     @Binding var isOn: Bool
-    /// Spoken label for VoiceOver. Required so users hear the *thing* the
-    /// toggle controls (e.g. "Opus 4.7") rather than just "On, button".
     let accessibilityLabel: String
 
     @Environment(\.superTheme) private var theme
-    /// Mirrors the outer `.disabled(_:)` state so both the button tap *and*
-    /// the explicit `.accessibilityAction { ... }` short-circuit when the
-    /// row is disabled. Without this, VoiceOver users could fire the
-    /// accessibility action (which `.disabled` does not suppress on its
-    /// own) and silently flip the binding on a non-interactive row.
+    /// Explicit accessibility actions can bypass disabled; gate them with the button action.
     @Environment(\.isEnabled) private var isEnabled
 
     init(isOn: Binding<Bool>, accessibilityLabel: String) {
@@ -52,11 +40,6 @@ struct SettingsToggle: View {
         Self.commit(isOn: $isOn, isEnabled: isEnabled)
     }
 
-    /// Pure helper extracted so the disabled-guard can be unit-tested
-    /// without rendering the view through `UIHostingController`. The
-    /// view body funnels both the button action *and* the explicit
-    /// `.accessibilityAction { … }` through here so VoiceOver can't
-    /// bypass the guard (the bug round 1 fixed).
     static func commit(isOn: Binding<Bool>, isEnabled: Bool) {
         guard isEnabled else { return }
         isOn.wrappedValue.toggle()

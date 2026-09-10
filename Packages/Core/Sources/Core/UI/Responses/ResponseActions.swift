@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The shared Copy and Regenerate controls beneath a completed response.
 public struct ResponseActions: View {
     private let onCopy: () -> Void
     private let onRegenerate: () -> Void
@@ -17,7 +16,6 @@ public struct ResponseActions: View {
         self.isRegenerateDisabled = isRegenerateDisabled
     }
 
-    /// Matches the Chat transcript's compact action row.
     public var body: some View {
         HStack(spacing: 4) {
             MessageActionButton(systemName: "doc.on.doc", label: "Copy", action: onCopy)

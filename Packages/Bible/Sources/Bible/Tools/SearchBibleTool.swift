@@ -1,42 +1,20 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that finds verses by *content* — the retrieval-by-content
-/// sibling of `ReadBibleTool`'s retrieval-by-reference.
-///
-/// Given free-text terms, an optional translation, and an optional book scope, it
-/// runs a ranked full-text search over the bundled `bible-text.sqlite` FTS index
-/// and returns the matching verses with correct citations, so the model answers
-/// thematic questions ("verses about anxiety") from real retrieved scripture
-/// rather than recall.
-///
-/// Like the other Bible tools it rejects bad input *softly*: malformed arguments
-/// return a `ToolResult` with `isError: true` and a remediation message. A search
-/// that simply finds nothing is **not** an error — an empty result set is a valid
-/// answer the model can act on.
-///
-/// This is the *search* execution core fronted by `LookupBibleTool` (the public
-/// `bible.lookup` tool with an `action` discriminator) — it owns no descriptor
-/// or registration of its own; the lookup tool dispatches `action:'search'`
-/// here with the `query`/`match`/`book`/`limit`/`translation` input it advertises.
+/// Search execution behind LookupBibleTool. Empty matches are a valid answer;
+/// malformed arguments return correctable error results.
 public struct SearchBibleTool: ToolExecutor {
-    /// Dotted form namespaces the result's tool id under its applet. The
-    /// advertised tool is now `bible.lookup`; `LookupBibleTool` re-stamps this
-    /// core's result with its own id.
     public static let toolID = "bible.search"
 
     public static let appletID = "bible"
 
     public let toolID: String = SearchBibleTool.toolID
 
-    /// Default and maximum result counts. The default keeps a single tool result
-    /// digestible; the cap bounds the worst case a model can request.
+    // Bound result size and model-context use.
     static let defaultLimit = 20
     static let maxLimit = 50
 
     private let searcher: any BibleTextSearching
-    /// `nil` when `bible.sqlite` failed to open — the tool then falls back to the
-    /// default translation whenever `translation` is omitted.
     private let positionRepository: (any BibleReadingPositionRepository)?
     private let catalog: BibleBookCatalog
 
@@ -51,14 +29,12 @@ public struct SearchBibleTool: ToolExecutor {
     }
 
     public func execute(input: [String: JSONValue]) async throws -> ToolResult {
-        // 1. Query — required, non-blank.
         guard let queryRaw = Self.optionalString(input, key: "query"),
               !queryRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return Self.errorResult("query is required. Pass the words or phrase to search for.")
         }
         let query = queryRaw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 2. Translation — explicit (validated strictly) or current selection.
         let translation: BibleTranslation
         do {
             translation = try await BibleToolTranslationResolver.resolve(
@@ -69,7 +45,6 @@ public struct SearchBibleTool: ToolExecutor {
             return Self.errorResult(error.message)
         }
 
-        // 3. Book scope — optional; present-but-unresolvable is an error.
         var bookScope: BibleBookSummary?
         if let bookRaw = Self.optionalString(input, key: "book"),
            !bookRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -79,14 +54,11 @@ public struct SearchBibleTool: ToolExecutor {
             bookScope = summary
         }
 
-        // 4. Limit — clamp to a sane window.
         let limit = min(max(Self.optionalInt(input, key: "limit") ?? Self.defaultLimit, 1), Self.maxLimit)
 
-        // 5. Match mode — forgiving `any` by default; an unknown value is not an
-        // error, it just falls back to the default rather than failing the call.
+        // Unknown match modes fall back to any; they do not reject the call.
         let mode = BibleSearchMatchMode(rawValue: Self.optionalString(input, key: "match") ?? "") ?? .any
 
-        // 6. Search.
         let matches: [BibleVerseMatch]
         do {
             matches = try await searcher.search(
@@ -96,7 +68,6 @@ public struct SearchBibleTool: ToolExecutor {
             return Self.errorResult("Couldn't search scripture right now.")
         }
 
-        // 7. Zero hits is a valid answer, not a malformed call.
         guard !matches.isEmpty else {
             let scope = bookScope.map { " in \($0.name)" } ?? ""
             return ToolResult(
@@ -106,7 +77,6 @@ public struct SearchBibleTool: ToolExecutor {
             )
         }
 
-        // 8. Ranked, cited results.
         let header = Self.header(count: matches.count, query: query, scope: bookScope, translation: translation)
         let lines = matches.map { match in
             let bookName = catalog.book(id: match.bookId)?.name ?? match.bookId

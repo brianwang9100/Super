@@ -3,10 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `SettingsViewModel.load()` and the persistence-write
-/// mutations. Each test seeds an in-memory `SettingRepository` plus stub
-/// model and conversation repositories so we can verify both the
-/// observable state and the on-disk effect of every setter.
 @Suite("SettingsViewModel")
 @MainActor
 struct SettingsViewModelTests {
@@ -74,13 +70,7 @@ struct SettingsViewModelTests {
 
     @Test("setUserPersonalization forwards to the receiver")
     func setUserPersonalizationForwardsToReceiver() async {
-        // The fan-out hop
-        // (`userPersonalizationReceiver.setUserPersonalization(value)`)
-        // is what propagates a Settings edit to active `ChatSession`s in
-        // production. Without this assertion, a future refactor that
-        // drops the forwarding line would compile, persist correctly,
-        // and leave every running conversation stuck on the old value
-        // until app restart.
+        // Persistence alone does not update existing sessions; exercise receiver forwarding.
         let receiver = FakeUserPersonalizationReceiver()
         let vm = makeViewModel(userPersonalizationReceiver: receiver)
         await vm.setUserPersonalization("Always reply in haiku.")
@@ -102,9 +92,6 @@ struct SettingsViewModelTests {
 
     @Test("setLastSelectedModelId persists and survives reload")
     func setLastSelectedModelIdRoundTrip() async {
-        // Regression for the "new chats always pick the first registered
-        // model" bug: the host writes the user's pick through this setter
-        // so the next launch reads it back.
         let settingRepo = InMemorySettingRepository()
         let vm = makeViewModel(settingRepository: settingRepo)
         await vm.setLastSelectedModelId("claude-opus-4-7")
@@ -129,10 +116,6 @@ struct SettingsViewModelTests {
 
     @Test("setAutoCompactEnabled forwards the new policy into the receiver")
     func setEnabledForwardsPolicy() async {
-        // Same rationale as the system-prompt fan-out test above: without
-        // this assertion, a refactor that drops the receiver call would
-        // compile, persist the toggle to disk, and leave every running
-        // session stuck on the old policy until app restart.
         let receiver = FakeAutoCompactPolicyReceiver()
         let vm = makeViewModel(autoCompactPolicyReceiver: receiver)
         await vm.setAutoCompactEnabled(false)
@@ -146,9 +129,7 @@ struct SettingsViewModelTests {
     func setThresholdForwardsPolicy() async {
         let receiver = FakeAutoCompactPolicyReceiver()
         let vm = makeViewModel(autoCompactPolicyReceiver: receiver)
-        // Pick a value inside `clampThreshold`'s [0.5, 0.95] window so this
-        // test pins the forwarding behavior, not the clamp boundary (which
-        // is covered separately by `setThresholdClamps`).
+        // Stay inside the clamp range to isolate forwarding.
         await vm.setAutoCompactThreshold(0.62)
         let calls = await receiver.received()
         #expect(calls.count == 1)
@@ -158,10 +139,6 @@ struct SettingsViewModelTests {
 
     @Test("setAskBeforeSearching persists and forwards the gate into the receiver")
     func setAskBeforeSearchingForwardsGate() async {
-        // Same rationale as the auto-compact fan-out tests: without this
-        // assertion a refactor that drops the receiver call would compile,
-        // persist the toggle to disk, and leave every running session stuck
-        // on the old gate until app restart.
         let repo = InMemorySettingRepository()
         let receiver = FakeWebSearchPolicyReceiver()
         let vm = makeViewModel(settingRepository: repo, webSearchPolicyReceiver: receiver)
@@ -170,7 +147,6 @@ struct SettingsViewModelTests {
         #expect(vm.settings.askBeforeSearching == false)
         let calls = await receiver.received()
         #expect(calls == [false])
-        // Persisted under the canonical key so the value survives relaunch.
         let stored = try? await repo.get(ChatSettingsStore.Keys.webSearchAskBeforeSearching)
         #expect(stored == "false")
     }
@@ -183,9 +159,7 @@ struct SettingsViewModelTests {
         await vm.setHapticsEnabled(false)
 
         #expect(vm.settings.hapticsEnabled == false)
-        // The shared engine was muted immediately (live, no relaunch).
         #expect(engine.enabledLog == [false])
-        // Persisted under the canonical key so the value survives relaunch.
         let stored = try? await repo.get(ChatSettingsStore.Keys.hapticsEnabled)
         #expect(stored == "false")
     }
@@ -194,7 +168,6 @@ struct SettingsViewModelTests {
     func hapticsEnabledRoundTripsThroughStore() async {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
-        // Default is on when the row is absent.
         let beforeWrite = await store.load()
         #expect(beforeWrite.hapticsEnabled == true)
 
@@ -290,8 +263,6 @@ struct SettingsViewModelTests {
         vm.popToRoot()
         #expect(vm.navigationPath.isEmpty)
 
-        // Opening .root from anywhere clears the stack so the header
-        // header always reads "Settings".
         vm.openPane(.appearance)
         vm.openPane(.root)
         #expect(vm.navigationPath.isEmpty)
@@ -299,11 +270,7 @@ struct SettingsViewModelTests {
 
     @Test("loadModels reports hasAPIKey true when a key is stored at the ref")
     func loadModelsFlagsKeychainPresence() async {
-        // Drives the model-detail pane's "pre-fill the SecureField with
-        // bullets" affordance: ModelRow.hasAPIKey is what the pane reads
-        // at init time to decide whether to seed the placeholder. A
-        // ref-with-no-entry must read as `false` so the pane shows an
-        // empty field and prompts for a real key.
+        // A key reference without a stored secret must not populate the masked-key placeholder.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "with-key",
@@ -329,7 +296,6 @@ struct SettingsViewModelTests {
             ),
         ])
         modelRepo.storedKeys["ref-with"] = "sk-real"
-        // ref-without intentionally absent from storedKeys
 
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
@@ -342,11 +308,6 @@ struct SettingsViewModelTests {
 
     @Test("loadModels projects .appleFoundation rows with nil baseURL and empty endpoint")
     func loadModelsProjectsAppleFoundationRow() async {
-        // The Settings UI consumes `ModelRow.kind` to render an AFM-aware
-        // subtitle, `ModelRow.baseURL == nil` to suppress the endpoint
-        // pill, and `ModelRow.hasAPIKey == false` since there is no
-        // keychain entry to check. This exercises the three new
-        // nil-aware branches in `loadModels()` against an AFM record.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "afm",
@@ -375,12 +336,6 @@ struct SettingsViewModelTests {
 
     @Test("updateModel on an .appleFoundation row preserves nil baseURL and skips keychain writes")
     func updateModelOnAppleFoundationRowPreservesNilFields() async {
-        // Defense-in-depth against a non-nil URL leaking through the
-        // pane (e.g., if a future refactor accidentally routes an
-        // AFM edit through the openAI-compat save branch). The
-        // openAI-compat URL must NOT overwrite the row's nil
-        // `baseURL`, and the empty `apiKey` must NOT create a
-        // phantom keychain entry under a nonexistent ref.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "afm",
@@ -410,15 +365,14 @@ struct SettingsViewModelTests {
 
         let saved = try? await modelRepo.fetch(id: "afm")
         #expect(saved?.kind == .appleFoundation)
-        #expect(saved?.baseURL == nil)            // form URL did NOT overwrite
+        #expect(saved?.baseURL == nil)
         #expect(saved?.apiKeyRef == nil)
         #expect(saved?.name == "Apple Intelligence (renamed)")
-        #expect(modelRepo.storedKeys.isEmpty)     // no phantom key written
+        #expect(modelRepo.storedKeys.isEmpty)
     }
 
     @Test("updateModel on an .appleFoundation row with baseURL: nil preserves nil baseURL")
     func updateModelOnAppleFoundationRowWithNilBaseURL() async {
-        // Regression test for the AFM edit path through `updateModel(baseURL: nil)`.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "afm",
@@ -436,7 +390,6 @@ struct SettingsViewModelTests {
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
 
-        // Distinguishable name + thinking flip prove the write path ran.
         await vm.updateModel(
             id: "afm",
             name: "Apple Intelligence (renamed via nil-URL edit)",
@@ -459,13 +412,7 @@ struct SettingsViewModelTests {
 
     @Test("updateModel with blank key preserves both ref and stored key")
     func updateModelPlaceholderSavePreservesKey() async {
-        // Pairs with the model-detail pane's "user opened the edit form
-        // and saved without re-typing the key" path: the pane passes ""
-        // for apiKey in that case, and the existing key must survive.
-        // Stricter than `updateModelKeepsRef` above — that one asserts
-        // `storedKeys.isEmpty` (no rotation), this one asserts the
-        // original key is still readable through the repository after
-        // the save round-trip.
+        // An unchanged masked field submits an empty key, which must preserve the stored secret.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "m1",
@@ -493,11 +440,8 @@ struct SettingsViewModelTests {
             maxContextTokens: 8_000
         )
 
-        // Key still readable through the repository — the placeholder
-        // bullets must NOT have overwritten it.
         let resolved = try? await modelRepo.loadAPIKey(ref: "ref-1")
         #expect(resolved == "sk-original")
-        // And the row continues to report hasAPIKey after the rename.
         let updated = vm.models.first { $0.id == "m1" }
         #expect(updated?.hasAPIKey == true)
         #expect(updated?.name == "GPT renamed")
@@ -505,10 +449,6 @@ struct SettingsViewModelTests {
 
     @Test("hasAppleFoundationModel reflects the in-memory models list")
     func hasAppleFoundationModelTracksRows() async {
-        // The preset picker uses this to disable the Apple Intelligence
-        // option once an AFM row exists. The flag must agree with the
-        // current in-memory snapshot — not a re-fetch — so a successful
-        // `createAppleFoundationModel` immediately flips the bit.
         let modelRepo = StubModelRepository(rows: [])
         let vm = makeViewModel(
             modelRepository: modelRepo,
@@ -528,10 +468,6 @@ struct SettingsViewModelTests {
 
     @Test("appleFoundationContextTokens surfaces the injected on-device window")
     func appleFoundationContextTokensIsInjected() async {
-        // The detail pane renders + persists this value for AFM rows (the
-        // field is read-only). Injecting it keeps the pane deterministic and
-        // off the real device API; a distinctive value proves it's wired
-        // through rather than a hardcoded 4096.
         let vm = makeViewModel(appleFoundationContextTokens: 9_999)
         #expect(vm.appleFoundationContextTokens == 9_999)
     }
@@ -562,9 +498,6 @@ struct SettingsViewModelTests {
         #expect(saved?.apiKeyRef == nil)
         #expect(saved?.modelId == "system-default")
         #expect(saved?.maxContextTokens == 4_096)
-        // No keychain entry should have been written — AFM rows have no
-        // ref.  The stub stores nothing under nil/empty refs, so the dict
-        // remains empty.
         #expect(modelRepo.storedKeys.isEmpty)
         #expect(vm.modelEditError == nil)
     }
@@ -752,11 +685,6 @@ struct SettingsViewModelTests {
 
     @Test("createModel surfaces repository failures via modelEditError")
     func createModelSurfacesFailures() async {
-        // Regression test for the silent-catch bug: a Keychain failure
-        // (errSecMissingEntitlement on unsigned simulator builds) used
-        // to swallow the error in `createModel`'s catch — the form
-        // dismissed and the user saw nothing. Now the error must surface
-        // through `modelEditError` so the detail pane can render it.
         struct StubKeychainError: Error, Sendable {}
         let modelRepo = StubModelRepository(rows: [])
         modelRepo.storeAPIKeyError = StubKeychainError()
@@ -775,9 +703,6 @@ struct SettingsViewModelTests {
 
         #expect(vm.modelEditError != nil)
         #expect(vm.modelEditError?.contains("Could not save model") == true)
-        // The row must not appear — a failed save should leave the
-        // models list empty, not show a row that's actually missing
-        // from disk.
         #expect(vm.models.isEmpty)
         #expect(modelRepo.rows.isEmpty)
     }
@@ -790,7 +715,6 @@ struct SettingsViewModelTests {
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
 
-        // First attempt fails and sets the error.
         await vm.createModel(
             name: "Local Llama",
             baseURL: URL(string: "http://localhost:1234/v1")!,
@@ -801,8 +725,6 @@ struct SettingsViewModelTests {
         )
         #expect(vm.modelEditError != nil)
 
-        // Drop the failure and retry — error must clear on the next
-        // entry into createModel, not linger across attempts.
         modelRepo.storeAPIKeyError = nil
         await vm.createModel(
             name: "Local Llama",
@@ -848,7 +770,6 @@ struct SettingsViewModelTests {
         #expect(saved?.apiKeyRef == "ref-1")
         #expect(saved?.maxContextTokens == 128_000)
         #expect(saved?.isSelected == true)
-        // Empty key means we don't rotate the Keychain entry.
         #expect(modelRepo.storedKeys.isEmpty)
     }
 
@@ -1214,12 +1135,6 @@ struct SettingsViewModelTests {
 
     @Test("updateModel preserves a configured searchBackend across an edit")
     func updateModelPreservesSearchBackend() async {
-        // Regression: `updateModel` rebuilds the whole record from form
-        // fields. The form has no web-search field, so the saved record must
-        // carry `searchBackend` over from `existing` — otherwise editing any
-        // other field (name, model id, key) silently resets the row to "no
-        // web search". Dropping `searchBackend: existing.searchBackend` from
-        // the rebuild makes this test fail.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "m1",
@@ -1250,17 +1165,9 @@ struct SettingsViewModelTests {
 
     @Test("updateModel does not unregister a provider it can't re-register")
     func updateModelKeepsNativeKindProviderRegistered() async {
-        // Regression for the unregister-then-break trap: `updateModel` now
-        // builds the replacement provider *first* and only swaps when it gets
-        // one. Here the view model is wired with no HTTP client, so
-        // `makeLLMProvider` yields nil for this network-backed `.geminiNative`
-        // row — meaning an unconditional unregister would strip the provider
-        // registered at hydration time and leave nothing behind. Building first
-        // skips the unregister so the provider survives the edit. (This exactly
-        // matches what re-registration would do — no `hasProviderAdapter` proxy
-        // that could drift from the factory.)
+        // No HTTP client means replacement construction fails. Keep the existing provider
+        // registered until a replacement can actually be built.
         let registry = LLMProviderRegistry()
-        // Stand in for the (future) native provider registered at hydration.
         let provider = FakeLLMProvider(
             id: "m1",
             model: LLMModel(id: "gemini-3-pro", displayName: "Gemini 3 Pro")
@@ -1295,19 +1202,11 @@ struct SettingsViewModelTests {
             maxContextTokens: 1_000_000
         )
 
-        // The provider must still be registered — the edit didn't strip it.
         #expect(await registry.provider(id: "m1") != nil)
     }
 
     @Test("updateModel persists an edited Base URL for a native-kind row")
     func updateModelHonorsEditedURLForNativeKind() async {
-        // Regression for the silent-URL-discard trap: `resolveEditProvider`
-        // routes native-kind rows through the Custom edit pane, which renders
-        // an *editable* Base URL field. If `updateModel`'s `nextBaseURL`
-        // switch preserved `existing.baseURL` for native kinds, a user edit
-        // would be accepted in the UI and silently dropped on save. The
-        // switch must honor the caller's URL so what the field shows is what
-        // gets persisted. Preserving `existing.baseURL` here fails this test.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "m1",
@@ -1341,9 +1240,6 @@ struct SettingsViewModelTests {
 
     @Test("updateModel re-registers an openAICompatible provider across an edit")
     func updateModelReregistersBuildableProvider() async {
-        // Counterpart to the native-kind test: for a buildable kind the
-        // guard still allows the normal unregister + re-register cycle, so a
-        // provider remains registered (under a possibly-rebuilt instance).
         let registry = LLMProviderRegistry()
         let modelRepo = StubModelRepository(rows: [
             .init(
@@ -1380,11 +1276,6 @@ struct SettingsViewModelTests {
 
     @Test("updateModel re-registers an .openAIResponses provider across an edit")
     func updateModelReregistersOpenAIResponsesProvider() async {
-        // The PR3a `hasProviderAdapter` flip makes `.openAIResponses` rows
-        // newly eligible for the unregister + re-register cycle. Pin it: after
-        // an edit the row stays registered, built through `makeLLMProvider` as
-        // an `OpenAIResponsesLLMProvider` (not silently dropped the way a
-        // not-yet-buildable native kind would be).
         let registry = LLMProviderRegistry()
         let modelRepo = StubModelRepository(rows: [
             .init(
@@ -1423,9 +1314,6 @@ struct SettingsViewModelTests {
 
     @Test("loadModels projects searchBackend onto the ModelRow")
     func loadModelsProjectsSearchBackend() async {
-        // The Add-Model native-search UI (next PR) reads `searchBackend` off
-        // the loaded `ModelRow`. If `loadModels` drops it, the toggle reads
-        // `nil` and shows "off" for a row that has search configured.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "withSearch",
@@ -1904,7 +1792,6 @@ struct SettingsViewModelTests {
     func shortEndpoint() {
         #expect(SettingsViewModel.shortEndpoint(URL(string: "https://api.example.com/v1/")!) == "api.example.com/v1")
         #expect(SettingsViewModel.shortEndpoint(URL(string: "http://localhost:1234/")!) == "localhost:1234")
-        // Schemes other than http/https pass through unchanged.
         #expect(SettingsViewModel.shortEndpoint(URL(string: "file:///tmp/local")!) == "file:///tmp/local")
     }
 
@@ -1925,12 +1812,8 @@ struct SettingsViewModelTests {
 
         let stored = try await repo.fetch(id: "mem-1")
         #expect(stored?.text == "new")
-        // Pins the injection seam: without `now:` defaulting to Date(),
-        // this assertion would race the wall clock — the regression
-        // signal AGENTS.md §Testing rule 1 calls for.
         #expect(stored?.updatedAt == pinned)
-        // createdAt must not move on update — surfaces would re-sort
-        // and the system-prompt memories block would flicker.
+        // Keep creation order stable in the memory prompt.
         #expect(stored?.createdAt == seedDate)
     }
 
@@ -1987,17 +1870,11 @@ struct SettingsViewModelTests {
 
     @Test("memory mutations no-op when no memoryRepository is wired")
     func memoryMutationsNoopWithoutRepository() async {
-        // Snapshot tests and the bare VM rely on this — without the
-        // `guard let memoryRepository else { return }` early-return,
-        // tapping CRUD affordances would crash. Pin the no-op contract.
         let vm = makeViewModel()
         await vm.updateMemory(id: "anything", text: "x", now: Date())
         await vm.deleteMemory(id: "anything")
         await vm.clearAllMemories()
-        // No assertion needed — the absence of a crash IS the contract.
     }
-
-    // MARK: - Builders
 
     // MARK: - loadAvailableModels (live model-list cache)
 
@@ -2009,13 +1886,11 @@ struct SettingsViewModelTests {
 
         let cached = vm.fetchedModels["openai"]
         #expect(cached?.map(\.id) == ["gpt-5.5", "mystery-model"])
-        // Known id keeps curated metadata; unknown id gets defaults.
         #expect(cached?.first?.maxContextTokens == 1_000_000)
         #expect(cached?.last?.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
         #expect(vm.modelListNote["openai"] == nil)
         #expect(vm.loadingModelsProviderID == nil)
         #expect(await service.callCount == 1)
-        // The entered key is passed through (trimmed) to the service.
         #expect(await service.lastAPIKey == "sk-test")
     }
 
@@ -2039,9 +1914,7 @@ struct SettingsViewModelTests {
 
     @Test("A forced re-fetch after a key correction passes the NEW key to the service")
     func loadAvailableModelsForcedRefetchUsesNewKey() async {
-        // The cache is keyed by provider only, so the pane's key-typed
-        // debounce forces — and the corrected key must reach the wire,
-        // not the one that populated the cache.
+        // Cache keys omit credentials, so a corrected typed key must force a refresh.
         let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
         let vm = makeViewModel(modelListingService: service)
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-first", force: false)
@@ -2084,11 +1957,8 @@ struct SettingsViewModelTests {
     func loadAvailableModelsForcedFailureClearsStaleCache() async {
         let service = ScriptedModelListingService(.ids(["gpt-5.5", "mystery-model"]))
         let vm = makeViewModel(modelListingService: service)
-        // First fetch succeeds and caches a live list (incl. a non-catalog id).
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
         #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5", "mystery-model"])
-        // A forced refresh now fails — the stale list must be dropped so the
-        // dropdown falls back to the catalog and the note isn't a lie.
         await service.setOutcome(.failure(.transport("HTTP 500")))
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: true)
         #expect(vm.fetchedModels["openai"] == nil)
@@ -2099,10 +1969,7 @@ struct SettingsViewModelTests {
     func loadAvailableModelsCancellationIsNotFailure() async {
         let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
         let vm = makeViewModel(modelListingService: service)
-        // Populate a good cache first, then cancel a forced re-fetch
-        // mid-flight — the pane's `.task(id: apiKey)` does exactly this on
-        // every keystroke. The cancelled fetch must not wipe the cache or
-        // post the fallback note; the restarted fetch owns the next state.
+        // Debounce cancellation happens on keystrokes; only the restarted fetch owns the next state.
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
         await service.setOutcome(.hang)
         let inFlight = Task { await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-corrected", force: true) }
@@ -2117,7 +1984,6 @@ struct SettingsViewModelTests {
     func loadAvailableModelsNonListableProvidersNoCall() async {
         let service = ScriptedModelListingService(.ids(["x"]))
         let vm = makeViewModel(modelListingService: service)
-        // Custom has no defaultBaseURL; Apple's kind has no list endpoint.
         await vm.loadAvailableModels(providerID: LLMProviderCatalog.customProviderID, apiKey: "sk", force: true)
         await vm.loadAvailableModels(providerID: LLMProviderCatalog.appleProviderID, apiKey: "sk", force: true)
         #expect(await service.callCount == 0)
@@ -2125,8 +1991,6 @@ struct SettingsViewModelTests {
 
     // MARK: - loadAvailableModelsUsingStoredKey (edit-mode fetch)
 
-    /// Editing row used by the stored-key fetch tests: a built-in OpenAI
-    /// row whose key lives in the Keychain under `ref-1`.
     private static func storedKeyRow(apiKeyRef: String? = "ref-1") -> ModelConfigurationRecord {
         .init(
             id: "row-1",
@@ -2173,7 +2037,6 @@ struct SettingsViewModelTests {
     func storedKeyFetchKeychainMissIsSilent() async {
         let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
         let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
-        // ref-1 intentionally absent from storedKeys.
         let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
 
         await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
@@ -2229,7 +2092,6 @@ struct SettingsViewModelTests {
     func storedKeyForcedFetchWithoutKeyPostsNote() async {
         let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
         let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
-        // ref-1 intentionally absent from storedKeys (lost Keychain entry).
         let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
 
         await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: true)
@@ -2241,25 +2103,20 @@ struct SettingsViewModelTests {
 
     @Test("A stale fetch completing after a newer one discards its writes (generation guard)")
     func staleFetchCompletionIsDiscarded() async {
-        // The edit pane's stored-key appear-fetch can still be on the wire
-        // when the typed-key debounce fetch starts and finishes. The slow
-        // (stale) completion must not clobber the fresh list — neither its
-        // success result nor a failure's cache-wipe + fallback note.
+        // An appear-fetch can finish after a typed-key refresh; stale success or failure
+        // must not overwrite the newer list.
         let service = ScriptedModelListingService(.gated(["stale-model"]))
         let vm = makeViewModel(modelListingService: service)
 
         let staleTask = Task {
             await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-old", force: false)
         }
-        // Entry signal: the stale fetch is suspended at the gate, inside
-        // the network call, BEFORE the newer fetch starts.
         await service.awaitGateEntered()
 
         await service.setOutcome(.ids(["gpt-5.5"]))
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-new", force: true)
         #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
 
-        // Let the stale fetch finish; its (different) result must be dropped.
         await service.releaseGate()
         await staleTask.value
         #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
@@ -2305,12 +2162,7 @@ struct SettingsViewModelTests {
         audioSetup: ProviderAudioSetup? = nil,
         eventBus: SuperEventBus? = nil
     ) -> SettingsViewModel {
-        // The availability default is *deliberately* a fixed unavailable
-        // case rather than the SDK's `SystemLanguageModel.default
-        // .availability` so unit tests don't pick up whatever AFM state
-        // happens to be on the host running them. Tests that need to
-        // exercise the AFM-available code path should pass
-        // `appleFoundationAvailability: .available` explicitly.
+        // Fixed availability keeps tests independent of the host on-device model state.
         SettingsViewModel(
             appInfo: Self.appInfo,
             settingRepository: settingRepository,
@@ -2344,24 +2196,13 @@ private actor InMemorySettingRepository: SettingRepository {
     func all() async throws -> [String: String] { storage }
 }
 
-/// Scripted `ModelListingService` double for `loadAvailableModels` tests.
-/// Returns a fixed outcome and records the call count + last key so a test
-/// can assert the cache/short-circuit/refresh logic without any network. An
-/// actor so the cross-`await` counter is race-free.
 private actor ScriptedModelListingService: ModelListingService {
     enum Outcome {
         case ids([String])
         case failure(ModelListingError)
-        /// Sleeps until the surrounding task is cancelled — drives the
-        /// cancelled-fetch path (the pane's debounce restarting mid-flight).
+        /// Sleeps until cancellation.
         case hang
-        /// Suspends at a gate until `releaseGate()` is called, then returns
-        /// the ids — drives the stale-completion path (a slow fetch landing
-        /// after a newer one already wrote the cache). The test sequences
-        /// the race deterministically: `awaitGateEntered()` is the entry
-        /// signal (AGENTS.md §Testing.7 "staged concurrency"), then the
-        /// newer fetch runs to completion, then `releaseGate()` lets the
-        /// stale one finish.
+        /// Waits for releaseGate(); awaitGateEntered() signals when a call is suspended.
         case gated([String])
     }
 
@@ -2374,18 +2215,13 @@ private actor ScriptedModelListingService: ModelListingService {
 
     init(_ outcome: Outcome) { self.outcome = outcome }
 
-    /// Swap the scripted outcome between calls (e.g. success then failure on
-    /// a forced refresh).
     func setOutcome(_ outcome: Outcome) { self.outcome = outcome }
 
-    /// Suspends until a `.gated` call has reached the gate. Returns
-    /// immediately if it already has.
     func awaitGateEntered() async {
         if gateEntered { return }
         await withCheckedContinuation { gateEnteredWaiters.append($0) }
     }
 
-    /// Releases every call suspended at the `.gated` gate.
     func releaseGate() {
         let waiters = gateWaiters
         gateWaiters = []
@@ -2412,7 +2248,6 @@ private actor ScriptedModelListingService: ModelListingService {
     }
 }
 
-/// Injected failures for key rotation and rollback; never access the real Keychain.
 private enum KeyRotationTestError: Error, Sendable {
     case saveFailed
     case keychainFailed
@@ -2446,21 +2281,11 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     var rows: [ModelConfigurationRecord]
     var stagedKeyRefs: Set<String> = []
     var registerStagedKeyError: Error?
-    /// Plaintext keys keyed by ref so the createModel/updateModel tests
-    /// can assert what landed in the Keychain layer.
     var storedKeys: [String: String] = [:]
-    /// When non-nil, `storeAPIKey` throws this. Lets a test drive
-    /// `createModel`/`updateModel` through the Keychain-failure path —
-    /// the regression seam for the silent-catch bug fixed by surfacing
-    /// `SettingsViewModel.modelEditError`.
     var storeAPIKeyError: Error?
     var storeAPIKeyAttempts = 0
     var deleteAPIKeyError: Error?
     var deleteRowError: Error?
-    /// When non-nil, `save` throws this. Lets a test drive
-    /// `createAppleFoundationModel` through the persistence-failure
-    /// path; AFM rows never call `storeAPIKey`, so the existing
-    /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
     var fetchGate: KeyRotationSaveGate?
     var saveGate: KeyRotationSaveGate?
@@ -2476,12 +2301,6 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         await fetchGate?.suspend()
         return rows.first { $0.id == id }
     }
-    /// Mirrors `GRDBModelConfigurationRepository.selected()`, which filters
-    /// the selection through `buildableKindRequest` — a selected row whose
-    /// kind has no shipped adapter (the native-search kinds) is excluded so
-    /// hydration's `setActive` never sees an unbuildable id. Keeping the stub
-    /// in step avoids a future `isSelected: true` native-row test validating
-    /// against behavior production doesn't have.
     func selected() async throws -> ModelConfigurationRecord? {
         rows.first { $0.isSelected && $0.kind.hasProviderAdapter }
     }
@@ -2506,14 +2325,9 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     func insertIfEmpty(
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
-        // Mirror production's `buildableKindRequest` empty-check: "empty"
-        // means no row this binary can build a provider for, so a table
-        // holding only native-kind rows still seeds (keeps the user a
-        // recoverable model). A plain `rows.isEmpty` would diverge.
+        // Match production emptiness: only buildable rows prevent seeding.
         guard !rows.contains(where: { $0.kind.hasProviderAdapter }) else { return nil }
         let record = make()
-        // Mirror `demoteUnselectableSelections`: free the selection slot from
-        // any non-buildable selected row before inserting a selected seed.
         if record.isSelected {
             rows = rows.map {
                 guard $0.isSelected, !$0.kind.hasProviderAdapter else { return $0 }
@@ -2533,9 +2347,6 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         rows.removeAll { $0.id == id }
     }
     func setSelected(id: String) async throws {
-        // Mirror production's guard: refuse to select a row the binary can't
-        // build a provider for, so a test exercising this path validates
-        // against the same contract as `GRDBModelConfigurationRepository`.
         guard let row = rows.first(where: { $0.id == id }) else {
             throw ModelConfigurationRepositoryError.unknownModel(id: id)
         }
@@ -2604,10 +2415,6 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
     func hardDelete(id: String) async throws { rows.removeAll { $0.id == id } }
 }
 
-/// Minimal `HTTPClient` so `registerProvider` can build an
-/// `OpenAICompatibleLLMProvider` in tests that exercise the registry path.
-/// Never actually streamed in these tests (the provider is registered, not
-/// invoked), so it yields an empty body.
 private struct StubHTTPClient: HTTPClient {
     func stream(_ request: URLRequest) -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { $0.finish() }

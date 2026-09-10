@@ -3,12 +3,6 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `LiveModelListingService` — the live `GET …/models` call that
-/// feeds the Add-Model "Model" dropdown. Exercises all three wire formats
-/// (OpenAI-compatible `data[]`, Anthropic-native `data[]` with its distinct
-/// URL/headers, and Gemini `models[]`), the request shape (URL, method, auth
-/// header per kind), and the error mapping. No real network — every case
-/// replays a canned body or error through `FakeHTTPClient`.
 @Suite("LiveModelListingService")
 struct ModelListingServiceTests {
     private func service(_ http: HTTPClient) -> LiveModelListingService {
@@ -38,14 +32,12 @@ struct ModelListingServiceTests {
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
     }
 
-    // MARK: - Anthropic native listing (regression: the /v1/openai/ shim has no /models)
+    // MARK: - Anthropic native listing
 
     @Test("Anthropic: the /v1/openai/ shim base rewrites to native /v1/models with x-api-key + anthropic-version")
     func anthropicShimBaseRewritesToNativeModelsEndpoint() async throws {
-        // Regression for the Add-Model live fetch 404ing on Anthropic: the
-        // chat shim base has no /models endpoint, and the native endpoint
-        // rejects Bearer auth. Verified by curl 2026-06-11 — only
-        // `GET /v1/models` + `x-api-key` + `anthropic-version` succeeds.
+        // The chat shim has no models endpoint; native listing requires x-api-key
+        // and anthropic-version instead of Bearer authentication.
         let http = body(#"{"data":[{"id":"claude-opus-4-7"},{"id":"claude-sonnet-4-6"}]}"#)
         let ids = try await service(http).listModelIDs(
             kind: .openAICompatible,
@@ -59,16 +51,11 @@ struct ModelListingServiceTests {
         #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/models?limit=1000")
         #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk-ant")
         #expect(request.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
-        // The native endpoint 401s on Bearer — it must not be attached.
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
     @Test("Anthropic: an .anthropicNative row lists via the native /v1/models with x-api-key")
     func anthropicNativeKindUsesNativeModelsEndpoint() async throws {
-        // Regression for the PR2 native flip: the default Anthropic preset is
-        // now `.anthropicNative`. Listing must still hit the native endpoint
-        // (kind alone is enough — no host check needed), not throw
-        // `.unsupportedKind` and silently fall back to the static catalog.
         let http = body(#"{"data":[{"id":"claude-opus-4-7"}]}"#)
         let ids = try await service(http).listModelIDs(
             kind: .anthropicNative,
@@ -98,8 +85,7 @@ struct ModelListingServiceTests {
 
     @Test("Anthropic: a bare-host base (user-edited, no path) heals to /v1/models")
     func anthropicBareHostBaseHealsToV1Models() async throws {
-        // The /v1 default exists for user-edited bases: without it a bare
-        // host would yield the nonexistent host-root /models.
+        // User-edited bare hosts need /v1; root /models does not exist.
         let http = body(#"{"data":[{"id":"claude-opus-4-7"}]}"#)
         _ = try await service(http).listModelIDs(
             kind: .openAICompatible,
@@ -112,8 +98,6 @@ struct ModelListingServiceTests {
 
     @Test("OpenAI-compatible: a trailing-slash base joins to /models without a double slash")
     func openAICompatibleTrailingSlashBaseJoins() async throws {
-        // Pins the generic path's slash canonicalization — previously only
-        // covered via the (since-rerouted) Anthropic shim base.
         let http = body(#"{"data":[{"id":"local-model"}]}"#)
         _ = try await service(http).listModelIDs(
             kind: .openAICompatible,
@@ -212,10 +196,8 @@ struct ModelListingServiceTests {
 
     @Test("Gemini: TTS/image models that also advertise generateContent are dropped by the id heuristic")
     func geminiFiltersTTSAndImageModelsByID() async throws {
-        // Gemini's speech and image-generation models respond via
-        // generateContent too (audio/image response modalities), so the
-        // methods check alone would pass them — the id heuristic is the
-        // second gate.
+        // Speech and image models also support generateContent, so method filtering
+        // alone cannot exclude them.
         let http = body(
             #"{"models":["# +
                 #"{"name":"models/gemini-3-pro","supportedGenerationMethods":["generateContent"]},"# +
@@ -246,7 +228,6 @@ struct ModelListingServiceTests {
         let request = try #require(http.observed.all.first)
         #expect(request.url?.absoluteString == "https://generativelanguage.googleapis.com/v1beta/models")
         #expect(request.value(forHTTPHeaderField: "x-goog-api-key") == "g-key")
-        // Gemini must not carry a Bearer header.
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
@@ -268,8 +249,6 @@ struct ModelListingServiceTests {
     @Test("A non-2xx status maps to .transport carrying the assembled body")
     func badStatusMapsToTransport() async throws {
         let http = FakeHTTPClient(error: HTTPError.badStatus(401, body: "invalid api key"))
-        // Pin the exact case + message so a regression in `describe(_:)`'s
-        // "HTTP <code>: <body>" assembly is caught, not just "some error".
         await #expect(throws: ModelListingError.transport("HTTP 401: invalid api key")) {
             try await service(http).listModelIDs(
                 kind: .openAICompatible,

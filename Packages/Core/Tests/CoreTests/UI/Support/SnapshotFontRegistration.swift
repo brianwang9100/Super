@@ -3,11 +3,8 @@ import Core
 import Testing
 import UIKit
 
-/// One-time, process-global registration of `Core`'s bundled `.ttf` fonts
-/// for snapshot tests. The xctest host never runs the app's `init()`, so
-/// any `Font.custom(...)` against an unregistered face silently bakes the
-/// system fallback as the baseline. Call `ensureRegistered()` from every
-/// snapshot suite that renders a bundled face.
+/// Test hosts skip app initialization. Every font-using suite must register
+/// independently so suite order cannot produce system-font fallback baselines.
 @MainActor
 enum SnapshotFontRegistration {
     private static var verified = false
@@ -16,9 +13,6 @@ enum SnapshotFontRegistration {
         if verified { return }
         verified = true
         Core.registerBundledFonts()
-        // The italic display face + the roman reading face (and the SemiBold
-        // member that markdown strong / section headings resolve to) must all
-        // register, or snapshots would bake the system-serif fallback.
         for face in ["EBGaramond-Italic", "EBGaramond-Regular", "EBGaramond-SemiBold"] {
             if UIFont(name: face, size: 26) == nil {
                 Issue.record("\(face) failed to register — snapshots would bake the system-serif fallback")

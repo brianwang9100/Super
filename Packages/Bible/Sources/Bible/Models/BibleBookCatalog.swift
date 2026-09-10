@@ -1,34 +1,18 @@
-/// The 66 protestant-canon books in traditional reading order, with the
-/// chapter counts needed to step and bound navigation.
-///
-/// The list mirrors the bundled World English Bible (WEB) text — every
-/// book code, name, and chapter count is verified against the decoded
-/// `WEB-<id>.json` resources by `BibleBookCatalogTests`, so the catalog
-/// can never silently drift from what the reader actually loads.
+/// The standard catalog follows the 66-book Protestant canon. Catalog tests compare
+/// its codes and chapter counts against the bundled-text fixtures.
 public struct BibleBookCatalog: Sendable {
-    /// Books in canonical order — Genesis first, Revelation last.
     public let books: [BibleBookSummary]
 
     public init(books: [BibleBookSummary]) {
         self.books = books
     }
 
-    /// The book summary for a three-letter code, or `nil` if unknown.
     public func book(id bookId: String) -> BibleBookSummary? {
         books.first { $0.id == bookId }
     }
 
-    /// Resolve a book-name candidate to its summary, whitespace-insensitively.
-    ///
-    /// Match order: exact 3-letter id (case-insensitive), then exact display
-    /// name with whitespace stripped, then a unique whitespace-stripped prefix
-    /// of the display name. Whitespace stripping lets `"1Cor"` resolve to
-    /// `"1 Corinthians"` without an abbreviation table; the uniqueness check
-    /// rejects ambiguous shorthands (`"J"` matches eight books, so `nil`).
-    /// Returns `nil` for an empty candidate or any ambiguous prefix.
-    ///
-    /// Used by `BibleSearchQueryParser` (the picker's progressive search) —
-    /// the single home for how a book name resolves.
+    /// Matches case-insensitively by ID, exact name, then unique name prefix, ignoring
+    /// whitespace ("1Cor" resolves to "1 Corinthians"). Empty or ambiguous input returns nil.
     public func resolve(bookName candidate: String) -> BibleBookSummary? {
         let needle = candidate.lowercased().filter { !$0.isWhitespace }
         guard !needle.isEmpty else { return nil }
@@ -46,17 +30,8 @@ public struct BibleBookCatalog: Sendable {
         return prefixMatches.count == 1 ? prefixMatches[0] : nil
     }
 
-    /// The position one chapter away from `position` in `direction`, or
-    /// `nil` at the two ends of the canon.
-    ///
-    /// Stepping crosses book boundaries — past the last chapter of a book
-    /// lands on chapter 1 of the next — but Genesis 1 has no previous and
-    /// Revelation's final chapter has no next, so callers can disable the
-    /// nav controls at those edges.
-    ///
-    /// `position.chapterNumber` is expected to be within the book's
-    /// `1...chapterCount`; callers only ever step from positions the
-    /// catalog itself produced. An unknown `bookId` yields `nil`.
+    /// Crosses book boundaries, returning nil at canon edges or for an unknown book.
+    /// The starting chapter must be within the book's 1...chapterCount.
     public func step(
         from position: BiblePosition,
         direction: BibleChapterDirection
@@ -84,7 +59,6 @@ public struct BibleBookCatalog: Sendable {
 }
 
 extension BibleBookCatalog {
-    /// The bundled World English Bible canon.
     public static let standard = BibleBookCatalog(books: [
         // Old Testament
         BibleBookSummary(id: "GEN", name: "Genesis", testament: .oldTestament, chapterCount: 50),

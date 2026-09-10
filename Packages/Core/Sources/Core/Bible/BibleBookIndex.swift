@@ -1,31 +1,10 @@
 import Foundation
 
-/// One canonical Bible book — display name, three-letter identifier,
-/// chapter count, and any spelling variants the parser should accept as
-/// equivalent. Used by ``BibleBookIndex`` for verse-reference detection
-/// in Chat and by deep-link parsing in the shell.
-///
-/// This is plain reference data, no behaviour. The Bible applet keeps
-/// its own richer `BibleBookSummary` (which also tracks testament); a
-/// Bible-side consistency test asserts these two stay in lockstep so
-/// the canon never drifts between the parser's view and the reader's
-/// view.
 public struct BibleBookEntry: Sendable, Equatable {
-    /// USFM-style three-letter code, e.g. `"GEN"`, `"1CO"`, `"SNG"`. Matches
-    /// the IDs used by the Bible applet's bundled text JSON files and by
-    /// `RecordReference.sourceID` for verse-range references.
+    /// USFM-style code shared with Bible resources and record references.
     public let id: String
-    /// Full display name in the form a human would write (and the form
-    /// the Bible system prompt instructs the LLM to use). For instance,
-    /// `"1 Corinthians"`, `"Song of Solomon"`, `"Psalms"`.
     public let name: String
-    /// Highest chapter number the book contains — used by the parser to
-    /// reject obviously-bad citations like `Genesis 51:1` (Genesis has 50).
     public let chapterCount: Int
-    /// Additional spellings the parser should accept as this same book.
-    /// Kept tight: only the variants the LLM realistically produces given
-    /// the system prompt's "full book name" guidance. Today: `"Psalm"`
-    /// (singular) for `PSA`, and `"Song of Songs"` for `SNG`.
     public let aliases: [String]
 
     public init(id: String, name: String, chapterCount: Int, aliases: [String] = []) {
@@ -36,19 +15,9 @@ public struct BibleBookEntry: Sendable, Equatable {
     }
 }
 
-/// The 66 Protestant-canon books as parse-time reference data. Lives in
-/// Core (not Bible) because the verse-reference linkifier in Chat and the
-/// shell's `onOpenURL` deep-link handler both need it, and applets
-/// cannot import each other.
-///
-/// All look-ups are case-sensitive against the canonical display name and
-/// the small set of aliases each entry declares. The LLM is steered toward
-/// these spellings by the Bible system prompt; matching loosely here would
-/// let user typos and accidental prose ("Section 1:2") become tap targets
-/// the user didn't intend.
+/// Exact canonical names/aliases avoid turning accidental prose into Bible links.
 public enum BibleBookIndex {
-    /// Books in canonical reading order — Genesis first, Revelation last.
-    /// Stored as `let` (not `var`) so accidental mutation is a compile error.
+    /// Canonical reading order.
     public static let canonical: [BibleBookEntry] = [
         // Old Testament
         BibleBookEntry(id: "GEN", name: "Genesis", chapterCount: 50),
@@ -120,11 +89,6 @@ public enum BibleBookIndex {
         BibleBookEntry(id: "REV", name: "Revelation", chapterCount: 22),
     ]
 
-    /// Every distinct spelling the index will accept, sorted by descending
-    /// length so a parser that walks `spellings` in order matches the
-    /// longest candidate first. Essential for multi-word books — without
-    /// this, `John 3:16` could be matched as a prefix of `1 John 3:16` if
-    /// the shorter name appears earlier in the list.
     public static let spellingsLongestFirst: [(spelling: String, entry: BibleBookEntry)] = {
         var pairs: [(String, BibleBookEntry)] = []
         for entry in canonical {
@@ -138,17 +102,11 @@ public enum BibleBookIndex {
             .map { (spelling: $0.0, entry: $0.1) }
     }()
 
-    /// Look up an entry by exact canonical name or alias. Case-sensitive —
-    /// the LLM is instructed to emit canonical capitalisation, and a loose
-    /// match would let `genesis 1:1` slip through where the LLM is being
-    /// stylistically lowercase.
+    /// Case-sensitive canonical-name or alias lookup.
     public static func lookup(_ name: String) -> BibleBookEntry? {
         spellingsLongestFirst.first { $0.spelling == name }?.entry
     }
 
-    /// Look up an entry by three-letter ID, e.g. `"GEN"` → Genesis.
-    /// Used by deep-link URL parsing and by Bible-side hand-off back into
-    /// the reader.
     public static func entry(id: String) -> BibleBookEntry? {
         canonical.first { $0.id == id }
     }

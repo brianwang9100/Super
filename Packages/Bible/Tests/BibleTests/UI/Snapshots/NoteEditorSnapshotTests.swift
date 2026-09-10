@@ -6,20 +6,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `NoteEditor` — the create / edit modal. Variants cover the
-/// empty create state (Save disabled, placeholder shown) across the three
-/// themes, the prefilled edit state (Save enabled, Delete section present)
-/// across the three themes, and a Dynamic Type XXL edit pass. The
-/// destructive `.confirmationDialog` is system chrome and is not
-/// snapshotted, matching `AnnotationBlock`'s delete-confirmation precedent.
+/// Native delete confirmation chrome is outside this fixed-layout content capture.
 @Suite("NoteEditor snapshots", .serialized)
 @MainActor
 struct NoteEditorSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let citation = "John 3:16–18"
@@ -38,9 +28,6 @@ struct NoteEditorSnapshotTests {
 
     @Test("populated create state enables Save without a Delete section")
     func createPopulatedLight() {
-        // Create mode with text typed: Save flips to enabled (accent) and
-        // no Delete section appears (that's edit-only). Distinct from both
-        // the empty-create and the edit states.
         verify(theme: .vellumLight, mode: .create, initialText: Self.editBody, name: "create_populated_light")
     }
 

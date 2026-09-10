@@ -1,10 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleBookSheetViewModel` — search filtering, traditional vs
-/// alphabetical ordering and grouping, the no-results case, which book is
-/// auto-expanded from the reader's current position, and which scroll
-/// anchor that position resolves to.
 @Suite("BibleBookSheetViewModel")
 @MainActor
 struct BibleBookSheetViewModelTests {
@@ -253,9 +249,6 @@ struct BibleBookSheetViewModelTests {
 
     @Test("a unique match expands only the matched book, not the position book")
     func uniqueMatchDoesNotDoubleExpand() {
-        // Open on John (its grid expands on open), then search for a different
-        // unique match. Only the matched book should report expanded — the
-        // position book must not render a second open grid.
         let viewModel = makeViewModel(
             currentPosition: BiblePosition(bookId: "JHN", chapterNumber: 3)
         )

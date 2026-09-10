@@ -50,9 +50,15 @@
 
 ## QA results
 
-- Complete Bible package suite: 945 tests in 96 suites passed.
+- Complete Bible package suite: 946 tests in 96 suites passed.
 - Native iPhone 17 / iOS 26.4.1 checks passed in SuperBible and SuperOS: compact toolbar, Corinthians/Thessalonians, draft tab/search retention, atomic Read, back/forward, verse-range selection, cancel, and deferred book-note presentation.
 - Both app targets build with Xcode 26.4.1.
 - Independent implementation review found no remaining serious issues. Large-text inspection also corrected the snapshot typography injection and retained readable book counts/order controls.
 - Inspected and explicitly recorded 57 existing PNG updates and four new combined-sheet captures; recording validates the complete 259-image Bible inventory. Capture discovery and 48 visual infrastructure guard tests pass.
 - Final non-recording simulator comparison passed all 259 Bible captures.
+
+## Integration with current main
+
+Merged main’s sparse-comment cleanup, undo/redo history icons, and closed-actions contract for deep-link navigation. The combined selector retains these changes. Independent review found no serious merge regressions; all 946 Bible tests pass. Updated the range-commit assertion to keep actions closed while preserving the selected verses and pending scroll.
+- Both integrated app targets build. The affected toolbar/reader snapshot suites pass after explicit recording of the reviewed history glyph changes. The Mac locked before a final live-app repeat; pre-merge native flows passed, and integrated behavior has automated coverage.
+- Final integrated non-recording comparison passed all 259 Bible captures.

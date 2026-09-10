@@ -1,13 +1,7 @@
 import Core
 import Foundation
 
-/// Test double that hands the test direct control of the
-/// AsyncThrowingStream powering `stream(...)`. Unlike `FakeLLMProvider`,
-/// which drains a pre-baked event array as fast as the consumer reads,
-/// this provider keeps the stream open until `yield(_:)` is called.
-/// Tests use it to park `ChatSession.streamOneTurn` mid-turn — after a
-/// `.thinkingDelta`, say — so they can race a `subscribe()` against the
-/// live actor state without depending on timing.
+/// Exposes manual event delivery and keeps the stream open until finish().
 final class PausableLLMProvider: LLMProvider, Sendable {
     let id: String
     let displayName: String
@@ -22,20 +16,13 @@ final class PausableLLMProvider: LLMProvider, Sendable {
         self.state = PausableLLMProviderState()
     }
 
-    /// Yield a single event to the active stream. Returns as soon as the
-    /// actor has handled the call — either by forwarding to the live
-    /// continuation, or by buffering on `pending` when the session's
-    /// `Task { ... register }` hop hasn't run yet. This does **not**
-    /// synchronize on the consumer (the `ChatSession`) reading the event;
-    /// tests that need that ordering should read the session's broadcast
-    /// off its subscriber stream.
+    /// Buffers until registration. This does not wait for consumer processing;
+    /// read the session broadcast when the test needs that ordering.
     func yield(_ event: LLMStreamEvent) async {
         await state.yield(event)
     }
 
-    /// Close the active stream. Required before `ChatSession` can wind
-    /// down the turn cleanly; without it, `streamOneTurn`'s for-await
-    /// loop never returns and `waitUntilFinished()` hangs.
+    /// Close before waitUntilFinished() or the session remains in its for-await loop.
     func finish() async {
         await state.finish()
     }
@@ -56,13 +43,7 @@ final class PausableLLMProvider: LLMProvider, Sendable {
     }
 }
 
-/// Backing actor that brokers between the producing test and the
-/// consuming `ChatSession`. `register(continuation:)` runs on a `Task`
-/// spawned by `stream(...)`, so it races against any `yield(_:)` the
-/// test issues immediately after `session.send(...)`. `pending` is the
-/// safety net: a `yield` that wins the race lands there and is flushed
-/// the moment `register` runs. Once the continuation is cached,
-/// subsequent yields forward straight through.
+// Registration runs in a separate task; buffer yields that arrive first.
 private actor PausableLLMProviderState {
     private var continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation?
     private var pending: [LLMStreamEvent] = []

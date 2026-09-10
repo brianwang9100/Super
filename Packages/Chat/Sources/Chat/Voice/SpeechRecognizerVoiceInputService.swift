@@ -53,8 +53,6 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
         }
     }
 
-    // MARK: - Permission helpers
-
     private static func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
         await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
             SFSpeechRecognizer.requestAuthorization { status in
@@ -75,9 +73,7 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
             }
         }
         #else
-        // macOS and other platforms grant microphone via system prompt
-        // automatically the first time `AVAudioEngine` taps input. The
-        // bundle still needs `NSMicrophoneUsageDescription`.
+        // The first audio input tap prompts automatically; the bundle still needs NSMicrophoneUsageDescription.
         return true
         #endif
     }

@@ -1,12 +1,6 @@
 import Foundation
 import GRDB
 
-/// Owns the Chat applet's `DatabaseQueue` (`chat.sqlite`) and the schema
-/// migrator.
-///
-/// Construct one of these at applet activation and pass it to repositories.
-/// Tests use `ChatDatabase.makeInMemory()` to get a fully-migrated queue
-/// with no on-disk footprint.
 public struct ChatDatabase: Sendable {
     public let queue: DatabaseQueue
 
@@ -14,19 +8,9 @@ public struct ChatDatabase: Sendable {
         self.queue = queue
     }
 
-    /// Open the on-disk database at `chat.sqlite` under `directory`,
-    /// applying all pending migrations before returning.
-    ///
-    /// After the queue is constructed we apply `fileProtection` to the
-    /// SQLite file. The default is `.complete` per `docs/SECURITY.md`:
-    /// conversation history is High-sensitivity, the app has no
-    /// background workloads that need DB access while the device is
-    /// locked, so the strictest class is free. Tests open in a temp
-    /// directory and inherit the same default.
-    ///
-    /// On macOS (where `swift test` runs) the protection key has no
-    /// runtime effect — the call is best-effort and silently no-ops if
-    /// the platform doesn't enforce data protection.
+    /// Applies `.complete` file protection by default because conversation history
+    /// does not need to be readable while the device is locked. The attribute is
+    /// best-effort on platforms that do not enforce data protection.
     public static func open(
         in directory: URL,
         fileProtection: FileProtectionType = .complete
@@ -41,23 +25,14 @@ public struct ChatDatabase: Sendable {
         return ChatDatabase(queue: queue)
     }
 
-    /// Build a fresh in-memory queue with the migrator applied. Intended
-    /// for tests, previews, and headless tooling.
     public static func makeInMemory() throws -> ChatDatabase {
         let queue = try DatabaseQueue()
         try migrator().migrate(queue)
         return ChatDatabase(queue: queue)
     }
 
-    /// The migrator used by both the on-disk and in-memory factories.
-    /// Exposed so callers that own their own `DatabaseQueue` (e.g. a
-    /// future shared-DB scenario) can apply Chat's schema themselves.
-    ///
-    /// In DEBUG builds we set `eraseDatabaseOnSchemaChange = true` so
-    /// in-development column additions land without a separate migration:
-    /// the next launch wipes `chat.sqlite` and reapplies the (modified)
-    /// initial migration. Release builds never do this — once a schema
-    /// ships to a real device, every change must be a new migration.
+    /// Debug builds may erase incompatible development schemas; release builds
+    /// require append-only migrations.
     public static func migrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
         #if DEBUG
@@ -68,9 +43,7 @@ public struct ChatDatabase: Sendable {
     }
 }
 
-/// Register every Chat schema migration in order. Always call this against
-/// a fresh `DatabaseMigrator` — appending new migrations is safe; reordering
-/// or removing one already applied to a user's database is not.
+/// Migration order is persistent API: append new migrations without reordering old ones.
 public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
 
     migrator.registerMigration("v1_createTables") { db in
@@ -145,10 +118,6 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("isSelected", .boolean).notNull().defaults(to: false)
             t.column("createdAt", .datetime).notNull()
         }
-        // Partial unique index makes the "at most one selected row"
-        // invariant a schema-level law, not a repo promise. SQLite filters
-        // the index to rows matching the WHERE, so any second `isSelected
-        // = 1` row throws a UNIQUE constraint violation.
         try db.execute(sql: """
             CREATE UNIQUE INDEX modelConfiguration_unique_selected
             ON modelConfiguration(isSelected) WHERE isSelected = 1
@@ -182,21 +151,12 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
         )
     }
 
-    // Adds the nullable `attachmentsJSON` column carrying a JSON-encoded
-    // `MessageAttachments` (verse-reference pills). Additive and nullable —
-    // existing rows keep NULL. Never queried, so no index.
     migrator.registerMigration("v2_messageAttachments") { db in
         try db.alter(table: "message") { t in
             t.add(column: "attachmentsJSON", .text)
         }
     }
 
-    // Adds the `memory` table backing the chat-memory tool: one row per
-    // stored user preference. `createdAt` is indexed because every prompt
-    // assembly fetches all rows ordered by it — the table is small (capped
-    // at `MemoryLimits.maxEntries`) but the index makes the order
-    // deterministic at SQLite's level rather than relying on insertion
-    // order.
     migrator.registerMigration("v3_memory") { db in
         try db.create(table: "memory") { t in
             t.primaryKey("id", .text)
@@ -211,21 +171,9 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
         )
     }
 
-    // Adds the `kind` discriminator column to `modelConfiguration` and
-    // makes `baseURL` / `apiKeyRef` nullable so on-device wire kinds
-    // (today: `.appleFoundation`) can persist a row without either.
-    //
-    // SQLite cannot drop a column's NOT NULL constraint with ALTER TABLE,
-    // so we use the canonical recreate-and-copy pattern: build a new
-    // table with the relaxed shape, copy every existing row over with a
-    // backfilled `kind = 'openAICompatible'` (the only kind that existed
-    // before this migration), drop the old table, rename the new one,
-    // and re-create the partial unique index on `isSelected` against the
-    // renamed table.
+    // SQLite requires rebuilding the table to relax the URL and key constraints.
     migrator.registerMigration("v4_modelConfigurationKind") { db in
-        // Single-line CREATE TABLE with GRDB-style quoted identifiers so
-        // sqlite_master stores it in the same shape as the v1 tables
-        // (which come from `db.create(table:)`'s DSL).
+        // Match GRDB's quoted sqlite_master representation.
         try db.execute(sql: "CREATE TABLE \"modelConfiguration_new\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"kind\" TEXT NOT NULL DEFAULT 'openAICompatible', \"name\" TEXT NOT NULL, \"baseURL\" TEXT, \"apiKeyRef\" TEXT, \"modelId\" TEXT NOT NULL, \"supportsThinking\" BOOLEAN NOT NULL DEFAULT 0, \"maxContextTokens\" INTEGER NOT NULL, \"isSelected\" BOOLEAN NOT NULL DEFAULT 0, \"createdAt\" DATETIME NOT NULL)")
         try db.execute(sql: """
             INSERT INTO modelConfiguration_new
@@ -238,89 +186,46 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
         """)
         try db.execute(sql: "DROP TABLE modelConfiguration")
         try db.execute(sql: "ALTER TABLE modelConfiguration_new RENAME TO modelConfiguration")
-        // Re-create the partial unique index. Dropped with the old table.
         try db.execute(sql: """
             CREATE UNIQUE INDEX modelConfiguration_unique_selected
             ON modelConfiguration(isSelected) WHERE isSelected = 1
         """)
     }
 
-    // Adds the `kind` discriminator column to `conversation` so the
-    // Chats list can filter out transient conversations created by the
-    // headless `bible.annotate` dispatcher. Pre-existing rows backfill
-    // to `'user'` via the default; the dispatcher inserts `'transient'`
-    // and hard-deletes the row when its turn ends. Additive — no
-    // existing index or query needs to change.
     migrator.registerMigration("v5_conversationKind") { db in
         try db.alter(table: "conversation") { t in
             t.add(column: "kind", .text).notNull().defaults(to: "user")
         }
     }
 
-    // Adds the nullable `searchBackend` column to `modelConfiguration`,
-    // selecting a model's web-search engine: "native" (the provider's own
-    // server-side search, paired with a native `kind`), a standalone
-    // search-provider id, or NULL = no web search. Additive and nullable,
-    // so a plain ALTER ADD via the DSL suffices — no table rebuild like
-    // v4. Existing rows keep NULL. Never queried, so no index.
     migrator.registerMigration("v6_searchBackend") { db in
         try db.alter(table: "modelConfiguration") { t in
             t.add(column: "searchBackend", .text)
         }
     }
 
-    // Adds the nullable `signature` column to `toolCall`, holding the opaque
-    // provider continuation token a call carries (today Gemini's
-    // `thoughtSignature`). The native Gemini adapter must replay it on the
-    // follow-up turn's `functionCall` or the thinking model rejects the turn
-    // with HTTP 400. Additive and nullable — a plain ALTER ADD suffices, and
-    // existing rows keep NULL (no signature to replay). Never queried, no index.
+    // Gemini rejects tool continuations unless its opaque thought signature is replayed.
     migrator.registerMigration("v7_toolCallSignature") { db in
         try db.alter(table: "toolCall") { t in
             t.add(column: "signature", .text)
         }
     }
 
-    // Adds the nullable `thinkingSignature` column to `message` — the
-    // integrity signature streamed via Anthropic's `signature_delta`
-    // alongside the thinking text. The native Anthropic adapter must replay
-    // the last assistant turn's thinking block verbatim (content +
-    // signature) on tool-loop follow-ups or the Messages API rejects the
-    // request with HTTP 400; rows without one (pre-v8 history, redacted
-    // turns, non-signing providers) fall back to thinking-off requests.
-    // Additive and nullable — a plain ALTER ADD; never queried, no index.
+    // Anthropic rejects tool continuations unless signed thinking is replayed verbatim.
     migrator.registerMigration("v8_messageThinkingSignature") { db in
         try db.alter(table: "message") { t in
             t.add(column: "thinkingSignature", .text)
         }
     }
 
-    // Adds the nullable `thinkingModelId` column to `message` — the model
-    // that produced an assistant turn. A thinking signature is replayed only
-    // when this matches the active model: Anthropic thinking signatures are
-    // model-specific, so replaying one minted by a model the user has since
-    // switched away from is a 400 on the latest assistant turn. Mismatched
-    // (or pre-v9 NULL) rows fall back to the thinking-off request path.
-    // Additive and nullable — a plain ALTER ADD; never queried, no index.
+    // Anthropic thinking signatures are model-specific and must not survive a model switch.
     migrator.registerMigration("v9_messageThinkingModelId") { db in
         try db.alter(table: "message") { t in
             t.add(column: "thinkingModelId", .text)
         }
     }
 
-    // Flips pre-existing default Anthropic rows from the OpenAI-compat shim to
-    // the native Messages API, matching the catalog default (which now seeds
-    // `.anthropicNative`). Only the native path carries explicit `cache_control`
-    // breakpoints, so this is what turns prompt caching on for upgrading users.
-    //
-    // A pure value UPDATE — no table rebuild (v4 rebuilt only to add a NOT-NULL
-    // column). Keyed on the *exact* default shim baseURL so the target is
-    // cleanly isolated: native-search Anthropic rows are already
-    // `.anthropicNative` (skipped), other providers have different hosts
-    // (skipped), and a user's custom Anthropic proxy URL doesn't match
-    // (preserved). `modelId` already holds the Anthropic wire id (valid native),
-    // `apiKeyRef` is the same key, and `isSelected` is untouched so the partial
-    // unique index is unaffected.
+    // Match the exact legacy default URL so custom Anthropic proxies remain unchanged.
     migrator.registerMigration("v10_anthropicNativeDefault") { db in
         try db.execute(
             sql: """

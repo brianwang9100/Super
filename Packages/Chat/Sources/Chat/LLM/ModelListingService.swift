@@ -1,25 +1,15 @@
 import Core
 import Foundation
 
-/// Errors thrown by `ModelListingService` conformers. Sendable enum defined
-/// alongside the API per the typed-errors rule.
 public enum ModelListingError: Error, Sendable, Equatable {
     /// The provider `kind` has no live model-list endpoint we issue against
     /// (Apple Foundation runs on-device; the Anthropic / OpenAI-Responses
     /// native-search adapter kinds aren't offered as Add-Model providers).
     case unsupportedKind(LLMProviderKind)
-    /// Transport or non-2xx HTTP (HyperText Transfer Protocol) failure,
-    /// carrying the underlying message.
     case transport(String)
-    /// The endpoint returned a body we couldn't decode into a model list.
     case decoding
 }
 
-/// Fetches the set of model ids a provider currently exposes via its "list
-/// models" endpoint. Drives the Add-Model "Model" dropdown so the picker
-/// reflects what the provider actually offers rather than a hand-curated
-/// snapshot. Injected as a protocol so the view model substitutes a strict
-/// fake in tests.
 public protocol ModelListingService: Sendable {
     /// List the wire-level **chat-capable** model ids available at `baseURL`
     /// for a provider of the given `kind`, authenticating with `apiKey` when
@@ -32,28 +22,7 @@ public protocol ModelListingService: Sendable {
     func listModelIDs(kind: LLMProviderKind, baseURL: URL, apiKey: String?) async throws -> [String]
 }
 
-/// Production `ModelListingService` issuing a `GET …/models` against the
-/// provider endpoint over the shared streaming `HTTPClient` (the body is
-/// small JSON, so we drain the stream into one `Data` and decode it).
-///
-/// Three wire formats, dispatched by `kind` (plus a host check for Anthropic):
-/// - `.openAICompatible` (OpenAI, xAI): `Authorization: Bearer`, response
-///   `{ data: [{ id }] }`.
-/// - Anthropic (any `.anthropicNative` row, or an `.openAICompatible` row whose
-///   host is `api.anthropic.com`): listing uses the native
-///   `GET /v1/models?limit=1000` with `x-api-key` + `anthropic-version` headers
-///   (Bearer 401s there — verified by curl 2026-06-11). The default Anthropic
-///   preset is `.anthropicNative`; the legacy `/v1/openai/` chat shim has **no**
-///   `/models` endpoint, so a custom compat row is rewritten to the native call
-///   by host. The response envelope happens to match OpenAI's
-///   `{ data: [{ id }] }`, so decoding is shared.
-/// - `.geminiNative` (Google): `x-goog-api-key`, response
-///   `{ models: [{ name: "models/…" }] }` — the `models/` prefix is stripped
-///   to the trailing wire id used everywhere else.
-///
-/// Every other kind throws `.unsupportedKind`: Apple Foundation has no
-/// endpoint, and the native-search adapter kinds aren't built-in Add-Model
-/// providers.
+/// Uses each provider's native authentication and response envelope for model listing.
 public struct LiveModelListingService: ModelListingService {
     private let http: HTTPClient
 
@@ -61,7 +30,6 @@ public struct LiveModelListingService: ModelListingService {
         self.http = http
     }
 
-    /// Internal wire-format discriminator so kind is validated exactly once.
     private enum WireFormat {
         case openAICompatible
         case anthropic
@@ -72,9 +40,6 @@ public struct LiveModelListingService: ModelListingService {
         let format: WireFormat
         switch kind {
         case .anthropicNative:
-            // The default Anthropic preset is now `.anthropicNative` (every
-            // turn rides the native Messages API for prompt caching). Listing
-            // always uses the native `GET /v1/models` with `x-api-key`.
             format = .anthropic
         case .openAICompatible:
             // A custom Anthropic row may still be `.openAICompatible` (e.g. the
@@ -146,9 +111,7 @@ public struct LiveModelListingService: ModelListingService {
         }
     }
 
-    /// Drain the streaming HTTP response into one buffer. Non-2xx surfaces as
-    /// `HTTPError.badStatus` from the client, which we remap to `.transport`
-    /// so callers see a single `ModelListingError` type.
+    /// Maps transport and status failures into the service's single error type.
     private func drain(_ request: URLRequest) async throws -> Data {
         var buffer = Data()
         do {

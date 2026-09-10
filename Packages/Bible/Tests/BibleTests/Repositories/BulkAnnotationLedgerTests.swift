@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `GRDBBulkAnnotationLedger` against an in-memory
-/// database — run/unit round-trip, the single-active-run query, unit and run
-/// upserts, the FK cascade on delete, and the terminal-run sweep.
 @Suite("GRDBBulkAnnotationLedger")
 struct BulkAnnotationLedgerTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -58,7 +55,6 @@ struct BulkAnnotationLedgerTests {
     @Test("createRun round-trips the run and its units in ordinal order")
     func createRoundTrips() async throws {
         let ledger = try makeFixture()
-        // Insert out of order to prove `units(runId:)` sorts by `ordinal`.
         try await ledger.createRun(
             run(id: "r1", status: .running),
             units: [
@@ -75,7 +71,6 @@ struct BulkAnnotationLedgerTests {
 
         let units = try await ledger.units(runId: "r1")
         #expect(units.map(\.id) == ["u0", "u1", "u2"])
-        // The prologue unit carries no chapter number.
         #expect(units.first?.kind == .bookPrologue)
         #expect(units.first?.chapterNumber == nil)
     }
@@ -89,9 +84,7 @@ struct BulkAnnotationLedgerTests {
     @Test("createRun is atomic — a failing unit insert rolls back the run too")
     func createRunIsAtomic() async throws {
         let ledger = try makeFixture()
-        // Two units share a primary key, so the second insert violates the
-        // PK constraint mid-transaction. The whole `createRun` write must roll
-        // back, leaving neither the run row nor the first unit behind.
+        // A duplicate key fails after the first unit insert; the run and every unit must roll back.
         await #expect(throws: (any Error).self) {
             try await ledger.createRun(run(id: "r1", status: .running), units: [
                 unit(id: "dup", runId: "r1", ordinal: 0),
@@ -105,13 +98,11 @@ struct BulkAnnotationLedgerTests {
     @Test("the schema rejects a run whose completedAt disagrees with its status")
     func completedAtInvariantEnforced() async throws {
         let ledger = try makeFixture()
-        // Active status must not carry a completedAt.
         await #expect(throws: (any Error).self) {
             try await ledger.createRun(
                 run(id: "bad-active", status: .running, completedAt: t0), units: []
             )
         }
-        // Terminal status must carry a completedAt.
         await #expect(throws: (any Error).self) {
             try await ledger.createRun(
                 run(id: "bad-terminal", status: .completed, completedAt: nil), units: []
@@ -125,7 +116,6 @@ struct BulkAnnotationLedgerTests {
     func activeRunQuery() async throws {
         let ledger = try makeFixture()
         try await ledger.createRun(run(id: "done", status: .completed, completedAt: t0), units: [])
-        // No active run yet.
         #expect(try await ledger.activeRun() == nil)
 
         try await ledger.createRun(run(id: "live", status: .paused), units: [])
@@ -170,7 +160,6 @@ struct BulkAnnotationLedgerTests {
         let reread = try #require(try await ledger.run(id: "r1"))
         #expect(reread.status == .completed)
         #expect(reread.completedAt == t0.addingTimeInterval(120))
-        // No longer active.
         #expect(try await ledger.activeRun() == nil)
     }
 
@@ -187,7 +176,6 @@ struct BulkAnnotationLedgerTests {
         try await ledger.deleteRun(id: "r1")
 
         #expect(try await ledger.run(id: "r1") == nil)
-        // FK cascade must have cleared the children too.
         #expect(try await ledger.units(runId: "r1").isEmpty)
     }
 
@@ -197,14 +185,10 @@ struct BulkAnnotationLedgerTests {
     func sweepRespectsCutoffAndActiveRuns() async throws {
         let ledger = try makeFixture()
         let cutoff = t0.addingTimeInterval(24 * 60 * 60)
-        // Terminal, completed before the cutoff — should be swept.
         try await ledger.createRun(run(id: "old", status: .completed, completedAt: cutoff.addingTimeInterval(-60)), units: [])
-        // Terminal, completed exactly at the cutoff — the sweep is strict
-        // (`< cutoff`), so this boundary run must survive.
+        // The cutoff is strict: a run completed exactly at the boundary must survive.
         try await ledger.createRun(run(id: "boundary", status: .completed, completedAt: cutoff), units: [])
-        // Terminal, completed after the cutoff — should survive.
         try await ledger.createRun(run(id: "fresh", status: .cancelled, completedAt: cutoff.addingTimeInterval(60)), units: [])
-        // Active — no completedAt — must never be swept.
         try await ledger.createRun(run(id: "live", status: .running), units: [])
 
         try await ledger.deleteRunsCompleted(before: cutoff)
@@ -219,13 +203,10 @@ struct BulkAnnotationLedgerTests {
     func completedRunsOrdering() async throws {
         let ledger = try makeFixture()
         try await ledger.createRun(run(id: "early", status: .completed, completedAt: t0.addingTimeInterval(10)), units: [])
-        // A circuit-breaker halt — exercises the nullable `haltReason` enum
-        // column being written non-nil and read back through GRDB coding.
         try await ledger.createRun(run(id: "late", status: .failed, haltReason: .quota, completedAt: t0.addingTimeInterval(50)), units: [])
         try await ledger.createRun(run(id: "live", status: .running), units: [])
 
         let completed = try await ledger.completedRuns()
-        // Active run excluded; terminal runs newest-completed first.
         #expect(completed.map(\.id) == ["late", "early"])
         #expect(completed.first?.haltReason == .quota)
     }

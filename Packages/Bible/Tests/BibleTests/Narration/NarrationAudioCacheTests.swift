@@ -4,7 +4,6 @@ import Testing
 import os
 @testable import Bible
 
-/// Disposable narration clips remain independent of Bible's single user-state database.
 @Suite("Narration audio cache")
 struct NarrationAudioCacheTests {
     @Test(arguments: [false, true])
@@ -374,7 +373,7 @@ struct NarrationAudioCacheTests {
         #expect(try await fixture.fallback.audio(for: "memory") == nil)
         #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.clips.path).isEmpty)
         #expect(try Data(contentsOf: fixture.legacy) == Data([8, 9]))
-        // Keep the cleanup handle after success too, rather than forgetting the disk destination.
+        // Cleanup ownership must survive a successful fallback retry.
         let disk = try NarrationAudioCache.open(in: fixture.directory)
         try await disk.save(Data([6, 7]), for: "another-persisted-clip")
         try await fixture.fallback.clear()
@@ -427,7 +426,6 @@ struct NarrationAudioCacheTests {
     }
 }
 
-/// Synchronous fault injection models the atomic-write contract without performing filesystem I/O.
 private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
     private struct StoredFile {
         let audio: Data
@@ -491,7 +489,7 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
     }
 }
 
-/// Disk failures are temporary; the fallback must retain enough information to retry user-requested cleanup.
+/// Fallback must retain cleanup ownership across temporary disk failures.
 private struct FallbackCacheFixture {
     let directory: URL
     let clips: URL
@@ -523,7 +521,6 @@ private struct FallbackCacheFixture {
     }
 }
 
-/// Synchronous availability gate used only by the injected cache directory/open functions.
 private final class FallbackCacheGate: Sendable {
     private let unavailable = OSAllocatedUnfairLock(initialState: true)
     func setUnavailable(_ value: Bool) { unavailable.withLock { $0 = value } }

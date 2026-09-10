@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Core
 
-/// Tests for `JSONValue` Codable round-trip across scalars, arrays, and
-/// nested objects.
 @Suite("JSONValue")
 struct JSONValueTests {
     private func roundTrip(_ value: JSONValue) throws -> JSONValue {

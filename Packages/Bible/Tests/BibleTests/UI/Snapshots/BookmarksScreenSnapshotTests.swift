@@ -7,22 +7,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BookmarksScreen` — the sidebar applet's list of all six
-/// colour slots. Covered states:
-///
-/// - **empty** — a fresh install: every slot a muted "Empty slot" row,
-///   light + dark
-/// - **populated** — three slots assigned (Clay / Gold / Lapis), the other
-///   three empty, so one render locks both the filled (tappable, with
-///   chevron) and empty (inert) row looks; light + dark, plus a Dynamic Type
-///   XXL pass since the names + citations reflow
-///
-/// The screen binds `AllBookmarksRequest` itself, so each render seeds an
-/// in-memory database and injects it via `.databaseContext`.
 @Suite("BookmarksScreen snapshots", .serialized)
 @MainActor
 struct BookmarksScreenSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("all six slots render empty in the light theme")
@@ -53,8 +40,7 @@ struct BookmarksScreenSnapshotTests {
         )
     }
 
-    /// Clay → John 3, Gold → Romans 8, Lapis → Psalm 23; Moss / Plum / Slate
-    /// left free so a single render covers the assigned and empty rows.
+    // Assigned and empty slots share one capture.
     private static let populatedSeed: [(BibleBookmarkColor, String, Int)] = [
         (.clay, "JHN", 3),
         (.gold, "ROM", 8),

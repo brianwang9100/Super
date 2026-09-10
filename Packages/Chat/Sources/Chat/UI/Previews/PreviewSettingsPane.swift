@@ -2,7 +2,6 @@
 import Core
 import SwiftUI
 
-/// Native Settings content fixture preserving the legacy pane, navigation, and typography contract.
 struct PreviewSettingsPane: View {
     let theme: SuperTheme.Identifier
     let height: CGFloat
@@ -61,9 +60,7 @@ struct PreviewSettingsPane: View {
     }
 
     private static let sampleModels: [SettingsViewModel.ModelRow] = [
-        // opus is the row used by the model-detail-edit snapshot — flag
-        // `hasAPIKey: true` so the pane seeds the SecureField with the
-        // placeholder bullets that signal "a key is already stored."
+        // Match the existing-key placeholder in the model-edit fixture.
         .init(
             id: "opus", name: "Opus 4.7", monogram: "O4",
             endpoint: "api.example.com/v1", maxContextTokens: 200_000, isEnabled: true,
@@ -77,12 +74,9 @@ struct PreviewSettingsPane: View {
 
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "bible.annotate", name: "Bible annotations", summary: "Writes a markdown study summary for a passage.", isEnabled: true),
-        // Disabled so the *enabled* count stays at 2 (leaving SettingsRootPane's
-        // "N enabled" Tools-row value and its baselines unchanged), and to show
-        // the toggle's off state in the snapshot.
+        // Include an off toggle while retaining the root pane's enabled count.
         .init(id: "time.now", name: "Current time", summary: "Reports the current date and time.", isEnabled: false),
-        // Memory is enabled so the gear affordance (visible only when both
-        // enabled AND configurable) renders.
+        // Enable configurable memory so its gear affordance appears.
         .init(
             id: MemoryTool.toolID,
             name: "Memory",

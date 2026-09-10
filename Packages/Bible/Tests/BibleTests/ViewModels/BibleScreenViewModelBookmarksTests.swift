@@ -4,26 +4,12 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for the bookmark surface on `BibleScreenViewModel`:
-///
-/// - sheet presentation (`presentBookmarkSheet`, `dismissBookmarkSheet`),
-///   including the citation capture and the selection clear that prevents
-///   the scrim-less action sheet racing the native bookmark sheet
-/// - `toggleBookmark(color:)` driving the injected repository with the
-///   *presented* chapter's coordinates, with the failure toast
-///
-/// Bookmark-write tests drain the chained write task via
-/// `_waitForPendingBookmarkWrite()` before asserting, so a captured-state
-/// read never races the task that mutates it (AGENTS.md §2).
 @Suite("BibleScreenViewModel bookmarks")
 @MainActor
 struct BibleScreenViewModelBookmarksTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// Strict bookmark-repository double capturing each toggle. An actor so
-    /// the VM's `@Sendable` write closure reaches it across the concurrency
-    /// boundary; `allBookmarks` traps because the VM never reads through the
-    /// repository (reads are the sheet's `@Query`).
+    // The sheet reads through @Query; view-model repository reads must fail the spy.
     private actor SpyBookmarkRepository: BibleBookmarkRepository {
         struct ToggleCall: Sendable, Equatable {
             let color: BibleBookmarkColor
@@ -43,8 +29,6 @@ struct BibleScreenViewModelBookmarksTests {
         }
     }
 
-    /// A bookmark repository whose toggle always throws — drives the
-    /// failure-toast path.
     private struct WriteFailed: Error {}
     private actor FailingBookmarkRepository: BibleBookmarkRepository {
         func toggle(
@@ -113,8 +97,7 @@ struct BibleScreenViewModelBookmarksTests {
         let repository = SpyBookmarkRepository()
         let viewModel = makeViewModel(bookmarkRepository: repository)
         viewModel.presentBookmarkSheet()
-        // The reader steps while the sheet is up (e.g. a deep link lands);
-        // the sheet's tap must still write the chapter it is titled with.
+        // Navigation while the sheet is open must not redirect its write to a different chapter.
         viewModel.stepChapter(.next)
         viewModel.toggleBookmark(color: .gold)
         await viewModel._waitForPendingBookmarkWrite()

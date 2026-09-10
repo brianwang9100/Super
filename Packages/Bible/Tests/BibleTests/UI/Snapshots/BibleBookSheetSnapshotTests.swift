@@ -6,18 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleBookSheet` — the book picker in its default expanded
-/// state across the three themes, the search, alphabetical, and no-results
-/// variants, one Dynamic Type XXL pass, plus two scroll-anchor variants
-/// covering the mid-canon short-book and long-book late-chapter branches.
 @Suite("BibleBookSheet snapshots", .serialized)
 @MainActor
 struct BibleBookSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the picker renders with the current book expanded in the light theme")
@@ -104,18 +95,11 @@ struct BibleBookSheetSnapshotTests {
         )
     }
 
-    /// A `BibleBookSheet` opened on the given current position (defaulting
-    /// to Genesis 1, which keeps the existing baselines stable), in the
-    /// given order with the given query applied.
     @Test("the picker renders filled annotation bubbles for books with rows")
     func filledLight() async throws {
         let database = try BibleDatabase.makeInMemory()
         let repository = GRDBBibleAnnotationRepository(database: database)
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        // Seed two books with annotations across the canon — Genesis at
-        // the top and Psalms in the middle — so both the always-visible
-        // expanded Genesis row and a scrolled mid-list row exercise the
-        // filled-glyph layout.
         try await repository.replace(
             target: .book, bookId: "GEN", chapterNumber: nil,
             verseStart: nil, verseEnd: nil,
@@ -143,8 +127,6 @@ struct BibleBookSheetSnapshotTests {
 
     @Test("a book with an in-flight dispatch renders a generating bubble")
     func generatingLight() {
-        // No database context → no rows, so Genesis is unannotated; the
-        // generating set flips its bubble to the dotted in-flight glyph.
         verify(
             sheet(generatingBookIds: ["GEN"]),
             theme: .vellumLight,
@@ -171,11 +153,7 @@ struct BibleBookSheetSnapshotTests {
         try await verifyNoteFilled(theme: .vellumDark, name: "note_filled_dark")
     }
 
-    /// Seed a single book-level note on Genesis (the always-visible expanded
-    /// row) so its note glyph renders `.filled`, locking the filled-glyph
-    /// layout alongside the still-outline glyphs on every other row. Verse- and
-    /// chapter-level notes deliberately do *not* fill the book glyph, so a
-    /// book-level row is the only thing that exercises `.filled` here.
+    // Only book-level notes fill the book glyph; Genesis is visible in the captured frame.
     private func verifyNoteFilled(
         theme themeID: SuperTheme.Identifier,
         name: String,
@@ -202,11 +180,7 @@ struct BibleBookSheetSnapshotTests {
         try await verifyBookmarked(theme: .vellumDark, name: "bookmarked_dark")
     }
 
-    /// Seed two bookmarks on the always-expanded Genesis row (Clay → ch. 2,
-    /// Gold → ch. 3) so the row leads with two filled ribbons and the expanded
-    /// chapter grid carries a badge on each marked cell. Books with no
-    /// bookmarks render exactly as the existing baselines — the indicators are
-    /// additive, emitted only where a bookmark exists.
+    // Two bookmarks exercise both the row ribbon cluster and chapter-cell badges.
     private func verifyBookmarked(
         theme themeID: SuperTheme.Identifier,
         name: String,
@@ -220,9 +194,6 @@ struct BibleBookSheetSnapshotTests {
         verifyWithDatabase(sheet(), database: database, theme: themeID, name: name, function: function)
     }
 
-    /// A `BibleBookSheet` opened on the given current position (defaulting
-    /// to Genesis 1, which keeps the existing baselines stable), in the
-    /// given order with the given query applied.
     private func sheet(
         currentPosition: BiblePosition = BiblePosition(bookId: "GEN", chapterNumber: 1),
         order: BibleBookOrder = .traditional,
@@ -273,10 +244,6 @@ struct BibleBookSheetSnapshotTests {
         }
     }
 
-    /// Snapshot driver that attaches a real `DatabaseContext` so the
-    /// picker's `@Query<BookAnnotationsExistenceRequest>` returns the
-    /// seeded set instead of falling back to its empty default. Used by
-    /// the filled-bubble variant.
     private func verifyWithDatabase(
         _ sheet: BibleBookSheet,
         database: BibleDatabase,

@@ -4,10 +4,6 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `ChatSession`'s tool loop: pending → executing → success
-/// transitions, tool result `MessageRecord` round-trip, multi-turn history
-/// assembly, and enabled-tool filtering before the LLM (Large Language
-/// Model) sees the catalog.
 @Suite("ChatSession tool loop")
 struct ChatSessionToolLoopTests {
 
@@ -85,14 +81,12 @@ struct ChatSessionToolLoopTests {
     @Test func loopExecutesToolThenContinuesUntilLLMFinishesWithoutToolCalls() async throws {
         let toolID = "test.echo"
         let setup = try await makeSetup(scripts: [
-            // Turn 1: assistant emits some text + a tool call.
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
                 .textDelta(index: 0, text: "checking..."),
                 .toolUse(index: 0, id: "tc-1", name: toolID, input: .object(["q": .string("ping")]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
-            // Turn 2: after the tool returns, the assistant finishes plainly.
             [
                 .messageStart(id: "m2", model: "fake-model-1"),
                 .textDelta(index: 0, text: "result was 'pong'"),
@@ -107,31 +101,23 @@ struct ChatSessionToolLoopTests {
         let events = await collect(stream)
         await setup.session.waitUntilFinished()
 
-        // The tool was invoked once.
         let count = await executor.executionCount()
         #expect(count == 1)
-        // ...with the parameters the LLM emitted.
         let inputs = await executor.capturedInputs()
         #expect(inputs.first?["q"] == .string("ping"))
 
-        // Persisted ToolCallRecord landed at status .success with the
-        // result body JSON-encoded.
         let storedCall = try await setup.toolCallRepo.fetch(id: "tc-1")
         #expect(storedCall?.status == .success)
         #expect(storedCall?.toolName == toolID)
         #expect(storedCall?.completedAt != nil)
 
-        // Conversation now has user + assistant1 + tool result + assistant2.
         let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
         #expect(stored.map(\.role) == [.user, .assistant, .tool, .assistant])
-        // The .tool row is linked back to the call.
         let toolRow = stored[2]
         #expect(toolRow.toolCallId == "tc-1")
         #expect(toolRow.content == "pong")
-        // The final assistant carries the second-turn text.
         #expect(stored.last?.content == "result was 'pong'")
 
-        // Event sequence carried both lifecycle markers for the tool call.
         let kinds = events.map { event -> String in
             switch event {
             case .userMessageSaved: return "user"
@@ -147,8 +133,6 @@ struct ChatSessionToolLoopTests {
             case .error: return "error"
             }
         }
-        // Order around the tool: assistant text, assistant saved, tool
-        // started, tool completed, second-turn text, final assistant saved.
         #expect(kinds.contains("toolStarted"))
         #expect(kinds.contains("toolCompleted"))
         #expect(!kinds.contains("toolFailed"))
@@ -181,7 +165,6 @@ struct ChatSessionToolLoopTests {
         #expect(captured.count == 2)
 
         let secondTurnMessages = captured[1].messages
-        // user, assistant(toolUse only — empty text), tool(result)
         #expect(secondTurnMessages.count == 3)
         #expect(secondTurnMessages[1].role == .assistant)
         if case .toolUse(let id, let name, _, _) = secondTurnMessages[1].content.first {
@@ -222,20 +205,16 @@ struct ChatSessionToolLoopTests {
         let events = await collect(stream)
         await setup.session.waitUntilFinished()
 
-        // ToolCallRecord ended at .failed with an error result body.
         let storedCall = try await setup.toolCallRepo.fetch(id: "tc-bad")
         #expect(storedCall?.status == .failed)
         #expect(storedCall?.completedAt != nil)
 
-        // A .toolCallFailed event surfaced.
         let failed = events.contains { event in
             if case .toolCallFailed = event { return true }
             return false
         }
         #expect(failed)
 
-        // The second turn's history carries the failure as an isError tool
-        // result — that is how the LLM learns to apologize.
         let captured = await setup.provider.capturedRequests()
         #expect(captured.count == 2)
         let toolRow = captured[1].messages.last
@@ -273,9 +252,6 @@ struct ChatSessionToolLoopTests {
     }
 
     @Test func failedToolCallResultColumnDecodesAsToolResult() async throws {
-        // The result column should always hold a JSON-encoded `ToolResult`
-        // — both on success and failure — so admin tools and analytics
-        // can `decodedResult()` without distinguishing the two paths.
         let toolID = "test.broken.parse"
         let setup = try await makeSetup(scripts: [
             [
@@ -308,9 +284,6 @@ struct ChatSessionToolLoopTests {
     }
 
     @Test func toolFailurePersistsTheToolResultMessageRow() async throws {
-        // Regression test for the prior `try?`-swallowed DB writes in the
-        // failure branch. The error-content `MessageRecord` (role .tool)
-        // must actually land so the next turn's history carries it.
         let toolID = "test.broken.row"
         let setup = try await makeSetup(scripts: [
             [
@@ -339,10 +312,7 @@ struct ChatSessionToolLoopTests {
     }
 
     @Test func multipleToolCallsInOneTurnAreAllExecutedSequentially() async throws {
-        // The provider can emit several `.toolUse` events in one turn
-        // (parallel function calling). The orchestrator runs them one at
-        // a time in emission order; each should be persisted, executed,
-        // and yield its own ChatEvent triplet.
+        // Parallel provider calls execute serially in emission order.
         let toolA = "test.a"
         let toolB = "test.b"
         let setup = try await makeSetup(scripts: [
@@ -378,7 +348,6 @@ struct ChatSessionToolLoopTests {
         #expect(storedCalls.map(\.id) == ["tc-a", "tc-b"])
         #expect(storedCalls.allSatisfy { $0.status == .success })
 
-        // Second turn's history carries both tool results, in order.
         let captured = await setup.provider.capturedRequests()
         #expect(captured.count == 2)
         let toolRows = captured[1].messages.filter { $0.role == .tool }
@@ -393,8 +362,6 @@ struct ChatSessionToolLoopTests {
                 .messageStart(id: "m1", model: "fake-model-1"),
                 .searchStarted(query: "history of westphalia"),
                 .textDelta(index: 0, text: "The treaty was signed in 1648."),
-                // Two citation events; the second repeats `dupeURL`, which must
-                // collapse to a single stored source (first-seen wins).
                 .citations([
                     SourceCitation(id: "s1", title: "A", url: dupeURL),
                     SourceCitation(id: "s2", title: "B", url: otherURL),
@@ -416,14 +383,11 @@ struct ChatSessionToolLoopTests {
         let sources = assistant.attachments?.sources ?? []
         #expect(sources.count == 2)
         #expect(sources.map(\.url) == [dupeURL, otherURL])
-        // First-seen wins on dedupe: the later "A (dupe)" title is discarded.
         #expect(sources.first?.title == "A")
     }
 
     @Test func citationsOnlyTurnWithoutTextStillPersistsAssistantMessageWithSources() async throws {
-        // A native provider may emit citations + .messageComplete with no text
-        // and no tool calls. The empty-turn guard must NOT discard this turn,
-        // or the sources are lost for good (they persist only on this path).
+        // Citations-only output must survive the empty-turn guard or its sources are lost.
         let url = URL(string: "https://example.com/grounded")!
         let setup = try await makeSetup(scripts: [
             [
@@ -439,7 +403,6 @@ struct ChatSessionToolLoopTests {
         await setup.session.waitUntilFinished()
 
         let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
-        // user + assistant(citations-only); the assistant row must exist.
         #expect(stored.map(\.role) == [.user, .assistant])
         let assistant = try #require(stored.last)
         #expect(assistant.content.isEmpty)
@@ -447,8 +410,7 @@ struct ChatSessionToolLoopTests {
     }
 
     @Test func citationDedupeIsCaseInsensitiveOnSchemeAndHost() async throws {
-        // RFC 3986: scheme + host are case-insensitive, path is not. The two
-        // URLs below differ only in host/scheme casing → one stored source.
+        // Deduplicate host/scheme casing without folding case-sensitive paths.
         let first = URL(string: "https://Example.com/Article")!
         let dupe = URL(string: "HTTPS://example.com/Article")!
         let setup = try await makeSetup(scripts: [
@@ -473,12 +435,8 @@ struct ChatSessionToolLoopTests {
         #expect(sources.first?.title == "First")
     }
 
-    /// Cancelling a turn while a tool executes must not orphan the persisted
-    /// `tool_use` rows: the in-flight call *and* every not-yet-run call in
-    /// the same batch get a cancelled status, a `completedAt`, and a
-    /// role-`.tool` result row — so the next turn's history is provider-valid.
-    /// Regression for audit P0-2 (cancel mid-tool permanently wedged the
-    /// conversation with recurring provider 400s).
+    /// Cancelled batches still need results for every call, including unexecuted ones,
+    /// or strict providers reject the next replay.
     @Test func cancelDuringToolExecutionWritesCancelledResultsForWholeBatch() async throws {
         let slowToolID = "test.slow"
         let fastToolID = "test.fast"
@@ -505,19 +463,13 @@ struct ChatSessionToolLoopTests {
         let stream = await setup.session.send(text: "run both", model: setup.model)
         async let events: [ChatEvent] = self.collect(stream)
 
-        // Deterministic pause: the slow tool has started, so the session is
-        // suspended inside `executeToolCalls` with both `tool_use` rows
-        // already persisted and neither result written.
         await slowExecutor.awaitFirstCall()
         await setup.session.cancel()
-        // Unblock the executor — `ResumableToolExecutor.awaitResume()` is not
-        // cancellation-aware (it models a tool that returns normally after
-        // the turn was cancelled; the result must be discarded).
+        // This executor ignores cancellation; release it to verify the late result is discarded.
         await slowExecutor.resume(with: ToolResult(toolID: slowToolID, content: "late", isError: false))
         _ = await events
         await setup.session.waitUntilFinished()
 
-        // Both calls resolved to .cancelled with a completion timestamp.
         let slowCall = try #require(await setup.toolCallRepo.fetch(id: "tc-slow"))
         let fastCall = try #require(await setup.toolCallRepo.fetch(id: "tc-fast"))
         #expect(slowCall.status == .cancelled)
@@ -525,16 +477,13 @@ struct ChatSessionToolLoopTests {
         #expect(slowCall.completedAt != nil)
         #expect(fastCall.completedAt != nil)
 
-        // Both have persisted role-.tool result rows linked back to the call.
         let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
         let toolRows = stored.filter { $0.role == .tool }
         #expect(toolRows.map(\.toolCallId).sorted { ($0 ?? "") < ($1 ?? "") } == ["tc-fast", "tc-slow"])
 
-        // The fast tool never actually executed.
         let fastCount = await fastExecutor.executionCount()
         #expect(fastCount == 0)
 
-        // And the next turn ships a pair-complete history to the provider.
         await setup.provider.enqueue([
             .messageStart(id: "m2", model: "fake-model-1"),
             .textDelta(index: 0, text: "fresh turn"),
@@ -558,14 +507,8 @@ struct ChatSessionToolLoopTests {
         #expect(toolResultIDs.sorted() == ["tc-fast", "tc-slow"])
     }
 
-    /// Auto-compaction fires at the top of *every* tool-loop iteration —
-    /// including the follow-up right after tool results persist. When the
-    /// cut would split the just-executed 4-call batch, the backward snap
-    /// keeps the whole round-trip verbatim: the follow-up request must
-    /// carry the assistant's four `toolUse` blocks with all four real
-    /// results (no synthesized "interrupted" text) plus the fresh
-    /// checkpoint summary, and the checkpoint must land on a clean
-    /// turn boundary.
+    /// Mid-loop compaction must snap backward around a tool batch, preserving its
+    /// real results rather than synthesizing interrupted-call repairs.
     @Test func midLoopAutoCompactionKeepsFollowUpPairComplete() async throws {
         let toolID = "test.batch"
         let database = try ChatDatabase.makeInMemory()
@@ -576,10 +519,7 @@ struct ChatSessionToolLoopTests {
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
         let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
 
-        // Full-tier window so `maybeAutoCompact` uses the plain total-ratio
-        // gate (the fixture default of 8,192 is compact tier, which gates
-        // on the compressible ratio instead); near-zero threshold so the
-        // gate fires on every iteration.
+        // Use full-tier total usage and a near-zero threshold to compact every iteration.
         let model = LLMModel(
             id: "fake-model-1", displayName: "Fake Model",
             supportsThinking: false, supportsTools: true,
@@ -606,9 +546,6 @@ struct ChatSessionToolLoopTests {
             autoCompactThreshold: 0.000_001
         )
 
-        // 6 seeded rows + the new user row = 7 at iteration 1, so the
-        // first compaction pass has history beyond the kept tail to
-        // summarize.
         for index in 1...3 {
             try await messageRepo.save(MessageRecord(
                 id: "seed-u\(index)", conversationId: conversation.id, role: .user,
@@ -620,11 +557,7 @@ struct ChatSessionToolLoopTests {
             ))
         }
 
-        // Script order is the loop's consumption order:
-        //   1. iteration-1 compaction summary
-        //   2. turn 1: a 4-parallel-call batch
-        //   3. iteration-2 compaction summary (the mid-loop pass under test)
-        //   4. the follow-up turn after tool results
+        // Scripts alternate compaction summaries and assistant turns in consumption order.
         await provider.enqueue([
             .messageStart(id: "sum-1", model: "fake-model-1"),
             .textDelta(index: 0, text: "Summary one: earlier seeded chatter."),
@@ -658,19 +591,10 @@ struct ChatSessionToolLoopTests {
         _ = await collect(stream)
         await session.waitUntilFinished()
 
-        // Two compaction passes ran; the live checkpoint is iteration 2's,
-        // landed just before the user turn that prompted the 4-call batch
-        // (not the issuing assistant row, not a result row) so the kept
-        // window opens user-first.
         let live = try #require(await checkpointRepo.liveCheckpoint(for: conversation.id))
         #expect(live.summary.contains("Summary two"))
         #expect(live.uptoMessageId == "seed-a3")
 
-        // The follow-up request (the last captured) is pair-complete and
-        // user-first: the prompting user turn and the assistant turn with
-        // all four toolUse blocks survived the checkpoint verbatim, each
-        // call with its real result — and no synthesized "interrupted"
-        // repair text anywhere.
         let request = try #require(await provider.capturedRequests().last)
         let firstNonSystem = try #require(request.messages.first { $0.role != .system })
         #expect(firstNonSystem.role == .user)
@@ -698,28 +622,21 @@ struct ChatSessionToolLoopTests {
         #expect(allText.contains("Summary two"))
     }
 
-    /// Audit P1-6 regression: two sequential assistant turns calling the *same
-    /// id-less tool* (the provider supplied no id, so the reducer emits
-    /// `id == name`) must persist as two distinct `ToolCallRecord` rows. Before
-    /// the fix the GRDB upsert re-parented the first row to the second turn's
-    /// message, so turn 1 lost its `toolUse` in projection while its
-    /// `tool_result` row survived — an orphaned result strict providers reject.
+    /// Reusing an id-less call key across turns makes upsert reparent the earlier
+    /// call, leaving its result orphaned. Mint distinct persistence IDs.
     @Test func idlessToolCallsAcrossTurnsPersistAsDistinctRowsAndKeepEarlierToolUse() async throws {
         let toolID = "get_weather"
         let setup = try await makeSetup(scripts: [
-            // Turn 1: id-less call (id == name), as the Gemini reducer emits.
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
                 .toolUse(index: 0, id: toolID, name: toolID, input: .object(["c": .string("Paris")]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
-            // Turn 2: the SAME id-less call again — the cross-turn collision.
             [
                 .messageStart(id: "m2", model: "fake-model-1"),
                 .toolUse(index: 0, id: toolID, name: toolID, input: .object(["c": .string("London")]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
-            // Turn 3: finish plainly.
             [
                 .messageStart(id: "m3", model: "fake-model-1"),
                 .textDelta(index: 0, text: "done"),
@@ -733,10 +650,6 @@ struct ChatSessionToolLoopTests {
         _ = await collect(await setup.session.send(text: "weather twice", model: setup.model))
         await setup.session.waitUntilFinished()
 
-        // Two distinct rows survive — no upsert re-parent. Both id-less, so both
-        // got a locally-minted, marked, unique PK. (fetchByConversation already
-        // orders createdAt ASC, rowid ASC; the assertions below don't depend on
-        // order anyway.)
         let calls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
         #expect(calls.count == 2)
         #expect(Set(calls.map(\.id)).count == 2)
@@ -744,9 +657,6 @@ struct ChatSessionToolLoopTests {
         #expect(calls.allSatisfy { ToolCallRecord.isLocallyMintedID($0.id) })
         #expect(calls[0].messageId != calls[1].messageId)
 
-        // The final assembling request (turn 3) carries BOTH assistant tool
-        // turns, each with its own toolUse: turn 1 did not lose its call, and
-        // the two wire ids are distinct (strict-provider duplicate-id safety).
         let lastRequest = try #require(await setup.provider.capturedRequests().last)
         var toolUseIDs: [String] = []
         for message in lastRequest.messages {
@@ -758,11 +668,7 @@ struct ChatSessionToolLoopTests {
         #expect(Set(toolUseIDs).count == 2)
     }
 
-    /// The persist seam also disambiguates the *empty-string* id-less shape (the
-    /// Anthropic reducer emits `block.id ?? ""`), not just Gemini's `id == name`
-    /// fallback — an empty PK would collide across turns and produce an empty
-    /// `tool_use` id on the wire. Defensive: Anthropic supplies real ids in
-    /// practice, but the guard closes the same bug class for every provider.
+    /// Empty IDs need the same collision protection as the function-name fallback.
     @Test func emptyIDlessToolCallGetsALocallyMintedPK() async throws {
         let toolID = "lookup"
         let setup = try await makeSetup(scripts: [
@@ -790,7 +696,6 @@ struct ChatSessionToolLoopTests {
         #expect(!call.id.isEmpty)
         #expect(ToolCallRecord.isLocallyMintedID(call.id))
         #expect(call.toolName == toolID)
-        // The result row paired against the minted PK (not the empty original).
         let rows = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
         let toolRow = try #require(rows.first { $0.role == .tool })
         #expect(toolRow.toolCallId == call.id)

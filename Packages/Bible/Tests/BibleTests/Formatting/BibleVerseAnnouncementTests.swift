@@ -1,9 +1,6 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleVerseAnnouncement` — the VoiceOver label that lets a
-/// verse's first word stand in for the whole verse, and the value naming its
-/// highlight.
 @Suite("BibleVerseAnnouncement")
 struct BibleVerseAnnouncementTests {
     @Test("a prose verse reads as its number then its text")

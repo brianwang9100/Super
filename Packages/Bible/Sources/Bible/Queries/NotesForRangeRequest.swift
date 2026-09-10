@@ -1,22 +1,10 @@
-// `import Combine` is mandatory, not stray: `ValueObservationQueryable`
-// inherits `Queryable`, whose `ValuePublisher` associated type resolves to an
-// `AnyPublisher`. Conforming to it needs the `AnyPublisher: Publisher`
-// conformance visible here or the build fails. No Combine data flow is used —
-// observation runs through GRDB's `ValueObservation` and `@Query`.
+// Required for GRDBQuery's AnyPublisher conformance; data flow still uses @Query.
 import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing every note in one exact target group.
-///
-/// Backs the `NoteListSheet` so a note written from outside the open sheet —
-/// an in-chat `bible.note` call — appears live without a manual reload. The
-/// range key is the full `(target, bookId, chapterNumber?, verseStart?,
-/// verseEnd?)` tuple; nullable position columns are matched with explicit
-/// IS-NULL branches because GRDB's `nil`-typed comparisons always evaluate
-/// false in SQL.
-///
-/// Returns rows ordered `(createdAt DESC, id ASC)` — newest note on top.
+/// Observes the exact target and nullable position tuple, newest first.
+/// Use explicit nil branches so empty coordinates compare as SQL IS NULL.
 public struct NotesForRangeRequest: ValueObservationQueryable {
     public static var defaultValue: [BibleNoteRecord] { [] }
 

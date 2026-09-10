@@ -6,14 +6,6 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoFilterSheet`. Each theme renders the sheet with a
-/// non-default filter (a sort, a state scope, and one selected tag) plus a
-/// label set, so the selected-pill and selected-chip styling is exercised.
-///
-/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
-/// read/write the shared on-disk `__Snapshots__/` directory and touch
-/// process-global font registration, so the suites run serially to keep that
-/// setup deterministic — not to paper over a race in the code under test.
 @Suite("TodoFilterSheet snapshots", .serialized)
 @MainActor
 struct TodoFilterSheetSnapshotTests {

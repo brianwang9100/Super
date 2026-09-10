@@ -1,10 +1,7 @@
 import Testing
 @testable import Bible
 
-/// Tests for `BibleHighlightWashMotion` — that the Reduce Motion setting maps
-/// the saved-highlight wash to an instant repaint (`nil` animation) and its
-/// absence to the cross-fade curve. Regression coverage for the wash fade that
-/// PR #252 silently dropped.
+/// Guards the saved-highlight cross-fade lost in #252.
 @Suite("BibleHighlightWashMotion")
 struct BibleHighlightWashMotionTests {
     @Test("Reduce Motion off resolves to the full cross-fade")

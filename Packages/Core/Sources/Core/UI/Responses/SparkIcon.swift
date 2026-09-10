@@ -1,24 +1,14 @@
 import SwiftUI
 
-/// Twelve-spoke radial spark used as the empty-state hero icon.
-///
-/// Mirrors `IconSpark` from `.design-tmp/chat/project/src/icons.jsx`: 12
-/// spokes around the center, alternating short/long, drawn at a fixed
-/// size. The default stroke is `.primary` so the icon adopts the current
-/// foreground; the streaming-tail spinner overrides with `theme.accent`.
 public struct ResponseSparkIcon: View {
-    /// Diameter in points, supplied by the host.
     public let size: CGFloat
-    /// Stroke color for the radial spokes.
     public let color: Color
 
-    /// Creates the radial response activity icon.
     public init(size: CGFloat = 36, color: Color = .primary) {
         self.size = size
         self.color = color
     }
 
-    /// Draws twelve alternating spokes.
     public var body: some View {
         Canvas { ctx, geo in
             let center = CGPoint(x: geo.width / 2, y: geo.height / 2)

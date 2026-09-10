@@ -3,22 +3,9 @@ import Foundation
 import os
 @testable import Bible
 
-/// In-memory ``NarrationService`` test double. Tests drive the active
-/// session by calling `emit(_:)` / `finish(with:)` from the test body;
-/// callers inspect the recorded call counts and `lastStartArgs` to assert
-/// what the controller scheduled.
-///
-/// Strict by design: each call records into a counter so a regression
-/// that double-starts a session (or stops twice) shows up as an exact
-/// assertion failure rather than a vague flake.
-///
-/// Synchronization uses ``OSAllocatedUnfairLock`` rather than `NSLock`
-/// per root AGENTS.md "Synchronization" rules — test doubles follow
-/// the same lock policy as production code.
+/// Drive sessions with emit/finish; exact call counts expose duplicate controller operations.
 final class FakeNarrationService: NarrationService, @unchecked Sendable {
-    /// Mutable state, gated by `lock`. Bundled as a struct so multi-
-    /// field mutations (e.g. record-then-rotate-continuation in
-    /// `startSpeaking`) land atomically in a single `withLock`.
+    // One lock protects multi-field session transitions atomically.
     private struct FakeState {
         var isAvailableValue: Bool = true
         var voiceLookupLocales: [Locale] = []
@@ -41,8 +28,6 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
         let utterances: [NarrationVerseUtterance]
         let rate: Float
         let startingAt: Int
-        // AVSpeechSynthesisVoice doesn't conform to Equatable; tests
-        // inspect by `voice?.identifier` when they need to assert it.
         let voiceIdentifier: String?
     }
 
@@ -88,8 +73,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
             startingAt: startingAt,
             voiceIdentifier: voice?.identifier
         )
-        // Atomically record the start and snapshot the prior
-        // continuation so it can be finished outside the lock.
+        // Finish the prior continuation outside the lock after atomically rotating sessions.
         let previous: AsyncStream<NarrationEvent>.Continuation? = lock.withLock { state in
             state.startCallCount += 1
             state.lastStartArgs = args
@@ -97,13 +81,8 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
             state.continuation = nil
             return prior
         }
-        // Mirror production (`AVSpeechSynthesizerNarrationService
-        // .teardownActiveSession(emit: .cancelled)`): yield `.cancelled`
-        // into the *prior* stream before closing it, so the controller's
-        // old stream-consumer Task sees a buffered terminal event the
-        // same way it would in production. Tests that don't want this
-        // behaviour can use `_simulateEvent(_:)` and bypass the stream
-        // path entirely.
+        // Match production: buffer a terminal event in the old stream before closing it.
+        // This exposes stale-consumer races during session replacement.
         previous?.yield(.cancelled)
         previous?.finish()
 
@@ -131,19 +110,14 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
 
     // MARK: Test driving helpers
 
-    /// Yield `event` into the active stream. No-op if no session is open.
-    /// Stream-based tests use this then `await
-    /// controller._waitForPendingStreamTask()` for the stream's
-    /// terminal events; for mid-session events tests should prefer
-    /// `controller._simulateEvent(_:)` for deterministic timing.
+    /// No-op without a session. Drain terminal events with _waitForPendingStreamTask;
+    /// use _simulateEvent for synchronous mid-session assertions.
     func emit(_ event: NarrationEvent) {
         let continuation = lock.withLock { $0.continuation }
         continuation?.yield(event)
     }
 
-    /// Yield `terminal` (must be `.completed` / `.cancelled` / `.failed`)
-    /// then close the stream — mirrors how the real service ends a
-    /// session.
+    /// Emit a terminal completed/cancelled/failed event and close the stream.
     func finish(with terminal: NarrationEvent) {
         let continuation: AsyncStream<NarrationEvent>.Continuation? = lock.withLock { state in
             let c = state.continuation
@@ -155,19 +129,12 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     }
 }
 
-/// Bridge that captures the controller's `onCompletion` callback into a
-/// recorder readable from the test body without `Task` hops.
 @MainActor
 final class CompletionRecorder {
     private(set) var firedCount = 0
     func record() { firedCount += 1 }
 }
 
-/// Mutable `Date` source for tests that need to drive controller
-/// behaviour past a time-based threshold (e.g. the double-tap window).
-/// Production code injects `{ Date() }`; tests pass `{ clock.now }`
-/// against an instance of this and call ``advance(by:)`` to move time
-/// forward deterministically.
 @MainActor
 final class TestClock {
     private(set) var now: Date
