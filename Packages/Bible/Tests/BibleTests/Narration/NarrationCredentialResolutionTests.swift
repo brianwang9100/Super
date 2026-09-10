@@ -6,6 +6,31 @@ import Testing
 @Suite("Narration credential resolution")
 @MainActor
 struct NarrationCredentialResolutionTests {
+    @Test func sameNameChoicesResolveTheirOwnKeysAcrossRefreshes() async throws {
+        let fixture = try CredentialFixture()
+        let second = ProviderAudioCredential(id: "second-model", name: fixture.source.name, keyRef: "second-ref")
+        try await fixture.keys.setString("second-key", ref: second.keyRef)
+        await fixture.projection.set([second, fixture.source])
+        await fixture.settings.refreshCredentials()
+        let firstLabel = NarrationKeySourceLabel.make(for: fixture.source, among: fixture.settings.sources)
+        let secondLabel = NarrationKeySourceLabel.make(for: second, among: fixture.settings.sources)
+        #expect(firstLabel != secondLabel)
+
+        try await fixture.configure()
+        #expect(try await fixture.settings.apiKey() == "original")
+        try await fixture.settings.configure(
+            credential: second, enabled: true, useThisKey: true, expecting: fixture.settings.record.revision
+        )
+        #expect(fixture.settings.record.sourceId == second.id)
+        #expect(try await fixture.settings.apiKey() == "second-key")
+
+        await fixture.projection.set([fixture.source, second])
+        await fixture.settings.refreshCredentials()
+        #expect(NarrationKeySourceLabel.make(for: fixture.source, among: fixture.settings.sources) == firstLabel)
+        #expect(NarrationKeySourceLabel.make(for: second, among: fixture.settings.sources) == secondLabel)
+        #expect(try await fixture.settings.apiKey() == "second-key")
+    }
+
     @Test("A new model draft replaces a removed borrowed source while preserving opt-out", arguments: [false, true])
     func modelDraftDefaultsToNewKeyAfterBorrowedSourceRemoval(enabled: Bool) async throws {
         let fixture = try CredentialFixture()

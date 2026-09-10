@@ -38,7 +38,11 @@ struct OpenAINarrationSnapshotTests {
 
     @Test(arguments: ["setup", "enabled", "error"], ["light", "dark", "xxl"])
     func openAISetup(state: String, appearance: String) async throws {
-        let fixture = try await makeFixture(state: state)
+        let sources: [ProviderAudioCredential] = state == "enabled" && appearance == "xxl" ? [
+            .init(id: "source-a", name: "gpt-5.6-luna", keyRef: "ref-a"),
+            .init(id: "source-b", name: "gpt-5.6-luna", keyRef: "ref-b"),
+        ] : []
+        let fixture = try await makeFixture(state: state, sources: sources)
         let view = OpenAINarrationSetupSheet(settings: fixture.settings, controller: fixture.controller)
             .superTheme(.make(appearance == "dark" ? .vellumDark : .vellumLight))
             .dynamicTypeSize(appearance == "xxl" ? .xxLarge : .large)
@@ -106,13 +110,20 @@ struct OpenAINarrationSnapshotTests {
         verify(view, name: "transport_\(state)_\(appearance)", height: 450)
     }
 
-    private func makeFixture(state: String) async throws -> (settings: NarrationSettingsController, controller: NarrationController) {
+    private func makeFixture(state: String, sources: [ProviderAudioCredential] = []) async throws
+        -> (settings: NarrationSettingsController, controller: NarrationController) {
+        let keychain = InMemoryKeychainClient()
+        for source in sources { try await keychain.setString("snapshot-only", ref: source.keyRef) }
         let settings = NarrationSettingsController(
             repository: GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory()),
-            keychain: InMemoryKeychainClient(), listSources: { [] }, clock: FixedClock(), ids: DeterministicIDGenerator(), appleVoicesInstalled: { state != "setup" }
+            keychain: keychain, listSources: { sources }, clock: FixedClock(), ids: DeterministicIDGenerator(), appleVoicesInstalled: { state != "setup" }
         )
         await settings.refreshAppleVoices()
-        if state != "setup" { try await settings.saveDedicatedKey("snapshot-only", enabled: state != "disabled", expecting: 0) }
+        if let source = sources.last {
+            try await settings.configure(credential: source, enabled: true, useThisKey: true, expecting: 0)
+        } else if state != "setup" {
+            try await settings.saveDedicatedKey("snapshot-only", enabled: state != "disabled", expecting: 0)
+        }
         if state == "error" { settings.errorMessage = "Could not save your key securely on this device. The connection was not updated." }
         let controller = NarrationController(service: FakeNarrationService(), cloudService: FakeNarrationService(), settings: settings)
         return (settings, controller)
