@@ -130,7 +130,6 @@ final class BibleStudyPresentationViewModel {
         viewModel.dismissAnnotationSheet()
         viewModel.discardAnnotationDisclaimer()
         viewModel.dismissActionSheet()
-        // A preview must not stop narration owned by the full reader.
         if viewModel.isNarrationSheetPresented { viewModel.dismissNarrationSheet() }
         viewModel.dismissBookSheet()
         completeIfDismissed()

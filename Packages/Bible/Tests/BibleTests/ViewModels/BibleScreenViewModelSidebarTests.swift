@@ -56,16 +56,20 @@ struct BibleScreenViewModelSidebarTests {
         #expect(viewModel.selectedVerses == [28])
     }
 
-    @Test("opening the sidebar dismisses the narration sheet")
-    func dismissesNarration() async {
+    @Test("opening the sidebar dismisses narration controls while playback continues")
+    func dismissesNarrationControlsPreservingPlayback() async {
         let bus = SuperEventBus()
         let viewModel = await makeViewModel(bus: bus)
-        viewModel.presentNarrationSheet()
+        viewModel.startNarration()
+        viewModel.narration._simulateEvent(.started(verseNumber: 28))
         #expect(viewModel.isNarrationSheetPresented)
 
         await openSidebarAndAwait(on: bus, through: viewModel)
 
         #expect(!viewModel.isNarrationSheetPresented)
+        #expect(viewModel.narration.state == .speaking)
+        #expect(viewModel.narration.currentVerseNumber == 28)
+        viewModel.narration.stop()
     }
 
     @Test("opening the sidebar dismisses the book and translation pickers")

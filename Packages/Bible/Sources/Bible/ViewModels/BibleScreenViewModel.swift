@@ -29,8 +29,7 @@ public final class BibleScreenViewModel {
 
     public private(set) var narration: NarrationController
 
-    /// Whether narration controls are on screen. Dismiss through
-    /// ``dismissNarrationSheet()`` to stop playback and downloads together.
+    /// Presentation is independent of playback; the narration pill reopens hidden controls.
     public var isNarrationSheetPresented = false
 
     public var presentedAnnotationTarget: BibleAnnotationTargetSpec?
@@ -474,7 +473,7 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Reopens without changing selection; stops and replaces narration controls.
+    /// Reopens without changing selection; replaces narration controls while playback continues.
     public func presentActionSheet() {
         guard !selectedVerses.isEmpty else { return }
         dismissNarrationSheet()
@@ -1113,9 +1112,8 @@ public final class BibleScreenViewModel {
         isNarrationSheetPresented = true
     }
 
-    /// Closing narration also cancels playback and speculative downloads.
+    /// Hides the controls while playback and prefetch continue.
     public func dismissNarrationSheet() {
-        narration.stop()
         isNarrationSheetPresented = false
     }
 

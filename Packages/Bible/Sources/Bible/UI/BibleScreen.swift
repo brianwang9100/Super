@@ -113,6 +113,7 @@ public struct BibleScreen: View {
         // Other applets must not inherit hidden chrome or stale reader accessories.
         .onDisappear {
             studyPresentation.invalidate()
+            viewModel.narration.stop()
             viewModel.dismissNarrationSheet()
             viewModel.resetImmersive()
             publishChromeVisibility(true)
