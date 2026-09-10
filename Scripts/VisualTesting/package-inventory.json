@@ -3265,6 +3265,17 @@
   {
     "package": "Chat",
     "suite": "ComposerAccessoryFlankSnapshotTests",
+    "testName": "soundControlGallery",
+    "captureName": "sound_controls",
+    "image": "Chat_ComposerAccessoryFlankSnapshotTests_soundControlGallery.sound_controls.png",
+    "pixels": [
+      1206,
+      720
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "ComposerAccessoryFlankSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ComposerAccessoryFlankSnapshotTests/trailingDisabledDark.flank_trailing_disabled_dark.png",
     "image": "Chat_ComposerAccessoryFlankSnapshotTests_trailingDisabledDark.flank_trailing_disabled_dark.png",
     "pixels": [

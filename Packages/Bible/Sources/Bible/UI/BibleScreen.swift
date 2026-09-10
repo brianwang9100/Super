@@ -91,6 +91,12 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.isRestoringNavigation) { _, _ in
             publishComposerAccessories()
         }
+        .onChange(of: viewModel.narration.state) { _, _ in
+            publishComposerAccessories()
+        }
+        .onChange(of: viewModel.isNarrationSheetPresented) { _, _ in
+            publishComposerAccessories()
+        }
         // Mirror reader visibility to shell chrome only on actual state changes.
         .onChange(of: viewModel.isImmersive) { _, immersive in
             publishChromeVisibility(!immersive)
@@ -175,6 +181,7 @@ public struct BibleScreen: View {
                 isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
+            center: viewModel.narrationAccessoryButton,
             selection: viewModel.selectionCitation.map { citation in
                 ComposerAccessorySelection(
                     title: citation,
@@ -183,7 +190,7 @@ public struct BibleScreen: View {
                     onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
                 )
             },
-            // Footer visibility hides only arrows; selection reopen/clear controls must remain.
+            // Footer visibility hides only arrows; center controls must remain available.
             // Read inside the renderer to stay reactive without republishing.
             shouldHideButtons: { viewModel.isChapterFooterVisible }
         )

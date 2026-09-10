@@ -1094,6 +1094,16 @@ public final class BibleScreenViewModel {
 
     // MARK: - Narration
 
+    var narrationAccessoryButton: ComposerAccessoryButton? {
+        guard narration.state != .idle, !isNarrationSheetPresented else { return nil }
+        return ComposerAccessoryButton(
+            systemImage: "speaker.wave.2.fill",
+            accessibilityLabel: "Open narration controls",
+            isEnabled: !isRestoringNavigation,
+            action: { self.presentNarrationSheet() }
+        )
+    }
+
     /// Narrates the selection or whole chapter and opens transport. No-op without text;
     /// preserves the chosen voice.
     public func startNarration() {
