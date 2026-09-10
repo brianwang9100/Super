@@ -263,7 +263,7 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.selectionSheet == nil)
     }
 
-    @Test("selecting a translation reloads the chapter and closes the sheet")
+    @Test("selecting a translation reloads the chapter and keeps the sheet open")
     func selectingTranslationReloadsChapter() async {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2, KJV
@@ -272,12 +272,12 @@ struct BibleScreenViewModelTests {
 
         viewModel.selectTranslation(.web)
         #expect(viewModel.translation == .web)
-        #expect(viewModel.selectionSheet == nil)
+        #expect(viewModel.selectionSheet?.translation == .web)
         #expect(viewModel.chapter?.number == 2)
         #expect(viewModel.chapter != kjvChapter, "the chapter should re-render in WEB text")
     }
 
-    @Test("selecting the current translation just closes the sheet")
+    @Test("selecting the current translation keeps the sheet and chapter unchanged")
     func selectingCurrentTranslationIsNoOp() async {
         let viewModel = makeViewModel()
         await viewModel.load()                          // KJV
@@ -286,7 +286,7 @@ struct BibleScreenViewModelTests {
 
         viewModel.selectTranslation(.kjv)
         #expect(viewModel.translation == .kjv)
-        #expect(viewModel.selectionSheet == nil)
+        #expect(viewModel.selectionSheet?.translation == .kjv)
         #expect(viewModel.chapter == kjvChapter)
     }
 

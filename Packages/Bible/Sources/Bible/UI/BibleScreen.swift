@@ -297,7 +297,8 @@ public struct BibleScreen: View {
     private func bookPicker(_ sheetViewModel: BibleSelectionSheetViewModel) -> some View {
         BibleSelectionSheet(
             viewModel: sheetViewModel,
-            onRead: { viewModel.applySelection() },
+            onSelect: { viewModel.applySelection() },
+            onSelectTranslation: viewModel.selectTranslation,
             onClose: { viewModel.dismissSelectionSheet() },
             onPresentBookAnnotations: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }

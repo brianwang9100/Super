@@ -8,7 +8,7 @@ The current package inventory is Bible 259, Chat 228, Core 20, and Todo 42, plus
 
 Streamed annotations add two main-branch captures for partial and interrupted responses (581 → 583). Chapter preview adds three modal-content captures (583 → 586): primary light/dark and combined XXL/maximum-app-font reflow. Existing reader and study-sheet captures remain the visual owners for shared controls; native nested-sheet timing remains simulator QA.
 
-The combined passage/translation selector adds four captures (586 → 590): the book tab in light/dark, the translation tab with the shared Read footer, and large-text reflow. Existing book/translation content suites retain search, decorations, and row coverage; the navigation history gallery now includes long book names.
+The combined passage/translation selector adds four captures (586 → 590): the book tab in light/dark, the translation tab, and large-text reflow. These also cover the flat segmented-control base and footer-free layout. Existing book/translation content suites retain search, decorations, and row coverage; the navigation history gallery now includes long book names.
 
 ## September 2026 consolidation
 
