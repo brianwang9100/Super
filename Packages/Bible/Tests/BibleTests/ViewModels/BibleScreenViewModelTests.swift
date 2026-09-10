@@ -437,8 +437,8 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.selectedVerses == [9])
     }
 
-    @Test("the selection pill dismisses narration and stops playback")
-    func presentingActionSheetStopsNarration() async {
+    @Test("the selection pill replaces narration controls while playback continues")
+    func presentingActionSheetPreservesNarration() async {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
@@ -454,8 +454,15 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.isActionSheetPresented)
         #expect(!viewModel.isNarrationSheetPresented)
         #expect(viewModel.selectedVerses == [4])
-        #expect(controller.state == .idle)
-        #expect(service.stopCallCount == 1)
+        #expect(controller.state == .speaking)
+        #expect(controller.currentVerseNumber == 4)
+        #expect(service.stopCallCount == 0)
+
+        viewModel.dismissActionSheet()
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(controller.state == .speaking)
+        #expect(service.stopCallCount == 0)
+        controller.stop()
     }
 
     @Test("deep links select and scroll without opening actions", arguments: [false, true], [false, true])
@@ -942,21 +949,35 @@ struct BibleScreenViewModelTests {
         #expect(service.startCallCount == 0)
     }
 
-    @Test("dismissNarrationSheet stops narration and closes the controls")
-    func dismissNarrationSheetStops() async {
+    @Test("dismissing and reopening narration controls preserves the session", arguments: [
+        NarrationController.State.preparing, .speaking, .paused,
+    ])
+    func dismissNarrationSheetPreservesSession(state: NarrationController.State) async {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
         await viewModel.load()
 
-        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        controller._simulateEvent(.started(verseNumber: 1))
-        viewModel.presentNarrationSheet()
+        viewModel.startNarration()
+        if state != .preparing { controller._simulateEvent(.started(verseNumber: 1)) }
+        if state == .paused { controller._simulateEvent(.paused) }
 
         viewModel.dismissNarrationSheet()
-        #expect(viewModel.isNarrationSheetPresented == false)
-        #expect(service.stopCallCount == 1)
+        #expect(!viewModel.isNarrationSheetPresented)
+        #expect(controller.state == state)
+        #expect(controller.currentVerseNumber == (state == .preparing ? nil : 1))
+        #expect(service.stopCallCount == 0)
+
+        viewModel.presentNarrationSheet()
+        #expect(viewModel.isNarrationSheetPresented)
+        #expect(controller.state == state)
+        #expect(service.startCallCount == 1)
+        #expect(service.stopCallCount == 0)
+
+        controller.stop()
         #expect(controller.state == .idle)
+        #expect(service.stopCallCount == 1)
+        #expect(viewModel.isNarrationSheetPresented)
     }
 
     // MARK: - openReference
