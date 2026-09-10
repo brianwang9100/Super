@@ -18,6 +18,7 @@ struct BibleNavBar: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var selectionSize: CGFloat = 13
 
@@ -48,7 +49,16 @@ struct BibleNavBar: View {
     var body: some View {
         // Share one backdrop sample across the glass controls.
         GlassEffectContainer {
-            adaptiveBar(historyControls)
+            if showsChapterChevrons {
+                adaptiveBar(historyControls)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    // Match the shell hamburger's 44pt frame and keep the pill anchored beside it.
+                    Color.clear.frame(width: 44, height: 44)
+                    navigationPill(historyControls, wraps: dynamicTypeSize.isAccessibilitySize)
+                        .frame(maxWidth: .infinity)
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 4)
@@ -109,6 +119,7 @@ struct BibleNavBar: View {
                 selectionControls(selectionCitation, wraps: wraps)
             } else {
                 navigationSelector(controls, wraps: wraps)
+                    .layoutPriority(-1)
             }
             divider
             narrationButton
