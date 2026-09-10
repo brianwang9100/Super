@@ -149,24 +149,57 @@ struct BibleNavBarSnapshotTests {
         #expect(size.height < 100, "A second toolbar row exceeds the single-row height budget")
     }
 
-    @Test("the selector hugs short content and grows only to fit a longer passage")
-    func selectorHugsContent() {
+    @Test("short passages share the average book width and longer passages can grow")
+    func selectorUsesAverageBookWidth() {
         let short = UIHostingController(rootView: SelectorSizeProbe(book: "John"))
+            .sizeThatFits(in: CGSize(width: 375, height: 1000))
+        let shorter = UIHostingController(rootView: SelectorSizeProbe(book: "Job"))
+            .sizeThatFits(in: CGSize(width: 375, height: 1000))
+        let wrapping = UIHostingController(rootView: SelectorSizeProbe(book: "John", wraps: true))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
         let long = UIHostingController(rootView: SelectorSizeProbe(book: "2 Corinthians"))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
-        #expect(long.width > short.width + 30)
+        let names = BibleBookCatalog.standard.books.map(\.name)
+        let averageNameWidth = names.map(labelWidth).reduce(0, +) / CGFloat(names.count)
+        let minimumLabelWidth = ceil(averageNameWidth + labelWidth(" 12"))
+        #expect(abs(short.width - shorter.width) < 1)
+        #expect(abs(short.width - wrapping.width) < 1)
+        #expect(abs(short.width - (65 + 16 + minimumLabelWidth)) < 1)
+        #expect(long.width > short.width)
         #expect(long.width <= 231, "Leave room for narration, actions, and the sidebar")
         #expect(short.height >= 44)
     }
 
+    @Test("the selector minimum tracks app font scaling once and grows with Dynamic Type")
+    func selectorMinimumTracksFontScaling() {
+        let base = UIHostingController(rootView: SelectorSizeProbe(book: "Job"))
+            .sizeThatFits(in: CGSize(width: 1000, height: 1000))
+        let scaled = UIHostingController(rootView: SelectorSizeProbe(book: "Job")
+            .superTypography(.make(.serif, fontScale: 1.2)))
+            .sizeThatFits(in: CGSize(width: 1000, height: 1000))
+        let dynamic = UIHostingController(rootView: SelectorSizeProbe(book: "Job").dynamicTypeSize(.xxLarge))
+            .sizeThatFits(in: CGSize(width: 1000, height: 1000))
+        // History, its divider, and horizontal padding do not scale with the label.
+        let fixedChromeWidth: CGFloat = 65 + 16
+        #expect(abs((scaled.width - fixedChromeWidth) - (base.width - fixedChromeWidth) * 1.2) < 1)
+        #expect(dynamic.width > base.width + 10)
+    }
+
+    private func labelWidth(_ label: String) -> CGFloat {
+        UIHostingController(rootView: Text(label)
+            .font(SuperTypography.make(.serif).font(size: 15, weight: .medium))
+            .fixedSize())
+            .sizeThatFits(in: CGSize(width: 1000, height: 1000)).width
+    }
+
     private struct SelectorSizeProbe: View {
         let book: String
+        var wraps = false
 
         var body: some View {
             BibleNavigationSelector(
                 bookName: book, chapterNumber: 13, translation: .web,
-                backLabel: nil, forwardLabel: nil, wraps: false, isRestoring: false,
+                backLabel: nil, forwardLabel: nil, wraps: wraps, isRestoring: false,
                 onBack: {}, onForward: {}, onSelect: {}
             )
             .fixedSize()
