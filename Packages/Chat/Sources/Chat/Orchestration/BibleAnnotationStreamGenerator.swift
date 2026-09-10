@@ -5,6 +5,20 @@ import Foundation
 struct BibleAnnotationStreamGenerator: Sendable {
     let providerRegistry: LLMProviderRegistry
     let toolRegistry: ToolRegistry
+    let clock: any Clock
+    let idGenerator: any IDGenerator
+
+    init(
+        providerRegistry: LLMProviderRegistry,
+        toolRegistry: ToolRegistry,
+        clock: any Clock = SystemClock(),
+        idGenerator: any IDGenerator = UUIDGenerator()
+    ) {
+        self.providerRegistry = providerRegistry
+        self.toolRegistry = toolRegistry
+        self.clock = clock
+        self.idGenerator = idGenerator
+    }
 
     func generate(
         reference: RecordReference,
@@ -22,42 +36,18 @@ struct BibleAnnotationStreamGenerator: Sendable {
                 throw BibleAnnotationStreamError.noProvider
             }
             try Task.checkCancellation()
-            let stream = provider.stream(
-                messages: [
-                    LLMMessage(role: .system, text: Self.briefing),
-                    LLMMessage(role: .user, text: Self.prompt(for: reference)),
-                ],
-                model: model,
-                tools: [],
-                temperature: 0.7,
-                options: LLMRequestOptions(requiresCompleteResponse: true)
+            let session = try await ChatSession.makeEphemeral(
+                provider: provider,
+                toolRegistry: toolRegistry,
+                briefing: Self.briefing,
+                configuration: .init(tools: .disabled, requiresCompleteResponse: true),
+                clock: clock,
+                idGenerator: idGenerator
             )
-            var text = ""
-            var completed = false
-            // Drain through EOF: a terminal event followed by an error must not save.
-            for try await event in stream {
-                try Task.checkCancellation()
-                switch event {
-                case .textDelta(_, let delta):
-                    guard !completed else { throw BibleAnnotationStreamError.incomplete }
-                    guard !delta.isEmpty else { continue }
-                    text += delta
-                    await onProgress(text)
-                case .messageComplete:
-                    completed = true
-                case .toolUse:
-                    throw BibleAnnotationStreamError.unexpectedTool
-                case .error(let error):
-                    throw error
-                default:
-                    break
-                }
-            }
+            let text = try await response(
+                from: session, model: model, prompt: Self.prompt(for: reference), onProgress: onProgress
+            )
             try Task.checkCancellation()
-            guard completed else { throw BibleAnnotationStreamError.incomplete }
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw BibleAnnotationStreamError.empty
-            }
             let result = try await toolRegistry.execute(toolID: toolID, input: target.parameters(summary: text))
             guard !result.isError else {
                 return .failure(message: result.content, classification: .retryable)
@@ -74,6 +64,43 @@ struct BibleAnnotationStreamGenerator: Sendable {
             }
             let message = error is CancellationError ? "Annotation generation was interrupted. Try again." : error.localizedDescription
             return .failure(message: message, classification: classification)
+        }
+    }
+
+    private func response(
+        from session: ChatSession,
+        model: LLMModel,
+        prompt: String,
+        onProgress: @Sendable (String) async -> Void
+    ) async throws -> String {
+        try await withTaskCancellationHandler {
+            let stream = await session.send(text: prompt, model: model)
+            // Cancellation may have reached the handler before send installed its task.
+            if Task.isCancelled { await session.cancel() }
+            var text = ""
+            var savedResponse: String?
+            var failure: LLMError?
+            for await event in stream {
+                switch event {
+                case .textDelta(let delta):
+                    guard !delta.isEmpty else { continue }
+                    text += delta
+                    await onProgress(text)
+                case .assistantMessageSaved(let message):
+                    savedResponse = message.content
+                case .error(let error):
+                    failure = error
+                default: break
+                }
+            }
+            if Task.isCancelled { await session.cancel() }
+            await session.waitUntilFinished()
+            try Task.checkCancellation()
+            if let failure { throw failure }
+            guard let savedResponse else { throw BibleAnnotationStreamError.incomplete }
+            return savedResponse
+        } onCancel: {
+            Task { await session.cancel() }
         }
     }
 
@@ -104,7 +131,7 @@ struct BibleAnnotationStreamGenerator: Sendable {
 
 /// Preparation and generation failures leave existing saved notes intact.
 enum BibleAnnotationStreamError: Error, Sendable, Equatable, LocalizedError {
-    case invalidTarget, unavailableWriter, noProvider, incomplete, empty, unexpectedTool
+    case invalidTarget, unavailableWriter, noProvider, incomplete
 
     var errorDescription: String? {
         switch self {
@@ -112,8 +139,6 @@ enum BibleAnnotationStreamError: Error, Sendable, Equatable, LocalizedError {
         case .unavailableWriter: "Bible annotations are unavailable or disabled. Enable bible.annotate in Settings and try again."
         case .noProvider: "No LLM provider is configured. Add a model in Settings, then try again."
         case .incomplete: "The annotation was interrupted before it finished. Try again."
-        case .empty: "The model returned an empty annotation. Try again or choose another model."
-        case .unexpectedTool: "The model returned a tool call instead of an annotation. Try again."
         }
     }
 }

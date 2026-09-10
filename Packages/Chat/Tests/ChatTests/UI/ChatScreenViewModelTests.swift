@@ -320,6 +320,34 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error?.message.contains("Authentication failed") == true)
     }
 
+    @Test("provider error banners keep details and distinguish HTTP from provider codes", arguments: [
+        ("400", "HTTP 400: Unsupported temperature.", "HTTP 400", "Unsupported temperature."),
+        ("400", "HTTP 400", "HTTP 400", nil),
+        ("context_window_exceeded", "Start a shorter conversation.", "context_window_exceeded", "Start a shorter conversation."),
+    ])
+    func providerErrorPresentation(
+        code: String, message: String, summaryCode: String, detail: String?
+    ) async throws {
+        let driver = ScriptedDriver(events: [.error(.providerError(code: code, message: message))])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [SelectableModel(model)]
+        )
+
+        viewModel.send("hi")
+        try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
+
+        #expect(viewModel.error?.message == "The model provider returned an error (\(summaryCode)).")
+        #expect(viewModel.error?.detail == detail)
+        #expect(viewModel.error?.showsRetry == true)
+    }
+
     @Test("retry routes through driver.retry, not driver.send, so no duplicate user row is written")
     func retryInvokesDriverRetryNotSend() async {
         let driver = RecordingDriver()

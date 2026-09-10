@@ -7,7 +7,7 @@ public struct LiveChatSessionDriver: ChatSessionDriver {
     private let session: ChatSession
     private let temperature: Double
 
-    public init(session: ChatSession, temperature: Double = 1.0) {
+    public init(session: ChatSession, temperature: Double = ChatSessionConfiguration.defaultTemperature) {
         self.session = session
         self.temperature = temperature
     }

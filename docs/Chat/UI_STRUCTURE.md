@@ -244,4 +244,6 @@ See [`../NAMING_CONVENTIONS.md` Part 4](../NAMING_CONVENTIONS.md#part-4--swiftui
 
 *Last updated: 2026-05-11*
 
-`AssistantMessage` and `StreamingTail` render prose through Core’s `ResponseTextBlock`; saved replies use `ResponseActions` for Copy/Regenerate. Core owns the shared Markdown body, activity spark, and action buttons under `Core/UI/Responses/`. Bible annotations use those same components in a composer-free native sheet. `Chat.SparkIcon` remains a compatibility alias.
+`AssistantMessage` and `StreamingTail` render prose through Core’s `ResponseTextBlock`; saved replies use `ResponseActions` for Copy/Regenerate. `ResponseErrorBanner` and `ResponseErrorState` provide shared retry/error presentation, with centralized `LLMError` descriptions preserving provider details. Core owns these components under `Core/UI/Responses/`. Bible annotations compose the same components in a native sheet without a composer; their return-to-saved action remains feature-owned. Chat retains compatibility aliases for `SparkIcon`, `ErrorBanner`, and `MessageList.ErrorState`.
+
+Response presentation is independent of transcript storage. An ephemeral `ChatSession` supports the same streaming, subscription, cancellation, retry, and follow-up engine as ordinary Chat; the host chooses its sheet layout and whether to expose a composer. See [ephemeral response sessions](ARCHITECTURE.md#ephemeral-response-sessions).

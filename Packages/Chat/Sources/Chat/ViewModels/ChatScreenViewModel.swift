@@ -646,7 +646,7 @@ public final class ChatScreenViewModel {
             if case .cancelled = llmError {
                 error = nil
             } else {
-                error = Self.errorState(for: llmError)
+                error = MessageList.ErrorState(error: llmError)
             }
         }
     }
@@ -918,40 +918,6 @@ public final class ChatScreenViewModel {
             return .success
         case .failed, .cancelled:
             return .failed
-        }
-    }
-
-    /// Keeps verbose provider bodies behind the banner's detail disclosure.
-    private nonisolated static func errorState(for error: LLMError) -> MessageList.ErrorState {
-        if case .providerError(let code, let message) = error {
-            // `message` is "HTTP <code>" or "HTTP <code>: <body>". The summary
-            // already states the status, so strip the redundant "HTTP <code>: "
-            // prefix and surface just the provider body as the detail (nil when
-            // there's no body beyond the status, so no empty disclosure).
-            let prefix = "HTTP \(code): "
-            let body = message.hasPrefix(prefix) ? String(message.dropFirst(prefix.count)) : message
-            let hasBody = message != "HTTP \(code)"
-            return MessageList.ErrorState(
-                message: "The model provider returned an error (HTTP \(code)).",
-                detail: hasBody ? body : nil
-            )
-        }
-        return MessageList.ErrorState(message: describe(error))
-    }
-
-    private nonisolated static func describe(_ error: LLMError) -> String {
-        switch error {
-        case .unauthorized:
-            return "Authentication failed. Check the API key in Settings."
-        case .rateLimited:
-            return "Rate limited by the model provider. Try again shortly."
-        case .cancelled:
-            return "Stopped."
-        case .requestFailed(let message),
-             .providerError(_, let message),
-             .decodingFailed(let message),
-             .unsupportedModel(let message):
-            return message
         }
     }
 }

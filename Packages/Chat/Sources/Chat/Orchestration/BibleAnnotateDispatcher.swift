@@ -71,7 +71,9 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             guard let self else { return }
             let generator = BibleAnnotationStreamGenerator(
                 providerRegistry: self.llmProviderRegistry,
-                toolRegistry: self.toolRegistry
+                toolRegistry: self.toolRegistry,
+                clock: self.clock,
+                idGenerator: self.idGenerator
             )
             let outcome = await generator.generate(reference: reference) { text in
                 await bus.publish(.bibleAnnotateProgress(requestId: reference.id, text: text))

@@ -335,6 +335,16 @@ Supporting orchestration types (all in the same folder):
 | `SlashCommand` | `enum` | Composer-side dispatch. Today: `.compact`. Parsed at `ChatSession.send(text:)` entry — slash commands never persist a user `MessageRecord`. |
 | `ChatSessionDriver` / `LiveChatSessionDriver` / `LazyConversationDriver` | `protocol` + adapters | Seam between the view model and the session. Multiple production conformers (one wraps a session directly, one ensures lazy save before the first turn). |
 
+### Ephemeral response sessions
+
+`ChatSession.makeEphemeral(provider:toolRegistry:briefing:configuration:)` constructs the same actor with an isolated `ChatDatabase.makeInMemory()` and the existing GRDB repositories. Its conversation, messages, tool records, and checkpoints exist only for that actor's lifetime; it never enters the application's Chat history or title-generation flow. The provider is captured before construction and pinned in a private registry so a Settings change cannot pair another provider with the selected model.
+
+`ChatSessionConfiguration` controls tool availability and verified completion. Foreground annotations disable tools (including native/mock search and search instructions) and require a terminal response, nonempty text, and successful EOF before the assistant result is saved. Unsolicited tool calls fail before execution. Default configuration preserves ordinary Chat's tool loop. `send`, `retry`, and `LiveChatSessionDriver` share one generation-temperature default.
+
+`BibleAnnotationStreamGenerator` is the feature adapter: it validates the target, supplies annotation instructions, forwards `ChatEvent` text progress, and invokes `bible.annotate` after successful session completion. Cancellation cancels and drains the owned session before returning. Existing Bible draft state and query handoff retain progress across sheet dismissal; the completed session is released. Bulk annotation tool loops remain separate callers of the same engine.
+
+A new response popup should use a Chat-owned adapter through Core's service/event boundaries, retain its ephemeral session for the interaction lifetime, and compose Core's response components. Composer visibility is independent of session storage: ephemeral sessions already support follow-up `send` and `retry` calls. An annotation composer and follow-up result selection are future presentation choices.
+
 ### Turn loop (canonical order)
 
 1. Parse `SlashCommand`. If matched, dispatch (e.g. `/compact` → `compact(model:)`); no user `MessageRecord` is written.

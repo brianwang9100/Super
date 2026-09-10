@@ -117,25 +117,13 @@ struct AnnotationSheet: View {
 
     private func failure(message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(message)
-                .font(typography.font(size: 14))
-                .foregroundStyle(theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 18) { retryActions }
-                VStack(alignment: .leading, spacing: 12) { retryActions }
+            ResponseErrorBanner(banner: .init(message: message), onRetry: onRetry)
+            if let onReturnToSaved {
+                Button("Show saved annotation", action: onReturnToSaved)
+                    .font(typography.font(size: 14, weight: .medium))
+                    .foregroundStyle(theme.ink)
+                    .buttonStyle(.plain)
             }
-            .font(typography.font(size: 14, weight: .medium))
-            .foregroundStyle(theme.ink)
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private var retryActions: some View {
-        Button("Try again", action: onRetry)
-        if let onReturnToSaved {
-            Button("Show saved annotation", action: onReturnToSaved)
         }
     }
 }

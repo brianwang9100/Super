@@ -24,7 +24,10 @@ struct BibleAnnotationStreamGeneratorTests {
                 execution: .local(executor), isEnabled: enabled
             ))
         }
-        return (BibleAnnotationStreamGenerator(providerRegistry: providers, toolRegistry: tools), executor)
+        return (BibleAnnotationStreamGenerator(
+            providerRegistry: providers, toolRegistry: tools,
+            clock: OrchestrationFixtures.defaultClock(), idGenerator: DeterministicIDGenerator()
+        ), executor)
     }
 
     @Test("partial text is observable before the only save and thinking is excluded")
@@ -57,6 +60,7 @@ struct BibleAnnotationStreamGeneratorTests {
         let (generator, _) = await setup(provider: provider)
         #expect(await generator.generate(reference: reference(), onProgress: { _ in }) == .success(annotationCount: 1))
         let request = try #require(await provider.capturedRequests().first)
+        #expect(request.temperature == 1.0)
         #expect(request.options.requiresCompleteResponse)
         #expect(request.tools.isEmpty)
         #expect(request.messages.last?.content.contains(where: { if case .text(let text) = $0 { return text.contains("Exact selected verse text") }; return false }) == true)
@@ -149,6 +153,19 @@ struct BibleAnnotationStreamGeneratorTests {
         await iterator.next()
         task.cancel()
         guard case .failure = await task.value else { Issue.record("cancellation succeeded"); return }
+        #expect(await executor.executionCount() == 0)
+    }
+
+    @Test("cancellation before startup does not bill or save")
+    func cancelledStartup() async {
+        let provider = FakeLLMProvider(model: OrchestrationFixtures.defaultModel())
+        let (generator, executor) = await setup(provider: provider)
+        let result = await Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await generator.generate(reference: reference(), onProgress: { _ in })
+        }.value
+        guard case .failure = result else { Issue.record("cancellation succeeded"); return }
+        #expect(await provider.capturedRequests().isEmpty)
         #expect(await executor.executionCount() == 0)
     }
 
