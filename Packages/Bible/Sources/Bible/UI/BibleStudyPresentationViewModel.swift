@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class BibleStudyPresentationViewModel {
     enum Sheet: Hashable {
-        case bottom, annotation, disclaimer, note, bookmark, book
+        case bottom, inlineNarration, annotation, disclaimer, note, bookmark, book
     }
 
     private let viewModel: BibleScreenViewModel
@@ -49,9 +49,10 @@ final class BibleStudyPresentationViewModel {
 
     func annotateSelection() {
         let ranges = viewModel.selectedAnnotationRanges
+        let translation = viewModel.selectionTranslation
         guard !ranges.isEmpty else { return }
         handOffAfterSelectionDismiss {
-            for spec in ranges { self.viewModel.triggerAnnotationGeneration(for: spec) }
+            for spec in ranges { self.viewModel.triggerAnnotationGeneration(for: spec, sourceTranslation: translation) }
         }
     }
 
@@ -61,8 +62,9 @@ final class BibleStudyPresentationViewModel {
     }
 
     /// Bookmarks deliberately clear selection; a playing narration remains underneath.
-    func presentBookmark() {
-        handOffAfterSelectionDismiss { self.viewModel.presentBookmarkSheet() }
+    func presentBookmark(at position: BiblePosition? = nil) {
+        let capturedPosition = position ?? viewModel.position
+        handOffAfterSelectionDismiss { self.viewModel.presentBookmarkSheet(at: capturedPosition) }
     }
 
     func handOffAfterBookDismiss(_ work: @escaping () -> Void) {
@@ -77,7 +79,7 @@ final class BibleStudyPresentationViewModel {
         viewModel.dismissSelectionSheet()
     }
 
-    private func handOffAfterSelectionDismiss(_ work: @escaping () -> Void) {
+    func handOffAfterSelectionDismiss(_ work: @escaping () -> Void) {
         guard isActive, !isFinishing else { return }
         // Narration is the actual visible bottom card when both model flags are set.
         let hasActionPresentation = viewModel.isActionSheetPresented
@@ -94,6 +96,15 @@ final class BibleStudyPresentationViewModel {
         pendingHandoff = (.bottom, viewModel.position, work)
         dismissing.insert(.bottom)
         viewModel.clearSelection()
+    }
+
+    /// Inline hosts report visibility directly because UIKit never sends a sheet dismissal.
+    func updateInlineNarrationVisibility(_ visible: Bool, identity callbackIdentity: UUID) {
+        if visible {
+            didPresent(.inlineNarration, identity: callbackIdentity)
+        } else {
+            didDismiss(.inlineNarration, identity: callbackIdentity)
+        }
     }
 
     /// Tracks mounted sheets after interactive dismissal clears their binding.

@@ -28,20 +28,37 @@ struct NarrationTransportSheet: View {
     // Seed from the last scan while refreshing newly installed voices off-main.
     @State private var voices: [VoiceOption] = NarrationTransportSheet.cachedVoices
 
+    var inline = false
+    var onResumeFollowing: (() -> Void)?
+
     var body: some View {
         VStack(spacing: 0) {
             header
             VStack(alignment: .leading, spacing: 18) {
-                transportRow
-                Divider().background(theme.borderFaint)
-                controlsRow
+                if inline {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 16) {
+                            transportRow.frame(width: 220)
+                            controlsRow.frame(width: 320 * max(1, chipSize * typography.fontScale / 13))
+                        }
+                    }.scrollIndicators(.hidden)
+                } else {
+                    transportRow
+                    Divider().background(theme.borderFaint)
+                    controlsRow
+                }
+                if let onResumeFollowing {
+                    Button("Resume following", systemImage: "text.book.closed", action: onResumeFollowing)
+                        .font(typography.font(.callout)).frame(minHeight: 44)
+                        .tint(theme.ink)
+                }
                 if let error = controller.lastError {
                     Text(error.message).font(typography.font(.footnote)).foregroundStyle(theme.errorAccent)
                     HStack {
                         if controller.voice?.company == .openAI {
-                            Button("Use Apple voice") { controller.useAppleVoice() }
+                            Button("Use Apple voice") { controller.useAppleVoice() }.frame(minHeight: inline ? 44 : nil)
                         }
-                        Button("Retry") { controller.retry() }
+                        Button("Retry") { controller.retry() }.frame(minHeight: inline ? 44 : nil)
                     }.font(typography.font(.footnote))
                 }
             }
@@ -49,12 +66,7 @@ struct NarrationTransportSheet: View {
             .padding(.top, 8)
         }
         .padding(.bottom, 16)
-        // Share the first-paint estimate with the reader's scroll reserve.
-        .sheetPresentation(
-            sizing,
-            readableBackground: true,
-            estimatedHeight: BibleBottomOverlayKind.narration.estimatedSheetHeight
-        )
+        .modifier(BibleStudySheetPresentation(inline: inline, estimatedHeight: BibleBottomOverlayKind.narration.estimatedSheetHeight))
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
             voicePickerWidth = min(360, max(280, width - 32))
         }

@@ -13,6 +13,60 @@ public final class BibleScreenViewModel {
     public private(set) var chapter: BibleChapter?
     public private(set) var translation: BibleTranslation = .defaultTranslation
 
+    public private(set) var selectionSource: BibleReadingSource?
+    public private(set) var narrationSessionGeneration = 0
+    public private(set) var narrationSource: BibleReadingSource?
+    private var capturedNarrationUtterances: [NarrationVerseUtterance] = []
+    private(set) var bookLocation: BibleBookLocation?
+    public private(set) var explicitNavigationGeneration = 0
+    public private(set) var navigationRestorationGeneration = 0
+
+    public var primarySource: BibleReadingSource? {
+        chapter.map { BibleReadingSource(position: position, translation: translation, chapter: $0) }
+    }
+    public var selectionTranslation: BibleTranslation { selectionSource?.translation ?? translation }
+    private var selectionPosition: BiblePosition { selectionSource?.position ?? position }
+    private var selectionBookName: String {
+        catalog.book(id: selectionPosition.bookId)?.name ?? selectionPosition.bookId
+    }
+
+    public func loadReadingSource(position: BiblePosition, translation: BibleTranslation) throws -> BibleReadingSource {
+        guard isValidPosition(position),
+              let chapter = try textLoader.loadChapter(bookId: position.bookId,
+                  chapterNumber: position.chapterNumber, translation: translation) else {
+            throw BibleReadingSourceError.unavailable
+        }
+        return BibleReadingSource(position: position, translation: translation, chapter: chapter)
+    }
+
+    func saveBookLocation(_ location: BibleBookLocation) {
+        guard !isRestoringNavigation, validBookLocation(location),
+              let source = try? loadReadingSource(position: location.current.position, translation: translation) else { return }
+        if didReadingPositionLoadFail, bookLocation != location { provisionalNavigationOccurred = true }
+        if position != source.position {
+            navigationHistory.visit(source.position)
+            position = source.position
+            chapter = source.chapter
+            bookName = catalog.book(id: position.bookId)?.name ?? position.bookId
+        }
+        bookLocation = location
+        persist()
+    }
+
+    private func validBookLocation(_ location: BibleBookLocation) -> Bool {
+        location.version == 1 && [location.current, location.spreadOrigin].allSatisfy {
+            $0.translationId == translation.rawValue && $0.verseNumber > 0 &&
+                $0.utf16Offset >= 0 && isValidPosition($0.position)
+        }
+    }
+
+    private func markExplicitNavigation() {
+        explicitNavigationGeneration += 1
+        bookLocation = nil
+        narrationSource = nil
+        capturedNarrationUtterances.removeAll()
+    }
+
     /// The combined selector's passage state and live translation while its native sheet is presented.
     public private(set) var selectionSheet: BibleSelectionSheetViewModel?
 
@@ -43,6 +97,8 @@ public final class BibleScreenViewModel {
     // Queue every contiguous selection range so later intents cannot overwrite earlier
     // ones during the disclaimer. Acknowledge drains FIFO; dismissal discards all.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
+    private var pendingAnnotationReferences: [(reference: RecordReference, translation: BibleTranslation)] = []
+    private var annotationTranslations: [BibleAnnotationTargetSpec: BibleTranslation] = [:]
 
     /// Shared per-target dispatch state forwarded from the applet-lifetime dispatcher.
     public var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] {
@@ -270,6 +326,7 @@ public final class BibleScreenViewModel {
 
     private func applyTranslationSelection(_ selected: BibleTranslation) {
         guard selected != translation else { return }
+        markExplicitNavigation()
         narration.stop()
         translation = selected
         clearSelection()
@@ -286,6 +343,7 @@ public final class BibleScreenViewModel {
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
         let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         if destination == position {
+            markExplicitNavigation()
             narration.stop()
             clearSelection()
             pendingScrollVerse = nil
@@ -364,6 +422,7 @@ public final class BibleScreenViewModel {
         selectsVerse: (Int) -> Bool
     ) {
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
+        markExplicitNavigation()
 
         if destination == position {
             narration.stop()
@@ -376,11 +435,17 @@ public final class BibleScreenViewModel {
         applyCurrentChapter()
         // Iterate only real chapter verses, bounding both huge ranges and exact sets.
         selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
+        selectionSource = selectedVerses.isEmpty ? nil : primarySource
         // Changing the pending verse also scrolls same-chapter links; chapter-only navigation leaves it nil.
         pendingScrollVerse = selectedVerses.min()
         dismissActionSheet()
         persist()
         selectionSheet = nil
+    }
+
+    func requestWorkspaceScroll(to verse: Int) {
+        guard verse > 0 else { return }
+        pendingScrollVerse = verse
     }
 
     /// Call after issuing the scroll so later navigation cannot replay it.
@@ -457,8 +522,27 @@ public final class BibleScreenViewModel {
         isImmersive = value
     }
 
-    /// First selection opens actions; subsequent taps preserve visibility until selection empties.
+    public func selectedVerses(in source: BibleReadingSource) -> Set<Int> {
+        guard let selected = selectionSource ?? primarySource,
+              selected.position == source.position, selected.translation == source.translation else { return [] }
+        return selectedVerses
+    }
+
+    /// Changing source replaces the selection, including identical verse numbers in adjacent chapters.
+    public func toggleVerse(_ number: Int, in source: BibleReadingSource) {
+        if selectionSource?.position != source.position || selectionSource?.translation != source.translation {
+            selectedVerses.removeAll()
+        }
+        selectionSource = source
+        toggleSelectedVerse(number)
+    }
+
     public func toggleVerse(_ number: Int) {
+        if let primarySource { toggleVerse(number, in: primarySource) }
+        else { toggleSelectedVerse(number) }
+    }
+
+    private func toggleSelectedVerse(_ number: Int) {
         let startsSelection = selectedVerses.isEmpty
         if selectedVerses.contains(number) {
             selectedVerses.remove(number)
@@ -468,6 +552,7 @@ public final class BibleScreenViewModel {
             hapticsEngine.play(.selection)
         }
         if selectedVerses.isEmpty {
+            selectionSource = nil
             dismissActionSheet()
         } else if startsSelection {
             isActionSheetPresented = true
@@ -487,6 +572,7 @@ public final class BibleScreenViewModel {
     }
 
     public func clearSelection() {
+        selectionSource = nil
         dismissActionSheet()
         guard !selectedVerses.isEmpty else { return }
         selectedVerses.removeAll()
@@ -497,7 +583,7 @@ public final class BibleScreenViewModel {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
         return BibleCitationFormatter.cite(
-            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+            bookName: selectionBookName, chapterNumber: selectionPosition.chapterNumber, verses: verses
         )
     }
 
@@ -505,13 +591,13 @@ public final class BibleScreenViewModel {
     public var selectionShareText: String? {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
-        let texts = verseTextsByNumber()
+        let texts = verseTextsByNumber(source: selectionSource)
         let body = verses.compactMap { texts[$0] }.joined(separator: " ")
         guard !body.isEmpty else { return nil }
         let citation = BibleCitationFormatter.cite(
-            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+            bookName: selectionBookName, chapterNumber: selectionPosition.chapterNumber, verses: verses
         )
-        return "\(body)\n— \(citation) (\(translation.rawValue))"
+        return "\(body)\n— \(citation) (\(selectionTranslation.rawValue))"
     }
 
     /// Copies then clears selection.
@@ -567,8 +653,8 @@ public final class BibleScreenViewModel {
     ) {
         guard let highlightRepository, !selectedVerses.isEmpty else { return }
         let verses = selectedVerses.sorted()
-        let bookId = position.bookId
-        let chapterNumber = position.chapterNumber
+        let bookId = selectionPosition.bookId
+        let chapterNumber = selectionPosition.chapterNumber
         let now = clock.now()
         let previous = highlightTask
         highlightTask = Task { [weak self] in
@@ -586,17 +672,17 @@ public final class BibleScreenViewModel {
     public func makeVerseReference() -> RecordReference? {
         let verses = selectedVerses.sorted()
         guard !verses.isEmpty else { return nil }
-        let texts = verseTextsByNumber()
+        let texts = verseTextsByNumber(source: selectionSource)
         let snapshot = verses.compactMap { texts[$0] }.joined(separator: " ")
         guard !snapshot.isEmpty else { return nil }
         let citation = BibleCitationFormatter.cite(
-            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+            bookName: selectionBookName, chapterNumber: selectionPosition.chapterNumber, verses: verses
         )
-        let label = "\(citation) (\(translation.rawValue))"
+        let label = "\(citation) (\(selectionTranslation.rawValue))"
         return RecordReference(
             appletID: BibleApplet.appletID,
             kind: "verseRange",
-            sourceID: "\(translation.rawValue)/\(position.bookId)/\(position.chapterNumber)/"
+            sourceID: "\(selectionTranslation.rawValue)/\(selectionPosition.bookId)/\(selectionPosition.chapterNumber)/"
                 + verses.map(String.init).joined(separator: ","),
             displayLabel: label,
             citation: label,
@@ -635,7 +721,8 @@ public final class BibleScreenViewModel {
     // MARK: - Annotations
 
     /// Viewing existing annotations does not require generation acknowledgement.
-    public func presentAnnotationSheet(for spec: BibleAnnotationTargetSpec) {
+    public func presentAnnotationSheet(for spec: BibleAnnotationTargetSpec, sourceTranslation: BibleTranslation? = nil) {
+        annotationTranslations[spec] = sourceTranslation ?? annotationTranslations[spec] ?? selectionTranslation
         presentedAnnotationTarget = spec
     }
 
@@ -645,23 +732,39 @@ public final class BibleScreenViewModel {
 
     /// Before first acknowledgement, queues every intent behind the disclaimer;
     /// subsequent triggers dispatch immediately.
-    public func triggerAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
+    public func triggerAnnotationGeneration(
+        for spec: BibleAnnotationTargetSpec, sourceTranslation: BibleTranslation? = nil
+    ) {
+        if case .running = annotationDispatchViewModel.status(for: spec) {
+            presentedAnnotationTarget = spec
+            return
+        }
+        let source = sourceTranslation ?? annotationTranslations[spec] ?? translation
+        annotationTranslations[spec] = source
+        let reference = makeAnnotateRequestReference(for: spec, sourceTranslation: source)
         guard disclaimerStore.isAcknowledged else {
             pendingAnnotationIntents.append(spec)
+            pendingAnnotationReferences.append((reference, source))
             isAnnotationDisclaimerPresented = true
             return
         }
-        performAnnotationGeneration(for: spec)
+        performAnnotationGeneration(for: spec, reference: reference)
     }
 
     /// Persists acknowledgement and drains all queued intents in FIFO order.
     public func acknowledgeAnnotationDisclaimer() {
         disclaimerStore.setAcknowledged(true)
         isAnnotationDisclaimerPresented = false
-        let queue = pendingAnnotationIntents
+        let queue = Array(zip(pendingAnnotationIntents, pendingAnnotationReferences))
         pendingAnnotationIntents.removeAll()
-        for spec in queue {
-            performAnnotationGeneration(for: spec)
+        pendingAnnotationReferences.removeAll()
+        for (spec, captured) in queue {
+            if case .running = annotationDispatchViewModel.status(for: spec) {
+                presentedAnnotationTarget = spec
+                continue
+            }
+            annotationTranslations[spec] = captured.translation
+            performAnnotationGeneration(for: spec, reference: captured.reference)
         }
     }
 
@@ -669,6 +772,7 @@ public final class BibleScreenViewModel {
     public func discardAnnotationDisclaimer() {
         isAnnotationDisclaimerPresented = false
         pendingAnnotationIntents.removeAll()
+        pendingAnnotationReferences.removeAll()
     }
 
     /// Dismisses annotations and follows the same selection/scroll path as external links.
@@ -689,7 +793,8 @@ public final class BibleScreenViewModel {
     }
 
     // Reference.id correlates completion; routing fields cross the applet boundary without Bible imports.
-    private func makeAnnotateRequestReference(for spec: BibleAnnotationTargetSpec) -> RecordReference {
+    private func makeAnnotateRequestReference(for spec: BibleAnnotationTargetSpec, sourceTranslation: BibleTranslation? = nil) -> RecordReference {
+        let sourceTranslation = sourceTranslation ?? annotationTranslations[spec] ?? translation
         let citation = citationLabel(for: spec)
         let kind: String
         switch spec {
@@ -702,40 +807,35 @@ public final class BibleScreenViewModel {
             kind: kind,
             sourceID: spec.id,
             displayLabel: citation,
-            citation: "\(citation) (\(translation.rawValue))",
-            snapshot: snapshotText(for: spec),
+            citation: "\(citation) (\(sourceTranslation.rawValue))",
+            snapshot: BibleVerseTextFormatter.numbered(verses(for: spec, sourceTranslation: sourceTranslation)),
             id: idGenerator.nextID()
         )
     }
 
-    // Omit whole-book text to bound prompt size; chapter/range snapshots ground generation
-    // in the selected translation. Unavailable text degrades to citation-only input.
-    private func snapshotText(for spec: BibleAnnotationTargetSpec) -> String {
-        BibleVerseTextFormatter.numbered(verses(for: spec))
-    }
-
-    private func verses(for spec: BibleAnnotationTargetSpec) -> [BibleVerse] {
+    private func verses(for spec: BibleAnnotationTargetSpec, sourceTranslation: BibleTranslation? = nil) -> [BibleVerse] {
+        let sourceTranslation = sourceTranslation ?? annotationTranslations[spec] ?? translation
         guard let chapterNumber = spec.chapterNumber,
               let chapter = (try? textLoader.loadChapter(
-                  bookId: spec.bookId, chapterNumber: chapterNumber, translation: translation
+                  bookId: spec.bookId, chapterNumber: chapterNumber, translation: sourceTranslation
               )) ?? nil else { return [] }
         let verses = chapter.coalescedVerses()
         guard let start = spec.verseStart, let end = spec.verseEnd else { return verses }
         return verses.filter { $0.number >= start && $0.number <= end }
     }
 
-    private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
+    private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec, reference: RecordReference) {
         clearSelection()
-        publishDispatchRequest(for: spec)
+        publishDispatchRequest(for: spec, reference: reference)
     }
 
     /// Forward a request into the shared dispatcher while retaining this reader's presentation.
-    private func publishDispatchRequest(for spec: BibleAnnotationTargetSpec) {
+    private func publishDispatchRequest(for spec: BibleAnnotationTargetSpec, reference capturedReference: RecordReference? = nil) {
         if case .running = annotationDispatchViewModel.status(for: spec) {
             presentedAnnotationTarget = spec
             return
         }
-        let reference = makeAnnotateRequestReference(for: spec)
+        let reference = capturedReference ?? makeAnnotateRequestReference(for: spec)
         switch annotationDispatchViewModel.request(reference: reference, for: spec) {
         case .started, .alreadyRunning:
             presentedAnnotationTarget = spec
@@ -853,8 +953,8 @@ public final class BibleScreenViewModel {
         ranges.append((start, previous))
         return ranges.map { range in
             .verseRange(
-                bookId: position.bookId,
-                chapterNumber: position.chapterNumber,
+                bookId: selectionPosition.bookId,
+                chapterNumber: selectionPosition.chapterNumber,
                 verseStart: range.0,
                 verseEnd: range.1
             )
@@ -888,7 +988,7 @@ public final class BibleScreenViewModel {
     /// not themselves notify observers.
     public func annotationVerseText(for spec: BibleAnnotationTargetSpec) -> String? {
         guard spec.verseStart != nil, spec.verseEnd != nil else { return nil }
-        let key = "\(spec.id)|\(translation.rawValue)"
+        let key = "\(spec.id)|\((annotationTranslations[spec] ?? translation).rawValue)"
         if let cached = annotationVerseTextCache, cached.key == key {
             return cached.text
         }
@@ -955,8 +1055,8 @@ public final class BibleScreenViewModel {
         let verses = selectedVerses.sorted()
         guard let first = verses.first, let last = verses.last else { return nil }
         return .verseRange(
-            bookId: position.bookId,
-            chapterNumber: position.chapterNumber,
+            bookId: selectionPosition.bookId,
+            chapterNumber: selectionPosition.chapterNumber,
             verseStart: first,
             verseEnd: last
         )
@@ -1027,7 +1127,8 @@ public final class BibleScreenViewModel {
 
     /// Captures this chapter/citation and clears selection. With actions open, the screen
     /// must defer this presentation until their dismissal completes.
-    public func presentBookmarkSheet() {
+    public func presentBookmarkSheet(at sourcePosition: BiblePosition? = nil) {
+        let position = sourcePosition ?? position
         clearSelection()
         presentedBookmarkSheet = BibleBookmarkPresentation(
             bookId: position.bookId,
@@ -1104,8 +1205,12 @@ public final class BibleScreenViewModel {
     /// Narrates the selection or whole chapter and opens transport. No-op without text;
     /// preserves the chosen voice.
     public func startNarration() {
-        let utterances = narrationUtterances()
+        let source = selectedVerses.isEmpty ? primarySource : (selectionSource ?? primarySource)
+        let utterances = narrationUtterances(source: source)
         guard !utterances.isEmpty else { return }
+        narrationSessionGeneration += 1
+        narrationSource = source
+        capturedNarrationUtterances = utterances
         isNarrationSheetPresented = true
         narration.start(utterances: utterances)
     }
@@ -1126,12 +1231,28 @@ public final class BibleScreenViewModel {
     }
 
     public var narrationCitation: String? {
-        guard let verse = narration.currentVerseNumber else { return nil }
-        return "\(bookName) \(position.chapterNumber):\(verse)"
+        guard let source = narrationSource ?? primarySource else { return nil }
+        let name = catalog.book(id: source.position.bookId)?.name ?? source.position.bookId
+        if let verse = narration.currentVerseNumber { return "\(name) \(source.position.chapterNumber):\(verse)" }
+        guard narrationSource != nil, !capturedNarrationUtterances.isEmpty else { return nil }
+        return BibleCitationFormatter.cite(bookName: name, chapterNumber: source.position.chapterNumber,
+                                          verses: capturedNarrationUtterances.map(\.verseNumber)) + " (\(source.translation.rawValue))"
     }
 
-    private func narrationUtterances() -> [NarrationVerseUtterance] {
-        let texts = verseTextsByNumber()
+    public func restartNarration() {
+        guard !capturedNarrationUtterances.isEmpty else { startNarration(); return }
+        narrationSessionGeneration += 1
+        narration.start(utterances: capturedNarrationUtterances)
+    }
+
+    public func narrationVerseNumber(in source: BibleReadingSource) -> Int? {
+        guard narrationSource?.position == source.position,
+              narrationSource?.translation == source.translation else { return nil }
+        return narration.currentVerseNumber
+    }
+
+    private func narrationUtterances(source: BibleReadingSource?) -> [NarrationVerseUtterance] {
+        let texts = verseTextsByNumber(source: source)
         guard !texts.isEmpty else { return [] }
         let verses: [Int]
         if selectedVerses.isEmpty {
@@ -1149,8 +1270,8 @@ public final class BibleScreenViewModel {
         toast = nil
     }
 
-    private func verseTextsByNumber() -> [Int: String] {
-        guard let chapter else { return [:] }
+    private func verseTextsByNumber(source: BibleReadingSource? = nil) -> [Int: String] {
+        guard let chapter = source?.chapter ?? chapter else { return [:] }
         return Dictionary(
             uniqueKeysWithValues: chapter.coalescedVerses().map { ($0.number, $0.text) }
         )
@@ -1264,6 +1385,7 @@ public final class BibleScreenViewModel {
             return
         }
         let sessionPosition = position
+        let sessionBookLocation = bookLocation
         let shouldAppendSessionPosition = provisionalNavigationOccurred
         let explicitTranslation = latestExplicitTranslation
 
@@ -1272,11 +1394,14 @@ public final class BibleScreenViewModel {
             prepareForChapterTransition()
             applyRestoredRecord(saved)
             if shouldAppendSessionPosition {
+                bookLocation = sessionBookLocation
                 navigationHistory.visit(sessionPosition)
                 position = sessionPosition
+                if let sessionBookLocation { translation = BibleTranslation.named(sessionBookLocation.current.translationId) }
                 applyCurrentChapter()
             }
             if let explicitTranslation {
+                if translation != explicitTranslation { bookLocation = nil }
                 translation = explicitTranslation
                 applyCurrentChapter()
             }
@@ -1291,11 +1416,13 @@ public final class BibleScreenViewModel {
 
         isRestoringNavigation = false
         drainQueuedNavigationIntents()
+        if !didReadingPositionLoadFail { navigationRestorationGeneration += 1 }
         persist()
         await persistTask?.value
     }
 
     private func applyRestoredRecord(_ saved: BibleReadingPositionRecord?) {
+        bookLocation = nil
         guard let saved else {
             position = initialPosition
             translation = .defaultTranslation
@@ -1319,6 +1446,11 @@ public final class BibleScreenViewModel {
         } else {
             position = initialPosition
             navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+        }
+        if let location = BibleBookLocation.decode(saved.bookLocationJSON),
+           location.current.position == storedPosition, storedPosition == position,
+           location.current.translationId == saved.translationId, validBookLocation(location) {
+            bookLocation = location
         }
         applyCurrentChapter()
     }
@@ -1356,6 +1488,7 @@ public final class BibleScreenViewModel {
 
     private func visitChapter(_ destination: BiblePosition) {
         guard destination != position else { return }
+        markExplicitNavigation()
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
         prepareForChapterTransition()
         navigationHistory.visit(destination)
@@ -1365,6 +1498,7 @@ public final class BibleScreenViewModel {
     }
 
     private func traverseHistory(to destination: BiblePosition) {
+        markExplicitNavigation()
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
         prepareForChapterTransition()
         position = destination
@@ -1398,7 +1532,8 @@ public final class BibleScreenViewModel {
             chapterNumber: position.chapterNumber,
             translationId: translation.rawValue,
             updatedAt: clock.now(),
-            navigationHistoryJSON: historyJSON
+            navigationHistoryJSON: historyJSON,
+            bookLocationJSON: bookLocation?.encoded()
         )
         // Chain each write on the prior so rapid steps persist in order and
         // awaiting the latest task drains every pending write.

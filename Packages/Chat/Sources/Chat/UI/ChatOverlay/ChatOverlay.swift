@@ -5,6 +5,7 @@ import SwiftUI
 public struct ChatOverlay: View {
     @Binding public var settledState: ChatPresentationState
     @Bindable public var viewModel: ChatScreenViewModel
+    public var isCompanion: Bool = false
     public let onManageModels: () -> Void
     public let onAddModelRequested: @MainActor @Sendable () -> Void
 
@@ -17,9 +18,11 @@ public struct ChatOverlay: View {
         state: Binding<ChatPresentationState>,
         viewModel: ChatScreenViewModel,
         composerIsFocused: FocusState<Bool>.Binding? = nil,
+        isCompanion: Bool = false,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {}
     ) {
+        self.isCompanion = isCompanion
         self._settledState = state
         self.viewModel = viewModel
         self.externalComposerIsFocused = composerIsFocused
@@ -118,13 +121,14 @@ public struct ChatOverlay: View {
         // The inner frame clips excess transcript height from the top.
         ChatScreen(
             viewModel: viewModel,
-            progress: metrics.progress,
+            progress: isCompanion ? 1 : metrics.progress,
+            isCompanion: isCompanion,
             topSafeAreaInset: geo.safeAreaInsets.top,
             composerIsFocused: externalComposerIsFocused,
             onManageModels: onManageModels,
-            onSurfaceTapped: { surfaceTapped() },
-            onMinimize: { minimize() },
-            onDragChanged: { translation in
+            onSurfaceTapped: isCompanion ? nil : { surfaceTapped() },
+            onMinimize: isCompanion ? nil : { minimize() },
+            onDragChanged: isCompanion ? nil : { translation in
                 updateDrag(
                     translation: translation,
                     liveSettledH: metrics.settledHeight,
@@ -134,7 +138,7 @@ public struct ChatOverlay: View {
                     maxH: metrics.maxHeight
                 )
             },
-            onDragEnded: { translation, predicted in
+            onDragEnded: isCompanion ? nil : { translation, predicted in
                 endDrag(
                     translation: translation,
                     predicted: predicted,
@@ -147,9 +151,10 @@ public struct ChatOverlay: View {
         )
         // Clear latches for shell transitions and keyboard changes as well as drag releases.
         .onChange(of: settledState) { resetDragState() }
+        .onChange(of: isCompanion) { resetDragState() }
         .onChange(of: keyboardAwareHeight < geo.size.height - 1) { resetDragState() }
         .frame(width: min(geo.size.width, SuperContentLayout.maximumColumnWidth))
-        .frame(height: metrics.renderedHeight, alignment: .bottom)
+        .frame(height: isCompanion ? keyboardAwareHeight : metrics.renderedHeight, alignment: .bottom)
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
         .background {
             if geo.size.width > SuperContentLayout.maximumColumnWidth {
@@ -164,7 +169,7 @@ public struct ChatOverlay: View {
         // Animate inset changes because keyboard-free geometry bypasses layout avoidance.
         // Keying on the inset lets rotation and resize remain immediate.
         .animation(reduceMotion ? nil : SuperMotion.keyboardGlide, value: geo.size.height - keyboardAwareHeight)
-        .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
+        .preference(key: ChatProgressPreferenceKey.self, value: isCompanion ? 0 : metrics.progress)
         .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
     }
 

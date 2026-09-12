@@ -19,9 +19,14 @@ struct BibleParagraphBlock: View {
     let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
     /// Nil renders a decorative note glyph without a tap action.
     let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
+    var onVisibleVerses: ((Set<Int>) -> Void)?
+    var anchorsVerses = true
+    @State private var visibleWords: [String: Int] = [:]
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
+    @Environment(\.bibleReadingLayout) private var readingLayout
+    @ScaledMetric(relativeTo: .body) private var scaledBodySize: CGFloat = SuperTypography.readingBodySize
+    private var verseBodySize: CGFloat { scaledBodySize * readingLayout.scriptureScale }
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
     @ScaledMetric(relativeTo: .title2) private var headingSize: CGFloat = 22
 
@@ -51,8 +56,8 @@ struct BibleParagraphBlock: View {
                     numberedEarlier: numberedEarlier,
                     endsHere: verseEndsHere
                 )
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    flow(line, isPoetry: true)
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    flow(line, isPoetry: true, lineID: index)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,13 +69,21 @@ struct BibleParagraphBlock: View {
         BibleReadingMetrics.lineSpacing(bodySize: verseBodySize, fontScale: typography.fontScale)
     }
 
-    private func flow(_ tokens: [VerseWordToken], isPoetry: Bool) -> some View {
+    private func flow(_ tokens: [VerseWordToken], isPoetry: Bool, lineID: Int = 0) -> some View {
         // Flatten words and trailers into sibling layout cells. Grouping them would break
         // independent wrapping and word tap targets.
         let items = flowItems(tokens)
         return VerseFlowLayout(lineSpacing: readingLineSpacing) {
             ForEach(items.indices, id: \.self) { index in
-                flowCell(items[index], isPoetry: isPoetry)
+                if let onVisibleVerses, case .word(let token) = items[index] {
+                    flowCell(items[index], isPoetry: isPoetry)
+                        .onScrollVisibilityChange(threshold: 0.5) { visible in
+                            visibleWords["\(lineID):\(index)"] = visible ? token.verseNumber : nil
+                            onVisibleVerses(Set(visibleWords.values))
+                        }
+                } else {
+                    flowCell(items[index], isPoetry: isPoetry)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,6 +99,7 @@ struct BibleParagraphBlock: View {
                 highlightColor: highlightedVerses[token.verseNumber],
                 isNarrating: currentNarratingVerse == token.verseNumber,
                 isPoetry: isPoetry,
+                anchorsVerses: anchorsVerses,
                 theme: theme,
                 onTap: onTapVerse
             )
@@ -208,33 +222,28 @@ private struct VerseWord: View {
     let highlightColor: BibleHighlightColor?
     let isNarrating: Bool
     let isPoetry: Bool
+    let anchorsVerses: Bool
     let theme: SuperTheme
     let onTap: (Int) -> Void
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
-    @ScaledMetric(relativeTo: .caption2) private var verseNumberSize: CGFloat = 11
+    @Environment(\.bibleReadingLayout) private var readingLayout
+    @ScaledMetric(relativeTo: .body) private var scaledBodySize: CGFloat = SuperTypography.readingBodySize
+    private var verseBodySize: CGFloat { scaledBodySize * readingLayout.scriptureScale }
+    @ScaledMetric(relativeTo: .caption2) private var scaledNumberSize: CGFloat = 11
+    private var verseNumberSize: CGFloat { scaledNumberSize * readingLayout.scriptureScale }
 
-    private var underlineBaselineDrop: CGFloat {
-        verseBodySize * typography.fontScale * Self.underlineDescentRatio
+    private var decorationStyle: BibleVerseDecorationStyle {
+        .init(bodySize: verseBodySize * typography.fontScale, isSelected: isSelected, isNarrating: isNarrating)
     }
-
-    // Reading-face descent ratio places the rule below the baseline.
-    private static let underlineDescentRatio: CGFloat = 0.22
 
     var body: some View {
         if token.isVerseStart {
             // One VoiceOver element per verse fragment, announced at its first word.
             identifiedWord
-                .accessibilityElement()
-                .accessibilityLabel(BibleVerseAnnouncement.label(
-                    verseNumber: token.verseNumber,
-                    verseText: token.verseText
-                ))
-                .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlightColor))
-                .accessibilityHint(accessibilityHint)
-                .accessibilityAddTraits(accessibilityTraits)
-                .accessibilityAction(.default) { onTap(token.verseNumber) }
+                .modifier(BibleVerseAccessibility(verseNumber: token.verseNumber, verseText: token.verseText,
+                                                   highlight: highlightColor, isSelected: isSelected,
+                                                   onTap: { onTap(token.verseNumber) }))
         } else {
             identifiedWord.accessibilityHidden(true)
         }
@@ -243,7 +252,7 @@ private struct VerseWord: View {
     // Keep concrete view identity so narration updates can diff words without rebuilding the chapter.
     @ViewBuilder
     private var identifiedWord: some View {
-        let baselineDrop = underlineBaselineDrop
+        let baselineDrop = decorationStyle.baselineDrop
         let word = styledText
             // Raised verse markers inflate cell boxes. Baseline-relative alignment prevents
             // fractional font scales from dipping the rule beneath numbered cells.
@@ -260,21 +269,11 @@ private struct VerseWord: View {
                 BibleHighlightWashMotion(reduceMotion: reduceMotion).animation,
                 value: highlightColor
             )
-        if token.isVerseStart {
+        if token.isVerseStart && anchorsVerses {
             word.id(VerseAnchor(verseNumber: token.verseNumber))
         } else {
             word
         }
-    }
-
-    private var accessibilityTraits: AccessibilityTraits {
-        isSelected ? [.isButton, .isSelected] : .isButton
-    }
-
-    private var accessibilityHint: String {
-        isSelected
-            ? "Removes the verse from the selection"
-            : "Selects the verse for highlight, copy, and share"
     }
 
     // Keep the band present with clear fill so apply/clear animates color instead of
@@ -282,16 +281,8 @@ private struct VerseWord: View {
     private var wordHighlightBand: some View {
         Rectangle()
             .fill(highlightColor.map { $0.verseTint(forDarkPage: theme.isDark).color } ?? Color.clear)
-            .frame(height: highlightBandHeight)
+            .frame(height: decorationStyle.highlightBandHeight)
     }
-
-    // Baseline-relative height keeps marker inflation from raising the wash above its neighbors.
-    private var highlightBandHeight: CGFloat {
-        verseBodySize * typography.fontScale * Self.highlightAscentRatio + underlineBaselineDrop
-    }
-
-    // Cap-height coverage as a fraction of rendered body size.
-    private static let highlightAscentRatio: CGFloat = 1.0
 
     // Include trailing space so adjacent word cells' washes and rules meet.
     private var styledText: Text {
@@ -318,28 +309,23 @@ private struct VerseWord: View {
     // solid selection takes precedence over softer dashed narration.
     @ViewBuilder
     private var underlineRule: some View {
-        let weight = underlineWeight
-        if isSelected {
+        let style = decorationStyle
+        let weight = style.underlineWeight
+        if style.underline == .selection {
             Rectangle()
                 .fill(theme.accent)
                 .frame(height: weight)
-        } else if isNarrating {
+        } else if style.underline == .narration {
             HorizontalRule()
                 .stroke(
-                    theme.accent.opacity(0.65),
-                    style: StrokeStyle(lineWidth: weight, dash: [3, 3])
+                    theme.accent.opacity(style.underlineOpacity),
+                    style: style.strokeStyle
                 )
                 .frame(height: weight)
         }
     }
 
-    // Whole-point thickness lands on device pixels at both 2x and 3x, avoiding
-    // uneven rasterization between wrapped rows. Scale with text, floored at one point.
-    private var underlineWeight: CGFloat {
-        max(1, (verseBodySize * typography.fontScale * Self.underlineWeightRatio).rounded())
-    }
 
-    private static let underlineWeightRatio: CGFloat = 0.10
 }
 
 private struct HorizontalRule: Shape {

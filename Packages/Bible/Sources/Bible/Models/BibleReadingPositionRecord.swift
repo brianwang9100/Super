@@ -16,6 +16,8 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
     /// A separately decoded, versioned navigation-history envelope.
     public var navigationHistoryJSON: String?
 
+    public var bookLocationJSON: String?
+
     public static let currentID = "current"
 
     public init(
@@ -24,7 +26,8 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
         chapterNumber: Int,
         translationId: String,
         updatedAt: Date,
-        navigationHistoryJSON: String? = nil
+        navigationHistoryJSON: String? = nil,
+        bookLocationJSON: String? = nil
     ) {
         self.id = id
         self.bookId = bookId
@@ -32,5 +35,6 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
         self.translationId = translationId
         self.updatedAt = updatedAt
         self.navigationHistoryJSON = navigationHistoryJSON
+        self.bookLocationJSON = bookLocationJSON
     }
 }

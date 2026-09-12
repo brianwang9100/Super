@@ -8,6 +8,9 @@ struct BibleStudySheetsModifier: ViewModifier {
     let presentation: BibleStudyPresentationViewModel
     var annotationRepository: (any BibleAnnotationRepository)?
     var narrationContent: (() -> AnyView)?
+    var inlineNarration = false
+    var minimumBottomReserve: CGFloat = 0
+    var onBarHeightChange: (CGFloat) -> Void = { _ in }
     var bibleLinkPolicy: MarkdownBibleCitationPolicy = .enabled
     let onOpenLink: (BibleDeepLink) -> Void
     let onAddToChat: (RecordReference, Bool) -> Void
@@ -20,10 +23,14 @@ struct BibleStudySheetsModifier: ViewModifier {
         return nil
     }
 
+    private var inlineOverlayKind: BibleBottomOverlayKind? {
+        inlineNarration && activeOverlayKind == .narration ? .narration : nil
+    }
+
     private var bottomSheetBinding: Binding<BibleBottomOverlayKind?> {
-        Binding(get: { activeOverlayKind }, set: { value in
+        Binding(get: { inlineOverlayKind == nil ? activeOverlayKind : nil }, set: { value in
             guard value == nil else { return }
-            if narrationContent != nil && viewModel.isNarrationSheetPresented {
+            if !inlineNarration && narrationContent != nil && viewModel.isNarrationSheetPresented {
                 viewModel.dismissNarrationSheet()
             } else {
                 viewModel.dismissActionSheet()
@@ -106,11 +113,44 @@ struct BibleStudySheetsModifier: ViewModifier {
             )
             .onAppear { self.presentation.didPresent(.bookmark, identity: identity) }
         }
-        // One sheet avoids competing selection and narration presentations.
-        .sheet(item: bottomSheetBinding, onDismiss: { presentation.didDismiss(.bottom, identity: identity) }) { kind in
+        // Native actions and inline narration own independent dismissal lifetimes.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if inlineNarration {
+                ZStack(alignment: .bottom) {
+                    Color.clear.frame(height: minimumBottomReserve)
+                    if let kind = inlineOverlayKind {
+                        if minimumBottomReserve > 0 {
+                            ScrollView {
+                                inlineBar(kind, identity: identity)
+                            }
+                            .defaultScrollAnchor(.bottom, for: .alignment)
+                            .scrollBounceBehavior(.basedOnSize)
+                            .frame(height: minimumBottomReserve)
+                        } else {
+                            inlineBar(kind, identity: identity)
+                        }
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onChange(of: inlineOverlayKind) { old, new in
+            if old != nil, new == nil {
+                onBarHeightChange(0)
+                presentation.updateInlineNarrationVisibility(false, identity: identity)
+            }
+        }
+        .sheet(item: bottomSheetBinding, onDismiss: {
+            presentation.didDismiss(.bottom, identity: identity)
+        }) { kind in
             bottomSheetContent(kind)
                 .onAppear { presentation.didPresent(.bottom, identity: identity) }
         }
+    }
+
+    private func inlineBar(_ kind: BibleBottomOverlayKind, identity: UUID) -> some View {
+        BibleStudyBar(onHeightChange: onBarHeightChange) { bottomSheetContent(kind) }
+            .onAppear { presentation.updateInlineNarrationVisibility(true, identity: identity) }
     }
 
     @ViewBuilder
@@ -120,13 +160,17 @@ struct BibleStudySheetsModifier: ViewModifier {
             if let narrationContent { narrationContent() }
         case .selection:
             BibleActionSheet(
-                citation: viewModel.selectionCitation ?? "",
+                citation: (viewModel.selectionCitation ?? "")
+                    + (inlineNarration ? " (\(viewModel.selectionTranslation.rawValue))" : ""),
                 shareText: viewModel.selectionShareText ?? "",
                 onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
                 onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
                 onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
                 onNarrate: narrationContent == nil ? nil : {
-                    withAnimation(motion.animation) { viewModel.startNarration() }
+                    withAnimation(motion.animation) {
+                        if inlineNarration { viewModel.dismissActionSheet() }
+                        viewModel.startNarration()
+                    }
                 },
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
@@ -139,6 +183,6 @@ struct BibleStudySheetsModifier: ViewModifier {
 
     private func addSelectionToChat(startNew: Bool) {
         guard let reference = viewModel.makeVerseReference() else { return }
-        onAddToChat(reference, startNew)
+        presentation.handOffAfterSelectionDismiss { onAddToChat(reference, startNew) }
     }
 }

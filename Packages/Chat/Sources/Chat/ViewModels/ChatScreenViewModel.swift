@@ -196,7 +196,6 @@ public final class ChatScreenViewModel {
     }
 
     public func load() async {
-        interruptedResponse = nil
         await refreshTranscript()
         await attachToLiveTurnIfAny()
     }

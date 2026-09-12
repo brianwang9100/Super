@@ -468,3 +468,19 @@ Each mini-app manages its own settings screen. Reached either from a gear inside
 - **Reduce Motion:** spring state transitions become instant crossfades. The bubble's unread pulse becomes a static dot. Chat-card materialize animations become simple fade-ins.
 - **Switch Control / Voice Control:** every interactive element has accessibility identifiers, including the chat bubble and the long-press record actions.
 - **Contrast:** at least AA for all ink-on-bg pairs across every theme variant; focused-view sheets darken the backdrop behind them for clear separation without relying on blur alone.
+
+### iPad scripture study controls
+
+Verse actions retain their native sheet on both iPhone and iPad. SuperBible's
+capable iPad reader presents narration as a nonmodal bottom safe-area accessory,
+scoped to the scripture pane. Its measured height reserves the reader viewport;
+Book keeps a stable reservation to preserve page breaks. The shell hides its
+minimized Chat pill while these controls occupy that region. Native actions and
+inline narration have separate dismissal lifetimes so transitions retain playback.
+iPhone narration and deeper annotation, note, sharing, and setup forms retain
+native presentations.
+
+The shell provides an optional applet-owned navigation slot beside its hamburger
+layer. Participating applets configure their own content and actions; applets
+without navigation leave it empty. SuperBible uses it only for the iPad workspace,
+keeping the same centered toolbar above Book, Compare, and both Study panes.

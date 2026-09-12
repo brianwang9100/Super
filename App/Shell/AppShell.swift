@@ -16,6 +16,10 @@ struct AppShell: View {
 
     let dependencies: AppShellDependencies
 
+    @State private var workspaceStore = AppletWorkspaceStore()
+    @State private var navigationChromeStore = AppletNavigationChromeStore()
+    @ScaledMetric(relativeTo: .body) private var workspaceTextScale: CGFloat = 1
+    @State private var bottomControlOccupancyStore = BottomControlOccupancyStore()
     @State private var registry: AppletRegistry
     /// Settled anchor; live drag progress is tracked separately below.
     @State private var chatState: ChatPresentationState
@@ -72,18 +76,23 @@ struct AppShell: View {
 
     private var appInfo: SuperAppInfo { .fromBundle() }
 
-    private var composerHidden: Bool {
-        !shellChromeVisible && chatState == .minimized
-    }
-
     /// Clears the pill height plus the bottom safe area.
     private static let composerHideDistance: CGFloat =
         ChatPresentationState.minimizedBaseHeight + 140
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var shellLayers: some View {
-        ZStack {
+    private func shellLayers(width: CGFloat) -> some View {
+        let companion = workspaceStore.requestedPresentation == .companion
+            && AppletWorkspaceStore.supportsCompanion(width: width, textScale: workspaceTextScale * typography.fontScale)
+        let chatPaneWidth = companion
+            ? max(380 * max(1, workspaceTextScale * typography.fontScale), (width - 72) / 2)
+            : width
+        let paneWidth = companion ? width - 72 - chatPaneWidth : width
+        let composerHidden = !companion
+            && (!shellChromeVisible || bottomControlOccupancyStore.isOccupied) && chatState == .minimized
+        return ZStack(alignment: .leading) {
+            theme.background.ignoresSafeArea()
             BackdropLayer(
                 activeApplet: registry.activeApplet,
                 activeAppletID: registry.activeID,
@@ -91,6 +100,8 @@ struct AppShell: View {
                 appearance: appearance,
                 typography: typography,
                 chatState: chatState,
+                isCompanion: companion,
+                paneWidth: paneWidth,
                 chatProgress: chatProgress,
                 chatSemiProgress: chatSemiProgress,
                 onBackdropTap: {
@@ -103,12 +114,24 @@ struct AppShell: View {
             )
             // Skip rebuilding the applet tree on composer focus changes; see BackdropLayer.==.
             .equatable()
+            .frame(width: paneWidth)
+            .offset(x: companion ? 24 : 0)
             // Stable store identity preserves the backdrop equality check.
             .composerAccessoryStore(dependencies.composerAccessoryStore)
+            .environment(\.bottomControlOccupancyStore, bottomControlOccupancyStore)
+            .environment(\.appletWorkspaceStore, workspaceStore)
+            .environment(\.appletNavigationChromeStore, navigationChromeStore)
+            .onChange(of: bottomControlOccupancyStore.isOccupied) { _, occupied in
+                if occupied, !companion, chatState == .semiExpanded {
+                    dismissKeyboard()
+                    chatState = .minimized
+                }
+            }
             ChatLayer(
                 viewModel: viewModel,
                 bootstrapError: bootstrapError,
                 chatState: $chatState,
+                isCompanion: companion,
                 composerIsFocused: $composerIsFocused,
                 theme: theme,
                 appearance: appearance,
@@ -122,6 +145,9 @@ struct AppShell: View {
                 \.appletSuggestedChatActions,
                 SuggestedChatAction.merged(registry.applets.map(\.suggestedChatActions))
             )
+            .padding(.top, companion ? navigationChromeStore.measuredHeight + 8 : 0)
+            .frame(width: chatPaneWidth)
+            .offset(x: companion ? paneWidth + 48 : 0)
             .offset(y: composerHidden ? Self.composerHideDistance : 0)
             .animation(
                 SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
@@ -130,7 +156,7 @@ struct AppShell: View {
             // Off-screen offsets do not remove controls from VoiceOver.
             .accessibilityHidden(composerHidden)
             // A sibling of ChatLayer so accessories stay visible when the pill slides off-screen.
-            if let composerAccessoryStore = dependencies.composerAccessoryStore {
+            if let composerAccessoryStore = dependencies.composerAccessoryStore, !bottomControlOccupancyStore.isOccupied, !companion {
                 ComposerAccessoryLayer(
                     store: composerAccessoryStore,
                     chatProgress: chatProgress,
@@ -140,6 +166,12 @@ struct AppShell: View {
                     reduceMotion: reduceMotion
                 )
             }
+            AppletNavigationChromeLayer(
+                store: navigationChromeStore,
+                isVisible: companion || chatProgress < 0.95,
+                theme: theme,
+                typography: typography
+            )
             HamburgerLayer(theme: theme, chromeVisible: shellChromeVisible, onTap: openSidebar)
             SidebarLayer(
                 sidebarOpen: $sidebarOpen,
@@ -168,7 +200,16 @@ struct AppShell: View {
     var body: some View {
         // Separate bodies limit work when composer focus invalidates the shell.
         GeometryReader { geometry in
-            shellLayers
+            shellLayers(width: geometry.size.width)
+                .onChange(of: geometry.size.width, initial: true) { _, width in
+                    workspaceStore.updateAvailableWidth(width, textScale: workspaceTextScale * typography.fontScale)
+                }
+                .onChange(of: workspaceStore.requestedPresentation) { _, _ in
+                    workspaceStore.updateAvailableWidth(geometry.size.width, textScale: workspaceTextScale * typography.fontScale)
+                }
+                .onChange(of: workspaceTextScale * typography.fontScale) { _, scale in
+                    workspaceStore.updateAvailableWidth(geometry.size.width, textScale: scale)
+                }
                 // Window controls can overlap the ordinary safe area in resizable iPad windows.
                 .safeAreaPadding(.top, max(
                     geometry.containerCornerInsets.topLeading.height,
@@ -340,6 +381,10 @@ struct AppShell: View {
             return
         }
         dismissKeyboard()
+        if registry.activeID != id {
+            workspaceStore.requestedPresentation = .singleSurface
+            bottomControlOccupancyStore.isOccupied = false
+        }
         registry.activeID = id
         UserDefaults.standard.set(id, forKey: Self.activeAppletStorageKey)
         withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
@@ -707,6 +752,8 @@ private struct BackdropLayer: View, @MainActor Equatable {
     let appearance: ChatAppearance
     let typography: SuperTypography
     let chatState: ChatPresentationState
+    let isCompanion: Bool
+    let paneWidth: CGFloat
     let chatProgress: Double
     let chatSemiProgress: Double
     let onBackdropTap: () -> Void
@@ -721,6 +768,8 @@ private struct BackdropLayer: View, @MainActor Equatable {
             && lhs.theme.id == rhs.theme.id
             && lhs.appearance == rhs.appearance
             && lhs.typography == rhs.typography
+            && lhs.isCompanion == rhs.isCompanion
+            && lhs.paneWidth == rhs.paneWidth
             && lhs.chatState == rhs.chatState
             && lhs.chatProgress == rhs.chatProgress
             && lhs.chatSemiProgress == rhs.chatSemiProgress
@@ -730,6 +779,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
     /// Piecewise dimming tracks the live geometry-dependent semi anchor. Return to full opacity
     /// behind expanded Chat to avoid an extra transition near the end of an upward drag.
     private var backdropOpacity: Double {
+        if isCompanion { return 1 }
         let p = chatProgress
         let mid = max(0.001, min(0.999, chatSemiProgress))
         if p <= mid {
@@ -743,7 +793,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
 
     /// Disable applet hit-testing before expanded Chat fully covers it, preventing stray drag delivery.
     private var backdropHitTestingEnabled: Bool {
-        chatProgress < 0.95
+        isCompanion || chatProgress < 0.95
     }
 
     var body: some View {
@@ -759,7 +809,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
         .opacity(backdropOpacity)
         .allowsHitTesting(backdropHitTestingEnabled)
         .overlay {
-            if chatState == .semiExpanded {
+            if !isCompanion, chatState == .semiExpanded {
                 // Arm only at the settled semi anchor, not during the whole drag.
                 Color.clear
                     .contentShape(Rectangle())
@@ -799,6 +849,7 @@ private struct ChatLayer: View {
     let viewModel: ChatScreenViewModel?
     let bootstrapError: String?
     @Binding var chatState: ChatPresentationState
+    let isCompanion: Bool
     let composerIsFocused: FocusState<Bool>.Binding
     let theme: SuperTheme
     let appearance: ChatAppearance
@@ -824,6 +875,7 @@ private struct ChatLayer: View {
                     state: $chatState,
                     viewModel: viewModel,
                     composerIsFocused: composerIsFocused,
+                    isCompanion: isCompanion,
                     onManageModels: onManageModels,
                     onAddModelRequested: onAddModelRequested
                 )
@@ -851,6 +903,34 @@ private struct ChatLayer: View {
             reduceMotion ? nil : .easeOut(duration: 0.2),
             value: innerDiscriminant
         )
+    }
+}
+
+private struct AppletNavigationChromeLayer: View {
+    let store: AppletNavigationChromeStore
+    let isVisible: Bool
+    let theme: SuperTheme
+    let typography: SuperTypography
+
+    var body: some View {
+        Group {
+            if let ownerID = store.ownerID, let content = store.content {
+                content
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        store.measure(height: height, ownerID: ownerID)
+                    }
+                    .id(ownerID)
+            }
+        }
+        .superTheme(theme)
+        .superFontScale(typography.fontScale)
+        .superTypography(typography)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
     }
 }
 

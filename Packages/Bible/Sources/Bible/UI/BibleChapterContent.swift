@@ -2,6 +2,7 @@ import Core
 import SwiftUI
 
 struct BibleChapterContent: View {
+    @Environment(\.bibleReadingLayout) private var readingLayout
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -10,6 +11,7 @@ struct BibleChapterContent: View {
     let viewModel: BibleScreenViewModel
     var layout: BibleChapterReaderLayout = .fullReader
     var navigation: BibleChapterNavigation?
+    var comparison: BibleChapterComparison?
     var overlayKind: BibleBottomOverlayKind?
     var currentNarratingVerse: Int?
     var onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
@@ -18,6 +20,7 @@ struct BibleChapterContent: View {
     var onBookmarkTap: (() -> Void)?
     var onScroll: (CGFloat, Bool) -> Void = { _, _ in }
     var onFooterVisible: (Bool) -> Void = { _ in }
+    var onVisibleVerses: ((Set<Int>) -> Void)?
 
     private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
 
@@ -28,9 +31,10 @@ struct BibleChapterContent: View {
                 chapter: chapter,
                 bookId: viewModel.position.bookId,
                 bookName: viewModel.bookName,
-                selectedVerses: viewModel.selectedVerses,
+                selectedVerses: visibleSelection,
                 navigation: navigation,
                 layout: layout,
+                comparison: comparison,
                 currentNarratingVerse: currentNarratingVerse,
                 // Do not let narration auto-scroll override an active verse selection.
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
@@ -38,7 +42,9 @@ struct BibleChapterContent: View {
                 // Selection and narration use different scroll drivers; reserve the active sheet's height.
                 bottomOverlayKind: overlayKind,
                 onTapVerse: { number in
-                    withAnimation(motion.animation) { viewModel.toggleVerse(number) }
+                    withAnimation(motion.animation) {
+                        viewModel.toggleVerse(number)
+                    }
                 },
                 onBackgroundTap: {
                     withAnimation(motion.animation) { viewModel.dismissActionSheet() }
@@ -52,7 +58,8 @@ struct BibleChapterContent: View {
                 onNoteGlyphTap: onNoteGlyphTap,
                 onBookmarkTap: onBookmarkTap,
                 onScroll: onScroll,
-                onFooterVisible: onFooterVisible
+                onFooterVisible: onFooterVisible,
+                onVisibleVerses: onVisibleVerses
             )
             // A chapter identity resets scroll position and the highlight query.
             .id(viewModel.position)
@@ -61,6 +68,11 @@ struct BibleChapterContent: View {
         } else {
             unavailable
         }
+    }
+
+    private var visibleSelection: Set<Int> {
+        guard readingLayout.isPadWorkspace, let source = viewModel.primarySource else { return viewModel.selectedVerses }
+        return viewModel.selectedVerses(in: source)
     }
 
     private var unavailable: some View {

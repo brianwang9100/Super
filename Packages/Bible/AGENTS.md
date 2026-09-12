@@ -6,5 +6,6 @@
 - Selection handoffs to Chat use Core's `RecordReference` and event bus. Whole-chapter handoff remains deferred; do not restore the redundant floating chat-composer bubble.
 - Verse words coalesce into one VoiceOver element per verse: the first word labels the verse, remaining words are accessibility-hidden. Interactive controls need accessible names; supply `accessibilityLabel` for custom or gesture-driven elements without a native label. Sheet motion uses `BibleSheetMotion`.
 - Bible records additionally conform to `Equatable, Identifiable`; repository implementations use the `GRDB` prefix.
+- Verse actions use the shared native sheet on every device. SuperBible's iPad narration uses a nonmodal bottom accessory with a distinct presentation identity in `BibleStudyPresentationViewModel`. Book pagination reserves a stable control band so opening controls does not reflow pages.
 
 For annotation concurrency tests, use `ScriptedBibleAnnotateGenerator` or `GatedBibleAnnotateGenerator` (`awaitCall`/`releaseNext`). Drive narration state through `_simulateEvent(_:)` and drain view-model `_waitForPending*` seams before asserting.
