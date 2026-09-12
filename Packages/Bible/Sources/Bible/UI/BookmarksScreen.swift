@@ -37,7 +37,7 @@ public struct BookmarksScreen: View {
                     .padding(.horizontal, 18)
                 listSurface
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: SuperContentLayout.maximumColumnWidth, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 

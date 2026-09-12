@@ -21,6 +21,18 @@ struct BibleScreenSnapshotTests {
                theme: .vellumLight, name: "populated_light")
     }
 
+    @Test("reader and navigation share a bounded iPad landscape column")
+    func landscape() async {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .vellumLight, size: CGSize(width: 1024, height: 768), name: "landscape")
+    }
+
+    @Test("reader navigation reflows in a short window at maximum app font scale")
+    func narrowWindow() async {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .vellumLight, fontScale: 1.2, size: CGSize(width: 375, height: 486), name: "narrow_window")
+    }
+
     @Test("1 Peter 2 renders in the dark theme")
     func populatedDark() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
@@ -346,6 +358,7 @@ struct BibleScreenSnapshotTests {
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
         fontScale: CGFloat = 1,
+        size: CGSize = CGSize(width: 402, height: 760),
         name: String,
         function: String = #function,
         context: String = ""
@@ -354,11 +367,11 @@ struct BibleScreenSnapshotTests {
             .superTheme(.make(theme))
             .superTypography(.make(.serif, fontScale: fontScale))
             .dynamicTypeSize(dynamicType)
-            .frame(width: 402, height: 760)
+            .frame(width: size.width, height: size.height)
 
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 760)),
+            as: .image(layout: .fixed(width: size.width, height: size.height)),
             named: name,
             testName: function
         )

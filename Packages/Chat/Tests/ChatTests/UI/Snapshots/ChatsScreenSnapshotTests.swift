@@ -85,12 +85,18 @@ struct ChatsScreenSnapshotTests {
         )
     }
 
+    @Test("search and conversation rows share a bounded wide column")
+    func landscape() async throws {
+        try await verify(theme: .vellumLight, size: CGSize(width: 1024, height: 768), name: "landscape")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         fontScale: CGFloat = 1,
         dynamicType: DynamicTypeSize = .large,
         initialSearchText: String = "",
         seedConversations: Bool = true,
+        size: CGSize = Self.frame,
         name: String,
         function: String = #function
     ) async throws {
@@ -104,7 +110,7 @@ struct ChatsScreenSnapshotTests {
 
         let view = ChatsScreen(initialSearchText: initialSearchText, now: Self.now)
             .databaseContext(.readOnly { database.queue })
-            .frame(width: Self.frame.width, height: Self.frame.height)
+            .frame(width: size.width, height: size.height)
             .background(SuperTheme.make(theme).background)
             .superTheme(.make(theme))
             .superFontScale(fontScale)
@@ -113,7 +119,7 @@ struct ChatsScreenSnapshotTests {
 
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
+            as: .image(layout: .fixed(width: size.width, height: size.height)),
             named: name,
             testName: function
         )

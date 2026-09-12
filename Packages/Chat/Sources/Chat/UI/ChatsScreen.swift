@@ -50,9 +50,9 @@ public struct ChatsScreen: View {
                 }
                 listSurface
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            addButton
+            .frame(maxWidth: SuperContentLayout.maximumColumnWidth, maxHeight: .infinity, alignment: .topLeading)
+            .overlay(alignment: .topTrailing) { addButton }
+            .frame(maxWidth: .infinity)
         }
         .task {
             // @Query refreshes on writes, so relative timestamps need their own timer.

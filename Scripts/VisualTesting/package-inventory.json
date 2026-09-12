@@ -151,6 +151,17 @@
   },
   {
     "package": "Bible",
+    "suite": "AnnotationDisclaimerSheetSnapshotTests",
+    "testName": "shortWindow",
+    "captureName": "short_window",
+    "image": "Bible_AnnotationDisclaimerSheetSnapshotTests_shortWindow.short_window.png",
+    "pixels": [
+      1179,
+      900
+    ]
+  },
+  {
+    "package": "Bible",
     "suite": "AnnotationSheetContainerSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedLight.empty_failed_light.png",
     "image": "Bible_AnnotationSheetContainerSnapshotTests_emptyFailedLight.empty_failed_light.png",
@@ -1137,6 +1148,17 @@
   {
     "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
+    "testName": "landscape",
+    "captureName": "landscape",
+    "image": "Bible_BibleScreenSnapshotTests_landscape.landscape.png",
+    "pixels": [
+      3072,
+      2304
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingDark.narrating_dark.png",
     "image": "Bible_BibleScreenSnapshotTests_narratingDark.narrating_dark.png",
     "pixels": [
@@ -1172,6 +1194,17 @@
     "pixels": [
       1206,
       2280
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleScreenSnapshotTests",
+    "testName": "narrowWindow",
+    "captureName": "narrow_window",
+    "image": "Bible_BibleScreenSnapshotTests_narrowWindow.narrow_window.png",
+    "pixels": [
+      1125,
+      1458
     ]
   },
   {
@@ -1418,6 +1451,17 @@
     "pixels": [
       1206,
       2280
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BookmarksScreenSnapshotTests",
+    "testName": "landscape",
+    "captureName": "landscape",
+    "image": "Bible_BookmarksScreenSnapshotTests_landscape.landscape.png",
+    "pixels": [
+      3072,
+      2304
     ]
   },
   {
@@ -2813,6 +2857,39 @@
   {
     "package": "Chat",
     "suite": "ChatOverlaySnapshotTests",
+    "testName": "landscapeExpanded",
+    "captureName": "landscape_expanded",
+    "image": "Chat_ChatOverlaySnapshotTests_landscapeExpanded.landscape_expanded.png",
+    "pixels": [
+      3072,
+      2304
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatOverlaySnapshotTests",
+    "testName": "landscapeMinimized",
+    "captureName": "landscape_minimized",
+    "image": "Chat_ChatOverlaySnapshotTests_landscapeMinimized.landscape_minimized.png",
+    "pixels": [
+      3072,
+      2304
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatOverlaySnapshotTests",
+    "testName": "landscapeSemiExpanded",
+    "captureName": "landscape_semi_expanded",
+    "image": "Chat_ChatOverlaySnapshotTests_landscapeSemiExpanded.landscape_semi_expanded.png",
+    "pixels": [
+      3072,
+      2304
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatOverlaySnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatOverlaySnapshotTests/midDragLight.overlay_mid_drag_light.png",
     "image": "Chat_ChatOverlaySnapshotTests_midDragLight.overlay_mid_drag_light.png",
     "pixels": [
@@ -3031,6 +3108,17 @@
     ],
     "testName": "scrollToBottomLight",
     "captureName": "screen_scroll_to_bottom_light"
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatsScreenSnapshotTests",
+    "testName": "landscape",
+    "captureName": "landscape",
+    "image": "Chat_ChatsScreenSnapshotTests_landscape.landscape.png",
+    "pixels": [
+      3072,
+      2304
+    ]
   },
   {
     "package": "Chat",
