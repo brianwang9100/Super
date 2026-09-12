@@ -11,6 +11,28 @@ import Testing
 struct BibleNavBarSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
+    @Test("reading mode icons stay beside the passage selector in narrow panes")
+    func readingModesGallery() {
+        let view = VStack(spacing: 0) {
+            ForEach([SuperTheme.Identifier.vellumLight, .vellumDark], id: \.self) { theme in
+                VStack(spacing: 0) {
+                    ForEach(BibleReadingMode.allCases) { mode in
+                        bar(bookName: "Song of Solomon", showsChapterChevrons: false, readingMode: mode)
+                    }
+                }
+                .superTheme(.make(theme))
+                .background(SuperTheme.make(theme).background)
+            }
+        }
+        .superTypography(.make(.serif, fontScale: 1.2))
+        .frame(width: 375, height: 384, alignment: .top)
+        let failure = verifyVisualSnapshot(
+            of: view, as: .image(layout: .fixed(width: 375, height: 384)),
+            named: "reading_modes", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
     @Test("the nav bar renders in the light theme")
     func defaultLight() {
         verify(theme: .vellumLight, canStepBackward: true, canStepForward: true, name: "default_light")
@@ -340,6 +362,7 @@ struct BibleNavBarSnapshotTests {
         showsChapterChevrons: Bool = true,
         narrationState: NarrationController.State = .idle,
         narrationCitation: String? = nil,
+        readingMode: BibleReadingMode? = nil,
         history: BibleNavBar.HistoryControls = .init(
             backLabel: "John 3", forwardLabel: "Psalm 23", onBack: {}, onForward: {}
         )
@@ -352,7 +375,8 @@ struct BibleNavBarSnapshotTests {
             narrationState: narrationState, narrationCitation: narrationCitation,
             onPrevious: {}, onNext: {}, onPill: {},
             onSelectionPill: {}, onClearSelection: {}, onMenuAction: { _ in },
-            onNarration: {}, historyControls: history
+            onNarration: {}, historyControls: history,
+            readingMode: readingMode, onCycleReadingMode: {}
         )
     }
 

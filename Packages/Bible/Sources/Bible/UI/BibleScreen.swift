@@ -1,13 +1,23 @@
 import Core
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
+    @ScaledMetric(relativeTo: .body) private var workspaceBodySize: CGFloat = 24
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.superEventBus) private var eventBus
     @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
+    @Environment(\.appletWorkspaceStore) private var appletWorkspaceStore
+    @Environment(\.bottomControlOccupancyStore) private var bottomControlOccupancyStore
+    private let readingWorkspaceEnabled: Bool
+    private var usesReadingWorkspace: Bool { readingWorkspaceEnabled }
+    @State private var workspace: BibleReadingWorkspaceViewModel
     @State private var measuredNavigationHeight: CGFloat = 60
 
     @State private var studyPresentation: BibleStudyPresentationViewModel
@@ -43,8 +53,12 @@ public struct BibleScreen: View {
 
     public init(
         viewModel: BibleScreenViewModel,
-        annotationRepository: (any BibleAnnotationRepository)? = nil
+        annotationRepository: (any BibleAnnotationRepository)? = nil,
+        readingWorkspaceEnabled: Bool = false,
+        readingPreferencesRepository: (any BibleReadingPreferencesRepository)? = nil
     ) {
+        self.readingWorkspaceEnabled = readingWorkspaceEnabled
+        _workspace = State(initialValue: BibleReadingWorkspaceViewModel(reader: viewModel, preferencesRepository: readingPreferencesRepository))
         self.viewModel = viewModel
         self.annotationRepository = annotationRepository
         _studyPresentation = State(initialValue: BibleStudyPresentationViewModel(viewModel: viewModel))
@@ -70,6 +84,11 @@ public struct BibleScreen: View {
                 .padding(.bottom, bottomReserve)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .transition(motion.transition)
+            } else if usesReadingWorkspace, let error = workspace.preferenceError {
+                BibleAttachToast(message: error, onDismiss: nil, onRetry: { Task { await workspace.retryPreferences() } })
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, bottomReserve)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
             } else if let toast = viewModel.toast {
                 BibleAttachToast(
                     message: toast,
@@ -82,10 +101,28 @@ public struct BibleScreen: View {
                 .transition(motion.transition)
             }
         }
+        .environment(\.bibleReadingLayout, BibleReadingLayout(isPadWorkspace: usesReadingWorkspace))
         .onAppear { studyPresentation.activate() }
+        .onChange(of: workspace.mode, initial: true) { _, mode in
+            if usesReadingWorkspace { appletWorkspaceStore?.requestedPresentation = mode == .study ? .companion : .singleSurface }
+        }
+        .onChange(of: appletWorkspaceStore?.isCompanionPresented) { _, presented in
+            bottomControlOccupancyStore?.isOccupied = usesReadingWorkspace && activeOverlayKind != nil && presented != true
+        }
+        .onChange(of: activeOverlayKind, initial: true) { _, kind in
+            bottomControlOccupancyStore?.isOccupied = usesReadingWorkspace && kind != nil && appletWorkspaceStore?.isCompanionPresented != true
+            if kind == nil { bottomControlOccupancyStore?.measuredHeight = 0 }
+        }
         .task {
             await viewModel.load()
+            if usesReadingWorkspace { await workspace.load() }
             publishComposerAccessories()
+        }
+        .onChange(of: viewModel.narrationSessionGeneration) { _, _ in
+            if usesReadingWorkspace { workspace.narrationSessionChanged() }
+        }
+        .onChange(of: viewModel.navigationRestorationGeneration) { _, _ in
+            if usesReadingWorkspace { workspace.restoredNavigationChanged() }
         }
         .onChange(of: viewModel.selectionCitation) { _, _ in
             publishComposerAccessories()
@@ -97,14 +134,18 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.isImmersive) { _, immersive in
             publishChromeVisibility(!immersive)
         }
-        // Chapter changes reset scroll; restore chrome so it cannot remain stranded hidden.
-        .onChange(of: viewModel.position) { _, _ in
+        // Explicit navigation resets the reading workspace; natural page turns preserve its source.
+        .onChange(of: viewModel.explicitNavigationGeneration) { _, _ in
             studyPresentation.cancelPendingHandoff()
+            if usesReadingWorkspace { workspace.explicitNavigationChanged() }
             viewModel.resetImmersive()
             publishComposerAccessories()
         }
         // Other applets must not inherit hidden chrome or stale reader accessories.
         .onDisappear {
+            appletWorkspaceStore?.requestedPresentation = .singleSurface
+            bottomControlOccupancyStore?.isOccupied = false
+            bottomControlOccupancyStore?.measuredHeight = 0
             studyPresentation.invalidate()
             viewModel.narration.stop()
             viewModel.dismissNarrationSheet()
@@ -125,6 +166,9 @@ public struct BibleScreen: View {
             presentation: studyPresentation,
             annotationRepository: annotationRepository,
             narrationContent: { AnyView(narrationSheet) },
+            inlineBottomControls: usesReadingWorkspace,
+            minimumBottomReserve: usesReadingWorkspace && workspace.mode == .book ? 180 : 0,
+            onBarHeightChange: { bottomControlOccupancyStore?.measuredHeight = $0 },
             onOpenLink: { viewModel.navigateToDeepLink($0) },
             onAddToChat: { publishReferenceToChat($0, startNew: $1) }
         ))
@@ -140,8 +184,11 @@ public struct BibleScreen: View {
             citation: viewModel.narrationCitation
                 ?? "\(viewModel.bookName) \(viewModel.position.chapterNumber) (\(viewModel.translation.rawValue))",
             onStop: { viewModel.narration.stop() },
-            onRestart: { viewModel.startNarration() },
-            onClose: { viewModel.dismissNarrationSheet() }
+            onRestart: { viewModel.restartNarration() },
+            onClose: { viewModel.dismissNarrationSheet() },
+            inline: usesReadingWorkspace,
+            onResumeFollowing: usesReadingWorkspace && workspace.mode == .book && !workspace.isFollowingNarration
+                ? { workspace.resumeFollowing() } : nil
         )
     }
 
@@ -213,7 +260,7 @@ public struct BibleScreen: View {
         switch action {
         case .annotate:
             if viewModel.selectedVerses.isEmpty {
-                viewModel.triggerAnnotationGeneration(for: viewModel.currentChapterAnnotationSpec)
+                viewModel.triggerAnnotationGeneration(for: viewModel.currentChapterAnnotationSpec, sourceTranslation: viewModel.translation)
             } else {
                 studyPresentation.annotateSelection()
             }
@@ -238,7 +285,7 @@ public struct BibleScreen: View {
             chapterNumber: viewModel.position.chapterNumber,
             translation: viewModel.translation,
             selectionCitation: viewModel.selectionCitation,
-            showsSelectionPill: composerAccessoryStore == nil,
+            showsSelectionPill: composerAccessoryStore == nil || appletWorkspaceStore?.isCompanionPresented == true,
             showsChapterChevrons: composerAccessoryStore == nil,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
@@ -260,7 +307,9 @@ public struct BibleScreen: View {
                 forwardLabel: historyLabel(for: viewModel.forwardDestination),
                 onBack: { viewModel.goBack() }, onForward: { viewModel.goForward() }
             ),
-            isRestoringNavigation: viewModel.isRestoringNavigation
+            isRestoringNavigation: viewModel.isRestoringNavigation || (usesReadingWorkspace && workspace.isRestoring),
+            readingMode: usesReadingWorkspace ? workspace.mode : nil,
+            onCycleReadingMode: usesReadingWorkspace ? { workspace.selectMode(workspace.mode.next) } : nil
         )
         .disabled(viewModel.isRestoringNavigation)
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -296,10 +345,12 @@ public struct BibleScreen: View {
             onSelectTranslation: viewModel.selectTranslation,
             onClose: { viewModel.dismissSelectionSheet() },
             onPresentBookAnnotations: { bookId in
-                studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId)) }
+                let translation = viewModel.translation
+                studyPresentation.handOffAfterBookDismiss { viewModel.presentAnnotationSheet(for: .book(bookId: bookId), sourceTranslation: translation) }
             },
             onRequestBookAnnotations: { bookId in
-                studyPresentation.handOffAfterBookDismiss { viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId)) }
+                let translation = viewModel.translation
+                studyPresentation.handOffAfterBookDismiss { viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId), sourceTranslation: translation) }
             },
             onPresentBookNotes: { bookId in
                 studyPresentation.handOffAfterBookDismiss { viewModel.presentNoteList(for: .book(bookId: bookId)) }
@@ -309,10 +360,29 @@ public struct BibleScreen: View {
         .disabled(viewModel.isRestoringNavigation)
     }
 
-    private var chapterContent: some View {
+    @ViewBuilder private var chapterContent: some View {
+        if usesReadingWorkspace && workspace.mode == .book {
+            BibleBookWorkspace(workspace: workspace, topInset: navigationTopReserve,
+                onAnnotation: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: $1) },
+                onNote: { viewModel.presentNoteList(for: $0) },
+                onBookmark: { studyPresentation.presentBookmark(at: $0) })
+        } else if usesReadingWorkspace && workspace.mode == .compare {
+            GeometryReader { geometry in
+                BibleTranslationComparison(workspace: workspace,
+                    stacked: geometry.size.width < 72 + 720 * max(1, workspaceBodySize * typography.fontScale / 24), topInset: navigationTopReserve,
+                    onAnnotation: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: $1) },
+                    onNote: { viewModel.presentNoteList(for: $0) })
+                    .id(viewModel.position)
+            }
+        } else {
+            scrollingChapterContent
+        }
+    }
+
+    private var scrollingChapterContent: some View {
         BibleChapterContent(
             viewModel: viewModel,
-            layout: .init(topInset: navigationTopReserve, bottomInset: BibleChapterReaderLayout.fullReader.bottomInset),
+            layout: .init(topInset: navigationTopReserve, bottomInset: usesReadingWorkspace && activeOverlayKind != nil ? 16 : BibleChapterReaderLayout.fullReader.bottomInset, usesSafeAreaStudyBar: usesReadingWorkspace),
             navigation: BibleChapterNavigation(
                 previousLabel: viewModel.previousChapterLabel,
                 nextLabel: viewModel.nextChapterLabel,
@@ -320,15 +390,18 @@ public struct BibleScreen: View {
                 onNext: { viewModel.stepChapter(.next) }
             ),
             overlayKind: activeOverlayKind,
-            currentNarratingVerse: viewModel.narration.currentVerseNumber,
-            onAnnotationBubbleTap: { viewModel.presentAnnotationSheet(for: $0) },
-            onRequestChapterAnnotation: { viewModel.triggerAnnotationGeneration(for: $0) },
+            currentNarratingVerse: usesReadingWorkspace
+                ? viewModel.primarySource.flatMap { viewModel.narrationVerseNumber(in: $0) }
+                : viewModel.narration.currentVerseNumber,
+            onAnnotationBubbleTap: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: viewModel.translation) },
+            onRequestChapterAnnotation: { viewModel.triggerAnnotationGeneration(for: $0, sourceTranslation: viewModel.translation) },
             onNoteGlyphTap: { spec in
                 withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
             },
             onBookmarkTap: { studyPresentation.presentBookmark() },
             onScroll: { viewModel.updateScroll(offsetY: $0, userDriven: $1) },
-            onFooterVisible: { viewModel.updateFooterVisibility($0) }
+            onFooterVisible: { viewModel.updateFooterVisibility($0) },
+            onVisibleVerses: usesReadingWorkspace ? { workspace.rememberVisibleVerses($0) } : nil
         )
         .disabled(viewModel.isRestoringNavigation)
     }

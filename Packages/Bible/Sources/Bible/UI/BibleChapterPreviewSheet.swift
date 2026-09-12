@@ -31,8 +31,8 @@ struct BibleChapterPreviewSheet: View {
                 viewModel: viewModel.reader,
                 layout: viewModel.reader.selectedVerses.isEmpty ? .preview : .previewWithSelection,
                 overlayKind: viewModel.reader.isActionSheetPresented ? .selection : nil,
-                onAnnotationBubbleTap: { viewModel.reader.presentAnnotationSheet(for: $0) },
-                onRequestChapterAnnotation: { viewModel.reader.triggerAnnotationGeneration(for: $0) },
+                onAnnotationBubbleTap: { viewModel.reader.presentAnnotationSheet(for: $0, sourceTranslation: viewModel.reader.translation) },
+                onRequestChapterAnnotation: { viewModel.reader.triggerAnnotationGeneration(for: $0, sourceTranslation: viewModel.reader.translation) },
                 onNoteGlyphTap: { viewModel.reader.presentNoteList(for: $0) },
                 onBookmarkTap: { viewModel.study.presentBookmark() }
             )

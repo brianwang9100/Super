@@ -19,9 +19,13 @@ struct BibleParagraphBlock: View {
     let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
     /// Nil renders a decorative note glyph without a tap action.
     let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
+    var onVisibleVerses: ((Set<Int>) -> Void)?
+    @State private var visibleWords: [String: Int] = [:]
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
+    @Environment(\.bibleReadingLayout) private var readingLayout
+    @ScaledMetric(relativeTo: .body) private var scaledBodySize: CGFloat = SuperTypography.readingBodySize
+    private var verseBodySize: CGFloat { scaledBodySize * readingLayout.scriptureScale }
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
     @ScaledMetric(relativeTo: .title2) private var headingSize: CGFloat = 22
 
@@ -51,8 +55,8 @@ struct BibleParagraphBlock: View {
                     numberedEarlier: numberedEarlier,
                     endsHere: verseEndsHere
                 )
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    flow(line, isPoetry: true)
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    flow(line, isPoetry: true, lineID: index)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,13 +68,21 @@ struct BibleParagraphBlock: View {
         BibleReadingMetrics.lineSpacing(bodySize: verseBodySize, fontScale: typography.fontScale)
     }
 
-    private func flow(_ tokens: [VerseWordToken], isPoetry: Bool) -> some View {
+    private func flow(_ tokens: [VerseWordToken], isPoetry: Bool, lineID: Int = 0) -> some View {
         // Flatten words and trailers into sibling layout cells. Grouping them would break
         // independent wrapping and word tap targets.
         let items = flowItems(tokens)
         return VerseFlowLayout(lineSpacing: readingLineSpacing) {
             ForEach(items.indices, id: \.self) { index in
-                flowCell(items[index], isPoetry: isPoetry)
+                if let onVisibleVerses, case .word(let token) = items[index] {
+                    flowCell(items[index], isPoetry: isPoetry)
+                        .onScrollVisibilityChange(threshold: 0.5) { visible in
+                            visibleWords["\(lineID):\(index)"] = visible ? token.verseNumber : nil
+                            onVisibleVerses(Set(visibleWords.values))
+                        }
+                } else {
+                    flowCell(items[index], isPoetry: isPoetry)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,8 +224,11 @@ private struct VerseWord: View {
     let onTap: (Int) -> Void
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
-    @ScaledMetric(relativeTo: .caption2) private var verseNumberSize: CGFloat = 11
+    @Environment(\.bibleReadingLayout) private var readingLayout
+    @ScaledMetric(relativeTo: .body) private var scaledBodySize: CGFloat = SuperTypography.readingBodySize
+    private var verseBodySize: CGFloat { scaledBodySize * readingLayout.scriptureScale }
+    @ScaledMetric(relativeTo: .caption2) private var scaledNumberSize: CGFloat = 11
+    private var verseNumberSize: CGFloat { scaledNumberSize * readingLayout.scriptureScale }
 
     private var underlineBaselineDrop: CGFloat {
         verseBodySize * typography.fontScale * Self.underlineDescentRatio

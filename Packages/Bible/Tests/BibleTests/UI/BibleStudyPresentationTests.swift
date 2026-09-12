@@ -316,4 +316,37 @@ struct BibleStudyPresentationTests {
         presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(model.presentedBookmarkSheet != nil)
     }
+    @Test("inline handoff completes once after visibility changes, retaining captured Chat reference")
+    func inlineChatHandoff() async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.toggleVerse(28)
+        let captured = model.makeVerseReference()
+        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        var deliveries: [RecordReference] = []
+        presentation.handOffAfterSelectionDismiss {
+            if let captured { deliveries.append(captured) }
+        }
+        #expect(deliveries.isEmpty)
+        #expect(model.selectedVerses.isEmpty)
+        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
+        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
+        #expect(deliveries.count == 1)
+        #expect(deliveries.first == captured)
+    }
+
+    @Test("repeated inline note requests and a resize do not duplicate the destination")
+    func inlineResizeDuringHandoff() async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.toggleVerse(28)
+        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        presentation.addNoteForSelection()
+        presentation.addNoteForSelection()
+        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        #expect(model.presentedNoteList == nil)
+        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
+        #expect(model.presentedNoteList?.spec == .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 28))
+    }
+
 }

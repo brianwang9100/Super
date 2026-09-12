@@ -1029,6 +1029,86 @@
   },
   {
     "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/readingModesGallery.reading_modes.png",
+    "image": "Bible_BibleNavBarSnapshotTests_readingModesGallery.reading_modes.png",
+    "pixels": [
+      1125,
+      1152
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/bookContinuationDark.book_continuation_dark.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_bookContinuationDark.book_continuation_dark.png",
+    "pixels": [
+      2772,
+      1890
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/bookContinuationLight.book_continuation_light.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_bookContinuationLight.book_continuation_light.png",
+    "pixels": [
+      2772,
+      1890
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/compactChapterOpening.compact_chapter_opening.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_compactChapterOpening.compact_chapter_opening.png",
+    "pixels": [
+      1206,
+      1980
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/comparisonAlignedRows.comparison_aligned_rows.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_comparisonAlignedRows.comparison_aligned_rows.png",
+    "pixels": [
+      3000,
+      2700
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/comparisonStackedFontScaleMax.comparison_stacked_font_scale_max.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_comparisonStackedFontScaleMax.comparison_stacked_font_scale_max.png",
+    "pixels": [
+      1620,
+      3300
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/inlineControlsNarrowXXL.inline_controls_narrow_xxl.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_inlineControlsNarrowXXL.inline_controls_narrow_xxl.png",
+    "pixels": [
+      1620,
+      1860
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleReadingModesSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleReadingModesSnapshotTests/inlineControlsRegular.inline_controls_regular.png",
+    "image": "Bible_BibleReadingModesSnapshotTests_inlineControlsRegular.inline_controls_regular.png",
+    "pixels": [
+      3000,
+      1440
+    ]
+  },
+  {
+    "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/annotatedDark.annotated_dark.png",
     "image": "Bible_BibleScreenSnapshotTests_annotatedDark.annotated_dark.png",

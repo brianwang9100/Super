@@ -325,4 +325,13 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             ALTER TABLE bibleReadingPosition ADD COLUMN navigationHistoryJSON TEXT;
             """)
     }
+    migrator.registerMigration("v14_readingWorkspace") { db in
+        try db.execute(sql: "ALTER TABLE bibleReadingPosition ADD COLUMN bookLocationJSON TEXT")
+        try db.create(table: "bibleReadingPreferences") { t in
+            t.primaryKey("id", .text)
+            t.column("modeId", .text).notNull()
+            t.column("secondaryTranslationId", .text).notNull()
+        }
+    }
+
 }

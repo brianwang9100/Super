@@ -10,6 +10,7 @@ public struct ChatScreen: View {
 
     /// Zero is the minimized pill; one is fully expanded. Drive continuously from overlay height.
     public let progress: Double
+    public let isCompanion: Bool
 
     public let onSurfaceTapped: (() -> Void)?
 
@@ -32,6 +33,7 @@ public struct ChatScreen: View {
     public init(
         viewModel: ChatScreenViewModel,
         progress: Double = 1,
+        isCompanion: Bool = false,
         topSafeAreaInset: CGFloat = 0,
         composerIsFocused: FocusState<Bool>.Binding? = nil,
         onManageModels: @escaping () -> Void = {},
@@ -44,6 +46,7 @@ public struct ChatScreen: View {
     ) {
         self.viewModel = viewModel
         self.progress = progress
+        self.isCompanion = isCompanion
         self.topSafeAreaInset = topSafeAreaInset
         self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
@@ -168,6 +171,10 @@ public struct ChatScreen: View {
                 onDragChanged: onDragChanged,
                 onDragEnded: onDragEnded
             )
+            .frame(height: isCompanion ? 0 : nil)
+            .clipped()
+            .accessibilityHidden(isCompanion)
+            .allowsHitTesting(!isCompanion)
             ChatHeader(title: viewModel.headerTitle)
                 .scaleEffect(headerProgress, anchor: .top)
                 .opacity(headerProgress)
@@ -182,8 +189,8 @@ public struct ChatScreen: View {
                 // Place the scroll-edge resize handoff before the composer inset so composer gestures remain independent.
                 .overlayContentDrag(
                     // At an endpoint, let the transcript scroll instead of handing off to a no-op resize.
-                    canExpand: progress < 0.999,
-                    canCollapse: progress > 0.001,
+                    canExpand: !isCompanion && progress < 0.999,
+                    canCollapse: !isCompanion && progress > 0.001,
                     resetToken: dragResetToken,
                     onChanged: { translation in onDragChanged?(translation) },
                     onEnded: { translation, predicted in onDragEnded?(translation, predicted) }

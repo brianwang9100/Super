@@ -3,6 +3,9 @@ import Foundation
 import GRDBQuery
 import SwiftUI
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 private let bibleAppletLog = Logger(subsystem: "com.brianwang.Super", category: "bible-applet")
 
@@ -28,6 +31,7 @@ public struct BibleApplet: MiniApplet {
         ]
     }
 
+    private let readingWorkspaceEnabled: Bool
     private let viewModel: BibleScreenViewModel
 
     /// Applet-lifetime annotation request state shared by every Bible reader model.
@@ -56,7 +60,8 @@ public struct BibleApplet: MiniApplet {
 
     /// Opens user storage synchronously under Application Support; bundled text is independent.
     @MainActor
-    public init(hapticsEngine: any HapticsEngine = NoOpHapticsEngine()) {
+    public init(hapticsEngine: any HapticsEngine = NoOpHapticsEngine(), readingWorkspaceEnabled: Bool = false) {
+        self.readingWorkspaceEnabled = readingWorkspaceEnabled
         let database = BibleApplet.openDatabase()
         self.database = database
         self.databaseContext = database.map { db in
@@ -102,6 +107,7 @@ public struct BibleApplet: MiniApplet {
         readingPositionRepository: (any BibleReadingPositionRepository)? = nil,
         textSearcher: (any BibleTextSearching)? = nil
     ) {
+        self.readingWorkspaceEnabled = false
         self.viewModel = viewModel
         self.annotationDispatchViewModel = viewModel.annotationDispatchViewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
@@ -276,11 +282,21 @@ public struct BibleApplet: MiniApplet {
         AnyView(BibleAppletIcon(size: size))
     }
 
+    private var supportsReadingWorkspace: Bool {
+        #if canImport(UIKit)
+        readingWorkspaceEnabled && UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        false
+        #endif
+    }
+
     @MainActor
     public func rootView() -> AnyView {
         let screen = BibleScreen(
             viewModel: viewModel,
-            annotationRepository: annotationRepository
+            annotationRepository: annotationRepository,
+            readingWorkspaceEnabled: supportsReadingWorkspace,
+            readingPreferencesRepository: database.map { GRDBBibleReadingPreferencesRepository(database: $0) }
         )
         guard let databaseContext else { return AnyView(screen) }
         return AnyView(screen.databaseContext(databaseContext))

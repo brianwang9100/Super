@@ -20,7 +20,17 @@ struct BibleActionSheet: View {
     /// Dismisses actions while preserving the reader's selection.
     let onClose: () -> Void
 
+    var inline = false
+    var onShare: (() -> Void)?
+
     var body: some View {
+        Group {
+            if inline { compactContents } else { sheetContents }
+        }
+        .modifier(BibleStudySheetPresentation(inline: inline, estimatedHeight: BibleBottomOverlayKind.selection.estimatedSheetHeight))
+    }
+
+    private var sheetContents: some View {
         VStack(spacing: 0) {
             // Keep the nav bar outside content padding to avoid doubling its own inset.
             SheetNavBar(title: citation, sizing: sizing, onClose: onClose)
@@ -32,12 +42,45 @@ struct BibleActionSheet: View {
             .padding(.horizontal, 10)
         }
         .padding(.bottom, 10)
-        // Share estimated height with the reader's bottom scroll reserve.
-        .sheetPresentation(
-            sizing,
-            readableBackground: true,
-            estimatedHeight: BibleBottomOverlayKind.selection.estimatedSheetHeight
-        )
+    }
+
+    private var compactContents: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(citation).font(typography.font(.headline))
+                Spacer()
+                Button(action: onClose) { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                    .font(typography.font(.body))
+                    .accessibilityLabel("Close verse actions")
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(BibleHighlightColor.allCases) { color in
+                        Button { onHighlight(color) } label: {
+                            Circle().fill(color.swatch.color).frame(width: 28, height: 28).frame(width: 44, height: 44)
+                        }.accessibilityLabel("Highlight \(color.displayName.lowercased())")
+                    }
+                    Button("Copy", action: onCopy).frame(minHeight: 44)
+                    if let onShare {
+                        Button("Share", action: onShare).frame(minHeight: 44)
+                    } else {
+                        ShareLink(item: shareText).frame(minHeight: 44)
+                    }
+                    if let onNarrate { Button("Narrate", action: onNarrate).frame(minHeight: 44) }
+                    Menu("More") {
+                        Button("Annotate", action: onAnnotate)
+                        Button("Add Note", action: onAddNote)
+                        Button("Add to Chat", action: onAddToChat)
+                        Button("New Chat", action: onNewChat)
+                        Button("Clear Highlight", action: onClearHighlight)
+                    }.frame(minWidth: 44, minHeight: 44)
+                }
+                .font(typography.font(.body))
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .foregroundStyle(theme.ink)
     }
 
     private var highlightRow: some View {

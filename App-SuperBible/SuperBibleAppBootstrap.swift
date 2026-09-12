@@ -97,7 +97,7 @@ enum SuperBibleAppBootstrap {
 
         let hapticsEngine = SystemHapticsEngine()
 
-        let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
+        let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine, readingWorkspaceEnabled: true)
         let audioActivity = AudioActivity()
         let audioCache = try NarrationAudioCache.openOrInMemory()
         let narration = bibleApplet.configureNarration(

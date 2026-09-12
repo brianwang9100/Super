@@ -45,6 +45,8 @@ struct BibleNavBar: View {
     /// Browser history stays separate from biblical chapter stepping.
     let historyControls: HistoryControls
     var isRestoringNavigation = false
+    var readingMode: BibleReadingMode?
+    var onCycleReadingMode: (() -> Void)?
 
     var body: some View {
         // Share one backdrop sample across the glass controls.
@@ -138,7 +140,7 @@ struct BibleNavBar: View {
                 .fixedSize(horizontal: true, vertical: false)
                 BibleNavigationPill(morph: GlassMorphID("nav.center", in: glassNamespace)) {
                     VStack(spacing: 0) {
-                        passageControls(controls, wraps: wraps)
+                        passageAndModeControls(controls, wraps: wraps)
                         Rectangle()
                             .fill(theme.border.opacity(0.6))
                             .frame(height: 1)
@@ -161,11 +163,23 @@ struct BibleNavBar: View {
 
     private func navigationRow(_ controls: HistoryControls, wraps: Bool) -> some View {
         HStack(spacing: 0) {
-            passageControls(controls, wraps: wraps)
+            passageAndModeControls(controls, wraps: wraps)
             divider
             narrationButton
             divider
             actionsMenu
+        }
+    }
+
+    @ViewBuilder
+    private func passageAndModeControls(_ controls: HistoryControls, wraps: Bool) -> some View {
+        if let readingMode, let onCycleReadingMode {
+            HStack(spacing: 0) {
+                passageControls(controls, wraps: wraps)
+                BibleReadingModeButton(mode: readingMode, onCycle: onCycleReadingMode)
+            }
+        } else {
+            passageControls(controls, wraps: wraps)
         }
     }
 

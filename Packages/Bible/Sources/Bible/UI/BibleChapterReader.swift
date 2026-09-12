@@ -7,7 +7,9 @@ struct BibleChapterReader: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
+    @Environment(\.bibleReadingLayout) private var readingLayout
+    @ScaledMetric(relativeTo: .body) private var scaledBodySize: CGFloat = SuperTypography.readingBodySize
+    private var verseBodySize: CGFloat { scaledBodySize * readingLayout.scriptureScale }
     @Query<ChapterHighlightsRequest> private var highlights: [BibleHighlightRecord]
     @Query<ChapterAnnotationsRequest> private var annotations: [BibleAnnotationRecord]
     @Query<ChapterNotesRequest> private var notes: [BibleNoteRecord]
@@ -33,6 +35,8 @@ struct BibleChapterReader: View {
     private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
+    private let onVisibleVerses: ((Set<Int>) -> Void)?
+    @State private var visibleVersesByParagraph: [Int: Set<Int>] = [:]
 
     // Programmatic scrolling must not toggle immersive chrome.
     @State private var scrollIsUserDriven = false
@@ -63,7 +67,8 @@ struct BibleChapterReader: View {
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
         onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
-        onFooterVisible: @escaping (Bool) -> Void = { _ in }
+        onFooterVisible: @escaping (Bool) -> Void = { _ in },
+        onVisibleVerses: ((Set<Int>) -> Void)? = nil
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -101,6 +106,7 @@ struct BibleChapterReader: View {
         self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
+        self.onVisibleVerses = onVisibleVerses
     }
 
     private var highlightsByVerse: [Int: BibleHighlightColor] {
@@ -186,7 +192,11 @@ struct BibleChapterReader: View {
                             currentNarratingVerse: currentNarratingVerse,
                             onTapVerse: onTapVerse,
                             onAnnotationBubbleTap: onAnnotationBubbleTap,
-                            onNoteGlyphTap: onNoteGlyphTap
+                            onNoteGlyphTap: onNoteGlyphTap,
+                            onVisibleVerses: onVisibleVerses == nil ? nil : { verses in
+                                visibleVersesByParagraph[index] = verses
+                                reportVisibleVerses()
+                            }
                         )
                     }
 
@@ -205,13 +215,14 @@ struct BibleChapterReader: View {
                 .padding(.horizontal, 26)
                 // Clear the floating nav bar while allowing text to scroll beneath its gradient.
                 .padding(.top, layout.topInset)
-                .frame(maxWidth: SuperContentLayout.maximumColumnWidth, alignment: .leading)
+                .frame(maxWidth: readingLayout.maximumWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
                 .onTapGesture { onBackgroundTap() }
             }
             .onScrollPhaseChange { _, newPhase in
                 scrollIsUserDriven = newPhase == .interacting || newPhase == .decelerating
+                reportVisibleVerses()
             }
             // Read the live phase flag; phase and geometry modifiers have no ordering guarantee.
             // A false boundary sample only updates the reducer baseline and cannot toggle chrome.
@@ -272,6 +283,11 @@ struct BibleChapterReader: View {
         }
     }
 
+    private func reportVisibleVerses() {
+        guard scrollIsUserDriven else { return }
+        onVisibleVerses?(Set(visibleVersesByParagraph.values.flatMap { $0 }))
+    }
+
     private var isChapterGenerating: Bool {
         if case .running = chapterDispatchStatus { return true }
         return false
@@ -280,7 +296,7 @@ struct BibleChapterReader: View {
     @ViewBuilder
     private var chapterTitle: some View {
         let title = Text("\(bookName) \(chapter.number)")
-            .font(typography.display(34, relativeTo: .largeTitle))
+            .font(typography.display(readingLayout.isPadWorkspace ? 40 : 34, relativeTo: .largeTitle))
             .foregroundStyle(theme.ink)
         if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil || onBookmarkTap != nil {
             HStack(alignment: .center, spacing: 14) {
@@ -396,7 +412,7 @@ struct BibleChapterReader: View {
         for kind: BibleBottomOverlayKind?,
         layout: BibleChapterReaderLayout = .fullReader
     ) -> CGFloat {
-        guard let kind else { return layout.bottomInset }
+        guard !layout.usesSafeAreaStudyBar, let kind else { return layout.bottomInset }
         return max(layout.bottomInset, kind.estimatedSheetHeight + overlayBottomReserve)
     }
 

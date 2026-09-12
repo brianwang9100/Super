@@ -247,6 +247,13 @@ struct ChatScreenViewModelTests {
         #expect(vm.interruptedResponse?.text == "Partial reply.")
         #expect(vm.interruptedResponse?.thinking == "Reasoning.")
         #expect(vm.interruptedResponse?.thinkingDurationMs == 0)
+        vm.composerText = "Follow-up draft"
+        let selectedModel = vm.selectedModelId
+        await vm.load()
+        #expect(vm.interruptedResponse?.text == "Partial reply.")
+        #expect(vm.interruptedResponse?.thinking == "Reasoning.")
+        #expect(vm.composerText == "Follow-up draft")
+        #expect(vm.selectedModelId == selectedModel)
         #expect(vm.items.map(\.id) == ["u1"])
         #expect(vm.scrollRequest == .init(messageID: "u1", sequence: 1))
         vm.retry()
