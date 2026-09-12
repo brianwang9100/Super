@@ -846,6 +846,28 @@
   {
     "package": "Bible",
     "suite": "BibleNavBarSnapshotTests",
+    "testName": "anchoredNarrowAccessibility",
+    "captureName": "anchored_narrow_accessibility",
+    "image": "Bible_BibleNavBarSnapshotTests_anchoredNarrowAccessibility.anchored_narrow_accessibility.png",
+    "pixels": [
+      960,
+      1080
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "testName": "largestAccessibility",
+    "captureName": "largest_accessibility",
+    "image": "Bible_BibleNavBarSnapshotTests_largestAccessibility.largest_accessibility.png",
+    "pixels": [
+      960,
+      1440
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/bottomSelectionDark.bottom_selection_dark.png",
     "image": "Bible_BibleNavBarSnapshotTests_bottomSelectionDark.bottom_selection_dark.png",
     "pixels": [

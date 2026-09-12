@@ -47,13 +47,13 @@ struct BibleNavBarSnapshotTests {
 
     // MARK: - Chevron-less form
 
-    @Test("the chevron-less bar centres the pill in the light theme")
+    @Test("the chevron-less bar anchors the pill beside the sidebar button in the light theme")
     func noChevronsLight() {
         verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
                name: "no_chevrons_light", showsChapterChevrons: false)
     }
 
-    @Test("the chevron-less bar centres the pill in the dark theme")
+    @Test("the chevron-less bar anchors the pill beside the sidebar button in the dark theme")
     func noChevronsDark() {
         verify(theme: .vellumDark, canStepBackward: true, canStepForward: true,
                name: "no_chevrons_dark", showsChapterChevrons: false)
@@ -107,7 +107,7 @@ struct BibleNavBarSnapshotTests {
     @Test("history states keep independent disabled controls without changing layout")
     func historyStatesGallery() {
         let states: [(String?, String?)] = [(nil, nil), (nil, "Psalm 23"), ("John 3", "Psalm 23"), ("John 3", nil)]
-        let books = ["John", "2 Chronicles", "1 Corinthians", "2 Thessalonians"]
+        let books = ["John", "2 Chronicles", "1 Corinthians", "Song of Solomon"]
         let view = VStack(spacing: 0) {
             ForEach(states.indices, id: \.self) { index in
                 bar(bookName: books[index], showsChapterChevrons: false, history: .init(
@@ -141,37 +141,101 @@ struct BibleNavBarSnapshotTests {
         if let failure { Issue.record("\(failure)") }
     }
 
-    @Test("ordinary long book names fit in the primary row on a compact iPhone", arguments: ["2 Corinthians", "2 Thessalonians"])
-    func longNamesStayInPrimaryRow(book: String) {
+    @Test("the anchored bar keeps accessibility text clear of fixed controls")
+    func anchoredNarrowAccessibility() {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false)
+            .dynamicTypeSize(.accessibility3)
+            .superTypography(.make(.serif, fontScale: 1.2))
+            .superTheme(.make(.vellumLight))
+        let size = UIHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: 320, height: 1000))
+        #expect(size.width <= 320)
+        #expect(size.height < 360)
+        let failure = verifyVisualSnapshot(
+            of: view.frame(width: 320, height: 360, alignment: .top)
+                .background(SuperTheme.make(.vellumLight).background),
+            as: .image(layout: .fixed(width: 320, height: 360)),
+            named: "anchored_narrow_accessibility", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
+    @Test("the largest accessibility text fits without crowding navigation controls")
+    func largestAccessibility() {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false)
+            .dynamicTypeSize(.accessibility5)
+            .superTypography(.make(.serif, fontScale: 1.2))
+            .superTheme(.make(.vellumLight))
+        let size = UIHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: 320, height: 1000))
+        #expect(size.width <= 320)
+        #expect(size.height < 480)
+        let failure = verifyVisualSnapshot(
+            of: view.frame(width: 320, height: 480, alignment: .top)
+                .background(SuperTheme.make(.vellumLight).background),
+            as: .image(layout: .fixed(width: 320, height: 480)),
+            named: "largest_accessibility", testName: #function
+        )
+        if let failure { Issue.record("\(failure)") }
+    }
+
+    @Test("large accessibility layouts fit compact screens and keep a single row on wide screens",
+          arguments: [DynamicTypeSize.accessibility4, .accessibility5], [320.0, 1024.0])
+    func accessibilityLayoutFits(typeSize: DynamicTypeSize, width: Double) {
+        let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false)
+            .dynamicTypeSize(typeSize)
+            .superTypography(.make(.serif, fontScale: 1.2))
+            .superTheme(.make(.vellumLight))
+        let size = UIHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: width, height: 1000))
+        #expect(size.width <= width)
+        #expect(size.height < (width == 320 ? 480 : 200))
+    }
+
+    @Test("long book names fit in the primary row on compact iPhones",
+          arguments: ["2 Corinthians", "2 Thessalonians", "Song of Solomon"], [320.0, 375.0])
+    func longNamesStayInPrimaryRow(book: String, width: Double) {
         let host = UIHostingController(rootView: bar(bookName: book, showsChapterChevrons: false)
             .superTheme(.make(.vellumLight)))
-        let size = host.sizeThatFits(in: CGSize(width: 375, height: 1000))
+        let size = host.sizeThatFits(in: CGSize(width: width, height: 1000))
         #expect(size.height < 100, "A second toolbar row exceeds the single-row height budget")
     }
 
-    @Test("short passages share the average book width and longer passages can grow")
-    func selectorUsesAverageBookWidth() {
+    @Test("passages share the p90 preferred book width")
+    func selectorUsesP90BookWidth() {
         let short = UIHostingController(rootView: SelectorSizeProbe(book: "John"))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
         let shorter = UIHostingController(rootView: SelectorSizeProbe(book: "Job"))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
+        let medium = UIHostingController(rootView: SelectorSizeProbe(book: "Revelation"))
+            .sizeThatFits(in: CGSize(width: 375, height: 1000))
         let wrapping = UIHostingController(rootView: SelectorSizeProbe(book: "John", wraps: true))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
-        let long = UIHostingController(rootView: SelectorSizeProbe(book: "2 Corinthians"))
+        let long = UIHostingController(rootView: SelectorSizeProbe(book: "2 Thessalonians"))
             .sizeThatFits(in: CGSize(width: 375, height: 1000))
-        let names = BibleBookCatalog.standard.books.map(\.name)
-        let averageNameWidth = names.map(labelWidth).reduce(0, +) / CGFloat(names.count)
-        let minimumLabelWidth = ceil(averageNameWidth + labelWidth(" 12"))
+        let nameWidths = BibleBookCatalog.standard.books.map { labelWidth($0.name) }.sorted()
+        let percentileIndex = Int(ceil(0.9 * Double(nameWidths.count))) - 1
+        let preferredLabelWidth = ceil(nameWidths[percentileIndex] + labelWidth(" 12"))
         #expect(abs(short.width - shorter.width) < 1)
+        #expect(abs(short.width - medium.width) < 1)
         #expect(abs(short.width - wrapping.width) < 1)
-        #expect(abs(short.width - (65 + 16 + minimumLabelWidth)) < 1)
-        #expect(long.width > short.width)
+        #expect(abs(short.width - (65 + 16 + preferredLabelWidth)) < 1)
+        #expect(abs(long.width - short.width) < 1)
         #expect(long.width <= 231, "Leave room for narration, actions, and the sidebar")
         #expect(short.height >= 44)
     }
 
-    @Test("the selector minimum tracks app font scaling once and grows with Dynamic Type")
-    func selectorMinimumTracksFontScaling() {
+    @Test("the passage expands or compresses to the available width",
+          arguments: ["John", "Song of Solomon"], [150.0, 250.0])
+    func selectorFitsAvailableWidth(book: String, width: Double) {
+        let host = UIHostingController(rootView: SelectorSizeProbe(book: book, usesIdealWidth: false))
+        let size = host.sizeThatFits(in: CGSize(width: width, height: 1000))
+        #expect(abs(size.width - width) < 1)
+        #expect(size.height < 60)
+    }
+
+    @Test("the selector preferred width tracks app font scaling once and grows with Dynamic Type")
+    func selectorPreferredWidthTracksFontScaling() {
         let base = UIHostingController(rootView: SelectorSizeProbe(book: "Job"))
             .sizeThatFits(in: CGSize(width: 1000, height: 1000))
         let scaled = UIHostingController(rootView: SelectorSizeProbe(book: "Job")
@@ -187,7 +251,7 @@ struct BibleNavBarSnapshotTests {
 
     private func labelWidth(_ label: String) -> CGFloat {
         UIHostingController(rootView: Text(label)
-            .font(SuperTypography.make(.serif).font(size: 15, weight: .medium))
+            .font(SuperTypography.make(.serif).font(size: 14, weight: .medium))
             .fixedSize())
             .sizeThatFits(in: CGSize(width: 1000, height: 1000)).width
     }
@@ -195,6 +259,7 @@ struct BibleNavBarSnapshotTests {
     private struct SelectorSizeProbe: View {
         let book: String
         var wraps = false
+        var usesIdealWidth = true
 
         var body: some View {
             BibleNavigationSelector(
@@ -202,7 +267,7 @@ struct BibleNavBarSnapshotTests {
                 backLabel: nil, forwardLabel: nil, wraps: wraps, isRestoring: false,
                 onBack: {}, onForward: {}, onSelect: {}
             )
-            .fixedSize()
+            .fixedSize(horizontal: usesIdealWidth, vertical: true)
             .superTheme(.make(.vellumLight))
         }
     }
