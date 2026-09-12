@@ -122,4 +122,29 @@ struct BiblePaginatorTests {
         #expect(removed.verseRanges.contains { $0.range.contains(removed.characterIndex(for: anchor)) })
         #expect(removed.characterIndex(for: anchor) == NSMaxRange(try #require(removed.verseRanges.last).range) - 1)
     }
+
+    @Test("Verse selection covers the printed verse marker as well as the scripture text")
+    func verseMarkerSelectionFrames() throws {
+        let doc = document([.prose([.init(number: 1, text: "In the beginning")])])
+        let page = try #require(BiblePaginator.paginate(doc, size: .init(width: 350, height: 200)).first)
+        let line = try #require(page.lines.first)
+        let marker = doc.rect(for: NSRange(location: 0, length: 1), on: line)
+        let verse = try #require(page.fragments(in: doc).first)
+        #expect(verse.frames.contains { $0.contains(CGPoint(x: marker.midX, y: marker.midY)) })
+        #expect(verse.text == "In the beginning")
+    }
+
+    @Test("Book exposes every visible section heading in source order, including heading-only pages")
+    func accessibleHeadingFragments() throws {
+        let first = "A heading that spans multiple lines and pages with large text"
+        let second = "The following heading"
+        let doc = document([.heading(first), .prose([.init(number: 1, text: "Scripture text.")]), .heading(second)])
+        let pages = try BiblePaginator.paginate(doc, size: .init(width: 150, height: 42))
+        let headings = pages.flatMap { $0.headingFragments(in: doc) }
+        #expect(headings.count > 2)
+        #expect(headings.allSatisfy { $0.frame.width > 0 && $0.frame.height > 0 })
+        let spokenWords = headings.map(\.text).joined(separator: " ").split(whereSeparator: \.isWhitespace)
+        #expect(spokenWords == (first + " " + second).split(whereSeparator: \.isWhitespace))
+        #expect(headings.map(\.id) == headings.map(\.id).sorted())
+    }
 }

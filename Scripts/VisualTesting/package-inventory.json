@@ -1033,7 +1033,7 @@
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleNavBarSnapshotTests/readingModesGallery.reading_modes.png",
     "image": "Bible_BibleNavBarSnapshotTests_readingModesGallery.reading_modes.png",
     "pixels": [
-      1125,
+      3072,
       1152
     ]
   },
@@ -1094,7 +1094,7 @@
     "image": "Bible_BibleReadingModesSnapshotTests_inlineControlsNarrowXXL.inline_controls_narrow_xxl.png",
     "pixels": [
       1620,
-      1860
+      2460
     ]
   },
   {

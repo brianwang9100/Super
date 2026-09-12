@@ -232,7 +232,7 @@ struct BibleReadingWorkspaceTests {
     func missingNeighborRetryAndCache() async throws {
         let loader = TextLoader()
         let missing = BiblePosition(bookId: "GEN", chapterNumber: 4)
-        loader.state.withLock { $0.unavailable.insert(missing) }
+        _ = loader.state.withLock { $0.unavailable.insert(missing) }
         let model = workspace(loader: loader)
         await start(model)
         #expect(model.visiblePages.map(\.position.chapterNumber) == [3])
@@ -243,7 +243,7 @@ struct BibleReadingWorkspaceTests {
         model.updateLayout(style(), pageCount: 1)
         await model._waitForPendingPagination()
         #expect(model.chapters[model.reader.position]?.document.text === document)
-        loader.state.withLock { $0.unavailable.remove(missing) }
+        _ = loader.state.withLock { $0.unavailable.remove(missing) }
         model.retryPages()
         await model._waitForPendingPagination()
         #expect(model.pageError == nil)
@@ -472,5 +472,47 @@ struct BibleReadingWorkspaceTests {
             await model._waitForPendingPagination()
             #expect(model.reader.bookLocation == location)
         }
+    }
+
+    @Test("Active selection suppresses narration paging until the selection clears")
+    func selectionSuppressesNarrationPaging() async throws {
+        let model = workspace(loader: TextLoader(words: 15, verseCount: 20))
+        await start(model)
+        model.reader.startNarration()
+        model.reader.narration._simulateEvent(.started(verseNumber: 1))
+        model.followNarration()
+        let selectedPages = model.visiblePages
+        model.reader.toggleVerse(1)
+        model.reader.narration._simulateEvent(.started(verseNumber: 20))
+        model.followNarration()
+        await model._waitForPendingPagination()
+        #expect(model.visiblePages == selectedPages)
+        model.reader.clearSelection()
+        model.followNarration()
+        await model._waitForPendingPagination()
+        let source = try #require(model.reader.narrationSource)
+        let chapter = try #require(model.chapters[source.position])
+        let target = BibleTextLocator(position: source.position, translation: source.translation, verseNumber: 20)
+        #expect(model.visiblePages.contains { $0.contains(target, in: chapter.document) })
+    }
+
+    @Test("Resume requested during selection stays enabled and follows after deselection")
+    func resumeAfterSelection() async {
+        let model = workspace(loader: TextLoader(words: 200))
+        await start(model)
+        let original = model.visiblePages
+        model.reader.startNarration()
+        model.reader.narration._simulateEvent(.started(verseNumber: 1))
+        await turn(model, .next)
+        let manualPages = model.visiblePages
+        model.reader.toggleVerse(1)
+        model.resumeFollowing()
+        await model._waitForPendingPagination()
+        #expect(model.isFollowingNarration)
+        #expect(model.visiblePages == manualPages)
+        model.reader.clearSelection()
+        model.followNarration()
+        await model._waitForPendingPagination()
+        #expect(model.visiblePages == original)
     }
 }

@@ -50,7 +50,7 @@ struct BibleReadingModesSnapshotTests {
     }
 
     @Test func inlineControlsNarrowXXL() {
-        controls(size: CGSize(width: 540, height: 620), dynamicType: .xxLarge,
+        controls(size: CGSize(width: 540, height: 820), dynamicType: .xxLarge,
                  fontScale: 1.2, name: "inline_controls_narrow_xxl")
     }
 
@@ -92,7 +92,16 @@ struct BibleReadingModesSnapshotTests {
         #expect(rows[0].primary?.headings == ["A song of trust"])
         #expect(rows[0].primary?.text.contains("\n") == true)
         let database = try BibleDatabase.makeInMemory()
-        let view = BibleTranslationComparison(workspace: workspace, stacked: stacked, topInset: 0)
+        let configuration = BibleChapterComparison(
+            primaryTranslation: primary.translation, secondaryTranslation: secondary.translation,
+            chapter: secondary.chapter, selectedVerses: [1], currentNarratingVerse: nil,
+            stacked: stacked, error: nil, onSelectTranslation: { _ in }, onTapVerse: { _ in },
+            onAnnotation: { _ in }, onRetry: {})
+        let view = BibleChapterReader(
+            chapter: primary.chapter, bookId: primary.position.bookId, bookName: "Genesis", selectedVerses: [],
+            layout: .init(topInset: 0, bottomInset: 16), comparison: configuration,
+            onTapVerse: { _ in }, onBackgroundTap: {})
+            .environment(\.bibleReadingLayout, .init(isPadWorkspace: true))
             .databaseContext(.readOnly { database.queue })
         verify(view, size: size, fontScale: fontScale, name: name, function: function)
     }
@@ -102,10 +111,13 @@ struct BibleReadingModesSnapshotTests {
         let controller = NarrationController(service: FakeNarrationService())
         controller.start(utterances: [.init(verseNumber: 9, text: "A chosen people")])
         controller._simulateEvent(.started(verseNumber: 9))
-        let view = VStack(spacing: 28) {
+        let layout = size.width > 700 ? AnyLayout(HStackLayout(alignment: .top, spacing: 28))
+            : AnyLayout(VStackLayout(spacing: 28))
+        let view = layout {
             BibleActionSheet(citation: "Song of Solomon 6:4–6, 9 (KJV)", shareText: "A chosen people",
                              onHighlight: { _ in }, onClearHighlight: {}, onCopy: {}, onNarrate: {},
-                             onAddToChat: {}, onNewChat: {}, onAnnotate: {}, onAddNote: {}, onClose: {}, inline: true)
+                             onAddToChat: {}, onNewChat: {}, onAnnotate: {}, onAddNote: {}, onClose: {})
+                .frame(maxWidth: 402)
             NarrationTransportSheet(controller: controller, citation: "Song of Solomon 6:9 (KJV)",
                                     onStop: {}, onRestart: {}, onClose: {}, inline: true,
                                     onResumeFollowing: {})

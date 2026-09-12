@@ -19,12 +19,9 @@ struct BiblePageVerseTarget: View {
             }
         }
         .frame(width: bounds.width, height: bounds.height, alignment: .topLeading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(BibleVerseAnnouncement.label(verseNumber: fragment.verseNumber, verseText: fragment.text))
-        .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlight))
-        .accessibilityHint(isSelected ? "Deselect verse" : "Select verse and show actions")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, onTap)
+        .modifier(BibleVerseAccessibility(verseNumber: fragment.verseNumber, verseText: fragment.text,
+                                           highlight: highlight, isSelected: isSelected, onTap: onTap))
+        .accessibilitySortPriority(-Double(fragment.sourceRange.location))
         .offset(x: bounds.minX, y: bounds.minY)
     }
 }

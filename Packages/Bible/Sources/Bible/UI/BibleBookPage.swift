@@ -21,16 +21,28 @@ struct BibleBookPage: View {
         ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 for fragment in fragments {
+                    let style = BibleVerseDecorationStyle(bodySize: document.bodyFontSize,
+                        isSelected: selectedVerses.contains(fragment.verseNumber),
+                        isNarrating: narratingVerse == fragment.verseNumber)
                     for frame in fragment.frames {
+                        guard let line = page.lines.first(where: { $0.frame.minY == frame.minY }) else { continue }
+                        let bottom = line.baseline + style.baselineDrop
                         if let highlight = highlights[fragment.verseNumber] {
-                            context.fill(Path(frame), with: .color(highlight.verseTint(forDarkPage: theme.isDark).color))
+                            let band = CGRect(x: frame.minX, y: bottom - style.highlightBandHeight,
+                                              width: frame.width, height: style.highlightBandHeight)
+                            context.fill(Path(band), with: .color(highlight.verseTint(forDarkPage: theme.isDark).color))
                         }
-                        if selectedVerses.contains(fragment.verseNumber) {
-                            context.fill(Path(frame), with: .color(theme.ink.opacity(0.10)))
-                        }
-                        if narratingVerse == fragment.verseNumber {
-                            let underline = CGRect(x: frame.minX, y: frame.maxY - 1, width: frame.width, height: 1)
-                            context.fill(Path(underline), with: .color(theme.ink))
+                        switch style.underline {
+                        case .selection:
+                            let rule = CGRect(x: frame.minX, y: bottom - style.underlineWeight,
+                                              width: frame.width, height: style.underlineWeight)
+                            context.fill(Path(rule), with: .color(theme.accent))
+                        case .narration:
+                            var rule = Path()
+                            rule.move(to: CGPoint(x: frame.minX, y: bottom - style.underlineWeight / 2))
+                            rule.addLine(to: CGPoint(x: frame.maxX, y: bottom - style.underlineWeight / 2))
+                            context.stroke(rule, with: .color(theme.accent.opacity(style.underlineOpacity)), style: style.strokeStyle)
+                        case .none: break
                         }
                     }
                 }
@@ -50,6 +62,16 @@ struct BibleBookPage: View {
                 }
             }
             .accessibilityHidden(true)
+            ForEach(page.headingFragments(in: document)) { heading in
+                Color.clear
+                    .frame(width: heading.frame.width, height: heading.frame.height)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(heading.text)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilitySortPriority(-Double(heading.sourceRange.location))
+                    .allowsHitTesting(false)
+                    .offset(x: heading.frame.minX, y: heading.frame.minY)
+            }
             ForEach(fragments) { fragment in
                 BiblePageVerseTarget(fragment: fragment, isSelected: selectedVerses.contains(fragment.verseNumber),
                                      highlight: highlights[fragment.verseNumber], onTap: { onTapVerse(fragment.verseNumber) })
@@ -59,6 +81,7 @@ struct BibleBookPage: View {
                 if let line = page.lines.first(where: { $0.range.contains(trailer.range.location) }) {
                     let rect = document.rect(for: trailer.range, on: line)
                     trailerButton(trailer)
+                        .accessibilitySortPriority(-Double(trailer.range.location))
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                 }

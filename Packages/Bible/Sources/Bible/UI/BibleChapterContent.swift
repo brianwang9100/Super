@@ -11,6 +11,7 @@ struct BibleChapterContent: View {
     let viewModel: BibleScreenViewModel
     var layout: BibleChapterReaderLayout = .fullReader
     var navigation: BibleChapterNavigation?
+    var comparison: BibleChapterComparison?
     var overlayKind: BibleBottomOverlayKind?
     var currentNarratingVerse: Int?
     var onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
@@ -33,16 +34,16 @@ struct BibleChapterContent: View {
                 selectedVerses: visibleSelection,
                 navigation: navigation,
                 layout: layout,
+                comparison: comparison,
                 currentNarratingVerse: currentNarratingVerse,
                 // Do not let narration auto-scroll override an active verse selection.
-                suppressNarrationScroll: !visibleSelection.isEmpty,
+                suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 pendingScrollVerse: viewModel.pendingScrollVerse,
                 // Selection and narration use different scroll drivers; reserve the active sheet's height.
                 bottomOverlayKind: overlayKind,
                 onTapVerse: { number in
                     withAnimation(motion.animation) {
                         viewModel.toggleVerse(number)
-                        if readingLayout.isPadWorkspace { viewModel.presentActionSheet() }
                     }
                 },
                 onBackgroundTap: {

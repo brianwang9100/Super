@@ -2,11 +2,11 @@
 
 > **For agentic workers:** Use `superpowers:executing-plans` to implement the approved design in the delivery slices below. Complete the repository's plan review, implementation review, validation, and PR workflow for each slice.
 
-**Status:** Implemented on 2026-09-12; final build/PR checks in progress. Validation evidence and remaining manual checks are recorded in [IPAD_READING_MODES_VALIDATION.md](IPAD_READING_MODES_VALIDATION.md). Book mode is clarified: one continuous paginated Bible, shown as a two-page spread where space permits, with no vertical scrolling. Chapters can span many pages, and each chapter starts on a fresh page.
+**Status:** Implemented on 2026-09-12, including the user's [controls and reuse revision](IPAD_READER_CONTROLS_REVISION.md), which supersedes the original delivery slices where they differ. Validation evidence and remaining manual checks are recorded in [IPAD_READING_MODES_VALIDATION.md](IPAD_READING_MODES_VALIDATION.md). Book mode is one continuous paginated Bible, shown as a two-page spread where space permits, with no vertical scrolling. Chapters can span many pages, and each chapter starts on a fresh page. Keep PR #374 draft and auto-merge disabled per the user.
 
-**Goal:** Use the iPad window for larger scripture and three reading modes, with low verse-action and narration controls, while preserving the established iPhone experience.
+**Goal:** Use the iPad window for larger scripture and three reading modes, with the original native verse-action sheet and low narration controls, while preserving the established iPhone experience.
 
-**Architecture:** Bible owns reading modes, text, selection, and study state. The shared shell owns the active Chat conversation and optional companion layout. Core carries only the generic host-layout contract; Bible and Chat never import one another. One primary reading cursor, a stable text locator for paginated reading, and one live Chat session survive layout changes.
+**Architecture:** Bible owns reading modes, text, selection, and study state. The shared shell owns the active Chat conversation, optional companion layout, and optional applet navigation slot beside the hamburger layer. Core carries generic host-layout and navigation-slot contracts; Bible and Chat never import one another. Bible supplies its existing navigation view and callbacks so the shell can center it across the full window. One primary reading cursor, a stable text locator for paginated reading, and one live Chat session survive layout changes. Compare configures the existing chapter reader and verse renderer; Study uses the same reader and Chat.
 
 **Tech stack:** SwiftUI, existing Core/Bible/Chat packages, GRDB/GRDBQuery, bundled Bible text, Swift Testing, and the repository's simulator/snapshot tooling. No new dependency or provider is needed.
 
@@ -61,11 +61,11 @@ Add to Chat attaches the selected source reference to the existing composer with
 - Preserve iPhone typography, orientation policy, Chat overlay behavior, and native action/narration sheets. The new mode selector and iPad-specific typography/panels are enabled through a SuperBible capability supplied at the composition root. SuperOS retains its current behavior unless explicitly opted in.
 - Restore position using chapter/verse anchors rather than raw pixel offsets when widths, fonts, mode, or keyboard change. Book adds an intra-verse source offset so a verse spanning pages does not jump back to its beginning after reflow.
 
-### Low verse actions and narration
+### Native verse actions and low narration
 
-Recommended wide-iPad presentation: **nonmodal reader accessory bars attached to the reader's bottom safe area**. They occupy the scripture workspace in Book/Compare and only the left pane in Study. This intentionally changes these two iPad presentations from native sheets into persistent reader controls; include that decision in design approval and update the relevant presentation guideline during implementation. iPhone and deeper forms continue to use native `.sheet`.
+The user reverted flattened verse actions: retain the original native `.sheet`, action grid, ShareLink, and presentation lifecycle on both devices. Only narration uses a nonmodal reader accessory attached to the iPad reader's bottom safe area, occupying the scripture workspace in Book/Compare and the left pane in Study. iPhone and deeper forms continue to use native `.sheet`.
 
-- Verse actions: a compact citation/close header, an inline highlight palette, and a horizontal action row. Start near 120–160 points tall at default text size. Keep the currently available Copy, Share, Narrate, Annotate, Add Note, Add to Chat, New Chat, and Clear Highlight operations; use one labeled More menu for overflow instead of silently removing actions.
+- Verse actions: reuse the original citation/close header, palette, and action grid with all existing operations and captured source context. Scrolling readers retain their native-sheet selection clearance; Book retains its stable page viewport.
 - Narration: citation, previous/play-pause/next, stop, voice, speed, and close arranged horizontally where they fit. Aim for roughly 100–140 points at default size. Voice selection, setup, and detailed errors can open normal secondary sheets; playback/preparing/error states remain visible and actionable.
 - Heights are targets, not hard caps. Wrap or allow scrolling at accessibility sizes; keep every control reachable with at least a 44-point hit target. Do not shrink text to force a low profile.
 - Keep one shared selection/narration presentation coordinator so they replace one another without overlapping. Preserve dismissal-versus-stop semantics. Freeze narration's source chapter, translation, and verse sequence when playback starts; later selection must not retarget audio. A mode/width change retains that source and playback, even if its page is temporarily hidden; only matching content follows playback. Book changes pages, while Compare/Study use their scrolling behavior. The transport keeps showing the actual narrated citation. Explicit chapter-picker/history/translation navigation or leaving the applet retains the current stop policy. Natural Book page advancement uses a separate cursor-update path that does not invoke the existing navigation routine's blanket narration stop or discard captured study intents; only matching visible source fragments receive emphasis. Moving a page from right to left never creates another narration owner or changes the captured source.
@@ -73,15 +73,15 @@ Recommended wide-iPad presentation: **nonmodal reader accessory bars attached to
 - In Book/Compare, opening a study bar first minimizes semi-expanded Chat, then replaces the minimized Chat pill and composer accessory flanks in the same bottom control region. Dismissing it restores the pill/accessories without automatically reopening Chat. Add to Chat/New Chat dismisses the bar through the handoff coordinator before presenting the destination Chat. The shell must receive explicit bottom-control occupancy: a reader-local safe-area inset cannot reposition its sibling Chat/accessory layers.
 - In Study, bars clear the left pane and never span the Chat composer. With a docked software keyboard, stay above the actual occluded region; a floating keyboard must not reserve its bounding rectangle across the entire window. Reducing height must not hide the last verse or final controls.
 
-Native-sheet alternative: keep `.sheet`, rearrange contents horizontally, and measure detents. This minimizes presentation changes but does not by itself establish bottom-of-reader-pane placement on wide iPad. Apple's [presentation sizing](https://developer.apple.com/documentation/SwiftUI/PresentationSizing) and [sheet source view](https://developer.apple.com/documentation/uikit/uisheetpresentationcontroller/sourceview) APIs should be verified in a native presentation prototype if this alternative is preferred. The pinned UIKit header describes `sourceView` as an attempt to visually center the sheet over an anchor; that is not a bottom-edge placement guarantee.
+The remaining low-bar requirements apply to narration only. Native selection and inline narration have distinct coordinator identities so an outgoing action-sheet callback cannot dismiss incoming narration or advance a queued handoff early.
 
 ## State ownership and implementation boundaries
 
 | Owner | Responsibility |
 | --- | --- |
 | Bible | `BibleReadingMode`, primary reading cursor/history, pagination and page/source locators, comparison translation, per-source selection, verse alignment, narration and study actions, reading preferences. |
-| Core | Target-neutral request/effective-state contract for an applet requesting a companion pane; no Bible enum or database dependency. |
-| Shared shell | Resolve companion availability; place opaque applet content and one Chat host; route reference/open-conversation actions appropriately for the effective layout. |
+| Core | Target-neutral companion request/effective-state contract and owner-keyed optional navigation slot; no Bible enum or database dependency. |
+| Shared shell | Resolve companion availability; place opaque applet content, its optional full-window navigation, and one Chat host; route reference/open-conversation actions appropriately for the effective layout. |
 | SuperBible bootstrap | Opt Bible into the new workspace capability. Shared shell never imports Bible or checks bundle IDs. |
 | Chat | Existing conversation runtime, draft, stream, transcript, composer, and pane-specific chrome/keyboard behavior. |
 
@@ -93,7 +93,7 @@ Use a dedicated Bible-owned preferences record/repository with an explicit migra
 
 Keep the primary model, study coordinator, and Chat model above layout branches. `BibleScreen.onDisappear` currently stops narration and dismisses its sheet; distinguish an actual applet exit from a mode/layout transition so rehosting is not mistaken for leaving the reader. Transient active source context must include book, chapter, translation, and verse IDs, not verse number alone. Keep Chat host identity stable too: `ChatScreen.task` invokes `load()`, and the current load path clears interrupted-response state. Retaining only the model is insufficient if layout switching remounts its loader. If stable hosting cannot cover a transition, make the existing initialization/reattachment path idempotent without clearing unsaved terminal/interrupted content.
 
-`BibleStudyPresentationViewModel` currently coordinates nested actions by waiting for native bottom-sheet presentation/dismissal callbacks. Inline bars need a distinct visibility/completion adapter into that same state machine. Opening Annotate/Add Note/Share or Chat must capture its source before clearing selection, remove the bar once, and advance the handoff without waiting for a nonexistent native dismissal. Resize during a pending handoff must not strand or duplicate the destination.
+`BibleStudyPresentationViewModel` coordinates nested actions through native bottom-sheet callbacks and a distinct inline-narration visibility adapter. Opening Annotate/Add Note or Chat captures its source before clearing selection and advances after the outgoing presentation dismisses. Share retains the native ShareLink. Resize during a pending handoff must not strand or duplicate the destination.
 
 ## Delivery slices
 
@@ -170,13 +170,13 @@ This is a pagination subsystem, not a second scrollable chapter. Complete a focu
 2. Book is one continuous paginated Bible, with two facing pages where space permits and one page in compact iPad windows. Long chapters span pages without vertical scrolling; each chapter starts on the next fresh page. Page turns and repagination preserve source location without skipped/duplicated text or multiple saved-position writers.
 3. Comparison aligns matching verse numbers at every row boundary regardless of wrapping or omissions, including after resizing.
 4. Study keeps scripture usable beside a fully functional current conversation. Mode switching preserves draft/stream/session and source context.
-5. Verse actions and narration stay low in the reader region, clear the visible text/composer, and remain accessible at large type.
+5. Verse actions retain their original native sheet. Narration stays low in the reader region, clears the visible text/composer, and remains accessible at large type. Navigation stays centered across the full iPad window in every mode.
 6. Mode/translation preferences restore predictably, and compact adaptation never destroys the user's requested mode.
 
 ## Decisions for product review
 
 - **Book behavior — confirmed:** continuous page flow, potentially many pages per chapter, no vertical scrolling, and a page break at every chapter. The proposed chapter-break rule uses the next available page (left or right), without forcing a new spread; explicit chapter selection opens on the left.
-- **iPad control presentation:** proposed nonmodal bottom accessories for these two surfaces; this is an intentional evolution of the current sheet convention. Secondary forms and all iPhone sheets retain native presentation.
+- **iPad control presentation — revised by user:** original native verse actions, inline narration, and shell-hosted navigation centered across the full window. Secondary forms and all iPhone sheets retain native presentation.
 - **Initial geometry:** proposed 24-point scripture and even column split, without a draggable divider or word-level translation diff in the first release. Tune through iPad spot checks before recording final baselines.
 
 ## Plan review

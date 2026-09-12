@@ -39,6 +39,7 @@ struct BiblePageDocument {
     let verseRanges: [VerseRange]
     let blocks: [Block]
     let trailers: [Trailer]
+    let bodyFontSize: CGFloat
     let lineSpacing: CGFloat
     private let supplementRanges: [SupplementRange]
 
@@ -46,6 +47,7 @@ struct BiblePageDocument {
          bodyFont: CTFont, headingFont: CTFont, numberFont: CTFont, decorations: Decorations = .init()) {
         self.position = position
         self.translation = translation
+        bodyFontSize = CTFontGetSize(bodyFont)
         lineSpacing = CTFontGetSize(bodyFont) * 4 / 17
         let result = NSMutableAttributedString(string: "")
         var ranges: [VerseRange] = []
@@ -153,6 +155,10 @@ struct BiblePageDocument {
         return NSAttributedString(string: "\u{FFFC}", attributes: [
             NSAttributedString.Key(kCTRunDelegateAttributeName as String): delegate,
         ])
+    }
+
+    func verseMarkerRange(for verseNumber: Int) -> NSRange? {
+        supplementRanges.first { $0.id == "marker:\(verseNumber)" }?.range
     }
 
     func locator(at characterIndex: Int) -> BibleTextLocator {

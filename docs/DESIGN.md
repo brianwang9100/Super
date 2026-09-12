@@ -471,10 +471,16 @@ Each mini-app manages its own settings screen. Reached either from a gear inside
 
 ### iPad scripture study controls
 
-SuperBible's capable iPad reader presents verse actions and narration as nonmodal
-bottom safe-area accessories, scoped to the scripture pane. These two controls
-intentionally depart from native sheets so reading remains visible. Their measured
-content height reserves the reader viewport; the shell replaces its minimized Chat
-pill and composer accessories while the scripture controls occupy that region.
-Closing controls restores the minimized pill without reopening Chat. iPhone and
-deeper annotation, note, sharing, and setup forms retain native presentations.
+Verse actions retain their native sheet on both iPhone and iPad. SuperBible's
+capable iPad reader presents narration as a nonmodal bottom safe-area accessory,
+scoped to the scripture pane. Its measured height reserves the reader viewport;
+Book keeps a stable reservation to preserve page breaks. The shell hides its
+minimized Chat pill while these controls occupy that region. Native actions and
+inline narration have separate dismissal lifetimes so transitions retain playback.
+iPhone narration and deeper annotation, note, sharing, and setup forms retain
+native presentations.
+
+The shell provides an optional applet-owned navigation slot beside its hamburger
+layer. Participating applets configure their own content and actions; applets
+without navigation leave it empty. SuperBible uses it only for the iPad workspace,
+keeping the same centered toolbar above Book, Compare, and both Study panes.

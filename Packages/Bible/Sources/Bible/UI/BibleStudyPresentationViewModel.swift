@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class BibleStudyPresentationViewModel {
     enum Sheet: Hashable {
-        case bottom, annotation, disclaimer, note, bookmark, book
+        case bottom, inlineNarration, annotation, disclaimer, note, bookmark, book
     }
 
     private let viewModel: BibleScreenViewModel
@@ -99,11 +99,11 @@ final class BibleStudyPresentationViewModel {
     }
 
     /// Inline hosts report visibility directly because UIKit never sends a sheet dismissal.
-    func updateInlineBottomVisibility(_ visible: Bool, identity callbackIdentity: UUID) {
+    func updateInlineNarrationVisibility(_ visible: Bool, identity callbackIdentity: UUID) {
         if visible {
-            didPresent(.bottom, identity: callbackIdentity)
+            didPresent(.inlineNarration, identity: callbackIdentity)
         } else {
-            didDismiss(.bottom, identity: callbackIdentity)
+            didDismiss(.inlineNarration, identity: callbackIdentity)
         }
     }
 

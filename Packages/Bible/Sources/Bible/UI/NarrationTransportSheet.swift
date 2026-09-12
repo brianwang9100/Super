@@ -56,9 +56,9 @@ struct NarrationTransportSheet: View {
                     Text(error.message).font(typography.font(.footnote)).foregroundStyle(theme.errorAccent)
                     HStack {
                         if controller.voice?.company == .openAI {
-                            Button("Use Apple voice") { controller.useAppleVoice() }.frame(minHeight: 44)
+                            Button("Use Apple voice") { controller.useAppleVoice() }.frame(minHeight: inline ? 44 : nil)
                         }
-                        Button("Retry") { controller.retry() }.frame(minHeight: 44)
+                        Button("Retry") { controller.retry() }.frame(minHeight: inline ? 44 : nil)
                     }.font(typography.font(.footnote))
                 }
             }

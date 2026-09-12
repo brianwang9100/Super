@@ -21,6 +21,7 @@ struct BibleChapterReader: View {
     private let selectedVerses: Set<Int>
     private let navigation: BibleChapterNavigation?
     private let layout: BibleChapterReaderLayout
+    private let comparison: BibleChapterComparison?
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
@@ -54,6 +55,7 @@ struct BibleChapterReader: View {
         selectedVerses: Set<Int>,
         navigation: BibleChapterNavigation? = nil,
         layout: BibleChapterReaderLayout = .fullReader,
+        comparison: BibleChapterComparison? = nil,
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
@@ -92,6 +94,7 @@ struct BibleChapterReader: View {
         self.selectedVerses = selectedVerses
         self.navigation = navigation
         self.layout = layout
+        self.comparison = comparison
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
@@ -175,29 +178,42 @@ struct BibleChapterReader: View {
                     chapterTitle
                         .padding(.bottom, 6)
 
-                    let highlightsByVerse = highlightsByVerse
-                    let annotationsByVerseEnd = annotationsByVerseEnd
-                    let notesByVerseEnd = notesByVerseEnd
-                    let numberedEarlier = VerseTokenizer.priorlyNumberedVerses(chapter.paragraphs)
-                    let verseEndsByParagraph = VerseTokenizer.verseEndsByParagraph(chapter.paragraphs)
-                    ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, paragraph in
-                        BibleParagraphBlock(
-                            paragraph: paragraph,
-                            selectedVerses: selectedVerses,
-                            highlightedVerses: highlightsByVerse,
-                            numberedEarlier: numberedEarlier[index],
-                            verseEndsHere: verseEndsByParagraph[index],
-                            annotationsByVerseEnd: annotationsByVerseEnd,
-                            notesByVerseEnd: notesByVerseEnd,
-                            currentNarratingVerse: currentNarratingVerse,
-                            onTapVerse: onTapVerse,
-                            onAnnotationBubbleTap: onAnnotationBubbleTap,
-                            onNoteGlyphTap: onNoteGlyphTap,
-                            onVisibleVerses: onVisibleVerses == nil ? nil : { verses in
-                                visibleVersesByParagraph[index] = verses
+                    if let comparison {
+                        BibleTranslationComparison(
+                            chapter: chapter, comparison: comparison, selectedVerses: selectedVerses,
+                            highlightedVerses: highlightsByVerse, annotationsByVerseEnd: annotationsByVerseEnd,
+                            notesByVerseEnd: notesByVerseEnd, currentNarratingVerse: currentNarratingVerse,
+                            onTapVerse: onTapVerse, onAnnotation: onAnnotationBubbleTap, onNote: onNoteGlyphTap,
+                            onRowVisibilityChange: { verse, visible in
+                                visibleVersesByParagraph[verse] = visible ? [verse] : []
                                 reportVisibleVerses()
                             }
                         )
+                    } else {
+                        let highlightsByVerse = highlightsByVerse
+                        let annotationsByVerseEnd = annotationsByVerseEnd
+                        let notesByVerseEnd = notesByVerseEnd
+                        let numberedEarlier = VerseTokenizer.priorlyNumberedVerses(chapter.paragraphs)
+                        let verseEndsByParagraph = VerseTokenizer.verseEndsByParagraph(chapter.paragraphs)
+                        ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, paragraph in
+                            BibleParagraphBlock(
+                                paragraph: paragraph,
+                                selectedVerses: selectedVerses,
+                                highlightedVerses: highlightsByVerse,
+                                numberedEarlier: numberedEarlier[index],
+                                verseEndsHere: verseEndsByParagraph[index],
+                                annotationsByVerseEnd: annotationsByVerseEnd,
+                                notesByVerseEnd: notesByVerseEnd,
+                                currentNarratingVerse: currentNarratingVerse,
+                                onTapVerse: onTapVerse,
+                                onAnnotationBubbleTap: onAnnotationBubbleTap,
+                                onNoteGlyphTap: onNoteGlyphTap,
+                                onVisibleVerses: onVisibleVerses == nil ? nil : { verses in
+                                    visibleVersesByParagraph[index] = verses
+                                    reportVisibleVerses()
+                                }
+                            )
+                        }
                     }
 
                     if let navigation {
@@ -246,7 +262,7 @@ struct BibleChapterReader: View {
             // narration uses its own follow-scroll and must not compete with this path.
             .onChange(of: bottomOverlayKind) { oldKind, newKind in
                 guard Self.shouldScrollSelectionIntoView(oldKind: oldKind, newKind: newKind),
-                      let verse = selectedVerses.min() else { return }
+                      let verse = selectedVerses.union(comparison?.selectedVerses ?? []).min() else { return }
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.3)
                 withAnimation(animation) {
                     proxy.scrollTo(
@@ -255,7 +271,7 @@ struct BibleChapterReader: View {
                     )
                 }
             }
-            .onChange(of: currentNarratingVerse) { _, new in
+            .onChange(of: currentNarratingVerse ?? comparison?.currentNarratingVerse) { _, new in
                 guard let new, Self.shouldAutoScroll(suppressed: suppressNarrationScroll) else {
                     return
                 }
@@ -412,7 +428,7 @@ struct BibleChapterReader: View {
         for kind: BibleBottomOverlayKind?,
         layout: BibleChapterReaderLayout = .fullReader
     ) -> CGFloat {
-        guard !layout.usesSafeAreaStudyBar, let kind else { return layout.bottomInset }
+        guard let kind, !(layout.usesSafeAreaStudyBar && kind == .narration) else { return layout.bottomInset }
         return max(layout.bottomInset, kind.estimatedSheetHeight + overlayBottomReserve)
     }
 

@@ -11,13 +11,14 @@ import Testing
 struct BibleNavBarSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
-    @Test("reading mode icons stay beside the passage selector in narrow panes")
+    @Test("reading mode navigation stays centered across the iPad window")
     func readingModesGallery() {
         let view = VStack(spacing: 0) {
             ForEach([SuperTheme.Identifier.vellumLight, .vellumDark], id: \.self) { theme in
                 VStack(spacing: 0) {
                     ForEach(BibleReadingMode.allCases) { mode in
-                        bar(bookName: "Song of Solomon", showsChapterChevrons: false, readingMode: mode)
+                        bar(bookName: "Song of Solomon", showsChapterChevrons: false,
+                            readingMode: mode, centersNavigation: true)
                     }
                 }
                 .superTheme(.make(theme))
@@ -25,12 +26,33 @@ struct BibleNavBarSnapshotTests {
             }
         }
         .superTypography(.make(.serif, fontScale: 1.2))
-        .frame(width: 375, height: 384, alignment: .top)
+        .frame(width: 1024, height: 384, alignment: .top)
         let failure = verifyVisualSnapshot(
-            of: view, as: .image(layout: .fixed(width: 375, height: 384)),
+            of: view, as: .image(layout: .fixed(width: 1024, height: 384)),
             named: "reading_modes", testName: #function
         )
         if let failure { Issue.record("\(failure)") }
+    }
+
+    @Test("centered navigation reserves the hamburger row when a narrow window needs reflow",
+          arguments: [DynamicTypeSize.large, .accessibility3, .accessibility5], [320.0, 1024.0])
+    func centeredLayoutFits(typeSize: DynamicTypeSize, width: Double) {
+        for mode in BibleReadingMode.allCases {
+            let view = bar(bookName: "Song of Solomon", showsChapterChevrons: false,
+                           readingMode: mode, centersNavigation: true)
+                .dynamicTypeSize(typeSize)
+                .superTypography(.make(.serif, fontScale: 1.2))
+                .superTheme(.make(.vellumLight))
+            let size = UIHostingController(rootView: view)
+                .sizeThatFits(in: CGSize(width: width, height: 1000))
+            #expect(size.width <= width)
+            #expect(size.height < (width == 320 ? 480 : 200))
+            if width == 320 {
+                #expect(size.height >= 104, "The navigation row must clear the shell's 44-point hamburger")
+            } else if typeSize == .large {
+                #expect(abs(size.height - 60) < 0.5)
+            }
+        }
     }
 
     @Test("the nav bar renders in the light theme")
@@ -363,6 +385,7 @@ struct BibleNavBarSnapshotTests {
         narrationState: NarrationController.State = .idle,
         narrationCitation: String? = nil,
         readingMode: BibleReadingMode? = nil,
+        centersNavigation: Bool = false,
         history: BibleNavBar.HistoryControls = .init(
             backLabel: "John 3", forwardLabel: "Psalm 23", onBack: {}, onForward: {}
         )
@@ -376,7 +399,7 @@ struct BibleNavBarSnapshotTests {
             onPrevious: {}, onNext: {}, onPill: {},
             onSelectionPill: {}, onClearSelection: {}, onMenuAction: { _ in },
             onNarration: {}, historyControls: history,
-            readingMode: readingMode, onCycleReadingMode: {}
+            readingMode: readingMode, onCycleReadingMode: {}, centersNavigation: centersNavigation
         )
     }
 

@@ -4,12 +4,11 @@ import SwiftUI
 struct BibleStudySheetsModifier: ViewModifier {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sharePayload: BibleSharePayload?
     @Bindable var viewModel: BibleScreenViewModel
     let presentation: BibleStudyPresentationViewModel
     var annotationRepository: (any BibleAnnotationRepository)?
     var narrationContent: (() -> AnyView)?
-    var inlineBottomControls = false
+    var inlineNarration = false
     var minimumBottomReserve: CGFloat = 0
     var onBarHeightChange: (CGFloat) -> Void = { _ in }
     var bibleLinkPolicy: MarkdownBibleCitationPolicy = .enabled
@@ -24,10 +23,14 @@ struct BibleStudySheetsModifier: ViewModifier {
         return nil
     }
 
+    private var inlineOverlayKind: BibleBottomOverlayKind? {
+        inlineNarration && activeOverlayKind == .narration ? .narration : nil
+    }
+
     private var bottomSheetBinding: Binding<BibleBottomOverlayKind?> {
-        Binding(get: { inlineBottomControls ? nil : activeOverlayKind }, set: { value in
+        Binding(get: { inlineOverlayKind == nil ? activeOverlayKind : nil }, set: { value in
             guard value == nil else { return }
-            if narrationContent != nil && viewModel.isNarrationSheetPresented {
+            if !inlineNarration && narrationContent != nil && viewModel.isNarrationSheetPresented {
                 viewModel.dismissNarrationSheet()
             } else {
                 viewModel.dismissActionSheet()
@@ -38,9 +41,6 @@ struct BibleStudySheetsModifier: ViewModifier {
     func body(content: Content) -> some View {
         let identity = presentation.identity
         content
-        .sheet(item: $sharePayload) { payload in
-            BibleShareSheet(text: payload.text)
-        }
         .sheet(item: $viewModel.presentedAnnotationTarget, onDismiss: { presentation.didDismiss(.annotation, identity: identity) }) { spec in
             AnnotationSheetContainer(
                 spec: spec,
@@ -113,12 +113,12 @@ struct BibleStudySheetsModifier: ViewModifier {
             )
             .onAppear { self.presentation.didPresent(.bookmark, identity: identity) }
         }
-        // One sheet avoids competing selection and narration presentations.
+        // Native actions and inline narration own independent dismissal lifetimes.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if inlineBottomControls {
+            if inlineNarration {
                 ZStack(alignment: .bottom) {
                     Color.clear.frame(height: minimumBottomReserve)
-                    if let kind = activeOverlayKind {
+                    if let kind = inlineOverlayKind {
                         if minimumBottomReserve > 0 {
                             ScrollView {
                                 inlineBar(kind, identity: identity)
@@ -134,16 +134,14 @@ struct BibleStudySheetsModifier: ViewModifier {
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .onChange(of: activeOverlayKind) { old, new in
-            if inlineBottomControls, old != nil, new == nil {
+        .onChange(of: inlineOverlayKind) { old, new in
+            if old != nil, new == nil {
                 onBarHeightChange(0)
-                presentation.updateInlineBottomVisibility(false, identity: identity)
+                presentation.updateInlineNarrationVisibility(false, identity: identity)
             }
         }
         .sheet(item: bottomSheetBinding, onDismiss: {
-            if !inlineBottomControls || activeOverlayKind == nil {
-                presentation.didDismiss(.bottom, identity: identity)
-            }
+            presentation.didDismiss(.bottom, identity: identity)
         }) { kind in
             bottomSheetContent(kind)
                 .onAppear { presentation.didPresent(.bottom, identity: identity) }
@@ -152,7 +150,7 @@ struct BibleStudySheetsModifier: ViewModifier {
 
     private func inlineBar(_ kind: BibleBottomOverlayKind, identity: UUID) -> some View {
         BibleStudyBar(onHeightChange: onBarHeightChange) { bottomSheetContent(kind) }
-            .onAppear { presentation.updateInlineBottomVisibility(true, identity: identity) }
+            .onAppear { presentation.updateInlineNarrationVisibility(true, identity: identity) }
     }
 
     @ViewBuilder
@@ -163,26 +161,22 @@ struct BibleStudySheetsModifier: ViewModifier {
         case .selection:
             BibleActionSheet(
                 citation: (viewModel.selectionCitation ?? "")
-                    + (inlineBottomControls ? " (\(viewModel.selectionTranslation.rawValue))" : ""),
+                    + (inlineNarration ? " (\(viewModel.selectionTranslation.rawValue))" : ""),
                 shareText: viewModel.selectionShareText ?? "",
                 onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
                 onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
                 onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
                 onNarrate: narrationContent == nil ? nil : {
-                    withAnimation(motion.animation) { viewModel.startNarration() }
+                    withAnimation(motion.animation) {
+                        if inlineNarration { viewModel.dismissActionSheet() }
+                        viewModel.startNarration()
+                    }
                 },
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onAnnotate: { presentation.annotateSelection() },
                 onAddNote: { presentation.addNoteForSelection() },
-                onClose: { withAnimation(motion.animation) { viewModel.dismissActionSheet() } },
-                inline: inlineBottomControls,
-                onShare: {
-                    guard let text = viewModel.selectionShareText else { return }
-                    presentation.handOffAfterSelectionDismiss {
-                        sharePayload = BibleSharePayload(text: text)
-                    }
-                }
+                onClose: { withAnimation(motion.animation) { viewModel.dismissActionSheet() } }
             )
         }
     }

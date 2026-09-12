@@ -22,9 +22,9 @@ struct BibleReadingLayoutTests {
         #expect(BibleReadingLayout.bottomClearance(measuredBarHeight: -1, safeAreaReserved: false) == 0)
     }
 
-    @Test func dockedControlsDoNotUseSheetEstimates() {
+    @Test @MainActor func dockedControlsDoNotUseSheetEstimates() {
         let layout = BibleChapterReaderLayout(topInset: 68, bottomInset: 16, usesSafeAreaStudyBar: true)
-        #expect(BibleChapterReader.bottomClearHeight(for: .selection, layout: layout) == 16)
+        #expect(BibleChapterReader.bottomClearHeight(for: .selection, layout: layout) == 380)
         #expect(BibleChapterReader.bottomClearHeight(for: .narration, layout: layout) == 16)
     }
 

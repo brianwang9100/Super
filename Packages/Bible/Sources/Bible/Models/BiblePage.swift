@@ -22,6 +22,28 @@ struct BiblePage: Equatable, Identifiable {
         var id: Int { verseNumber }
     }
 
+    struct HeadingFragment: Identifiable {
+        let text: String
+        let sourceRange: NSRange
+        let frame: CGRect
+        var id: Int { sourceRange.location }
+    }
+
+    func headingFragments(in document: BiblePageDocument) -> [HeadingFragment] {
+        document.blocks.filter(\.isHeading).compactMap { block in
+            let range = NSIntersectionRange(block.range, sourceRange)
+            guard range.length > 0 else { return nil }
+            let text = (document.text.string as NSString).substring(with: range)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            let frames = lines.compactMap { line -> CGRect? in
+                let intersection = NSIntersectionRange(line.range, range)
+                return intersection.length > 0 ? document.rect(for: intersection, on: line) : nil
+            }
+            return HeadingFragment(text: text, sourceRange: range, frame: frames.reduce(.null) { $0.union($1) })
+        }
+    }
+
     var sourceRange: NSRange {
         guard let first = lines.first, let last = lines.last else { return NSRange(location: 0, length: 0) }
         return NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
@@ -47,6 +69,13 @@ struct BiblePage: Equatable, Identifiable {
                 let part = NSIntersectionRange(line.range, intersection)
                 guard part.length > 0 else { continue }
                 frames[verse.verseNumber, default: []].append(document.rect(for: part, on: line))
+            }
+        }
+        for verse in order {
+            guard let marker = document.verseMarkerRange(for: verse) else { continue }
+            for line in lines {
+                let intersection = NSIntersectionRange(line.range, marker)
+                if intersection.length > 0 { frames[verse, default: []].append(document.rect(for: intersection, on: line)) }
             }
         }
         return order.map {

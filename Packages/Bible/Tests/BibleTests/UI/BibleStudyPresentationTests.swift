@@ -5,6 +5,24 @@ import Testing
 @Suite("Bible study presentation")
 @MainActor
 struct BibleStudyPresentationTests {
+    @Test("outgoing native actions cannot unregister incoming inline narration")
+    func nativeSelectionToInlineNarration() async {
+        let model = await makeModel()
+        let presentation = BibleStudyPresentationViewModel(viewModel: model)
+        model.toggleVerse(28)
+        presentation.didPresent(.bottom, identity: presentation.identity)
+        model.startNarration()
+        presentation.updateInlineNarrationVisibility(true, identity: presentation.identity)
+        model.dismissActionSheet()
+        presentation.didDismiss(.bottom, identity: presentation.identity)
+        #expect(model.isNarrationSheetPresented)
+        var finished = false
+        presentation.finish { finished = true }
+        #expect(!finished)
+        presentation.updateInlineNarrationVisibility(false, identity: presentation.identity)
+        #expect(finished)
+    }
+
     private struct UnacknowledgedDisclaimerStore: AnnotationDisclaimerStore {
         var isAcknowledged: Bool { false }
         func setAcknowledged(_ value: Bool) {}
@@ -143,7 +161,7 @@ struct BibleStudyPresentationTests {
         case .note: model.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
         case .bookmark: model.presentBookmarkSheet()
         case .book: model.presentSelectionSheet()
-        case .bottom: Issue.record("This scenario covers secondary sheets")
+        case .bottom, .inlineNarration: Issue.record("This scenario covers secondary sheets")
         }
         var completed = false
         presentation.finish { completed = true }
@@ -316,37 +334,36 @@ struct BibleStudyPresentationTests {
         presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(model.presentedBookmarkSheet != nil)
     }
-    @Test("inline handoff completes once after visibility changes, retaining captured Chat reference")
-    func inlineChatHandoff() async {
+    @Test("native handoff completes once after dismissal, retaining captured Chat reference")
+    func nativeChatHandoff() async {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
         let captured = model.makeVerseReference()
-        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         var deliveries: [RecordReference] = []
         presentation.handOffAfterSelectionDismiss {
             if let captured { deliveries.append(captured) }
         }
         #expect(deliveries.isEmpty)
         #expect(model.selectedVerses.isEmpty)
-        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
-        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
+        presentation.didDismiss(.bottom, identity: presentation.identity)
+        presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(deliveries.count == 1)
         #expect(deliveries.first == captured)
     }
 
-    @Test("repeated inline note requests and a resize do not duplicate the destination")
-    func inlineResizeDuringHandoff() async {
+    @Test("repeated native note requests and a resize do not duplicate the destination")
+    func nativeResizeDuringHandoff() async {
         let model = await makeModel()
         let presentation = BibleStudyPresentationViewModel(viewModel: model)
         model.toggleVerse(28)
-        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         presentation.addNoteForSelection()
         presentation.addNoteForSelection()
-        presentation.updateInlineBottomVisibility(true, identity: presentation.identity)
+        presentation.didPresent(.bottom, identity: presentation.identity)
         #expect(model.presentedNoteList == nil)
-        presentation.updateInlineBottomVisibility(false, identity: presentation.identity)
+        presentation.didDismiss(.bottom, identity: presentation.identity)
         #expect(model.presentedNoteList?.spec == .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 28))
     }
-
 }

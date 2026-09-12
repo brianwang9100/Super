@@ -18,9 +18,13 @@ enum BibleComparisonAssembler {
             case .prose(let verses), .poetry(let verses):
                 for verse in verses {
                     let prior = cells[verse.number]
+                    let fragment: BibleParagraph
+                    if case .poetry = paragraph { fragment = .poetry([verse]) }
+                    else { fragment = .prose([verse]) }
                     cells[verse.number] = .init(
                         text: prior.map { $0.text + "\n" + verse.text } ?? verse.text,
-                        headings: (prior?.headings ?? []) + headings
+                        headings: (prior?.headings ?? []) + headings,
+                        paragraphs: (prior?.paragraphs ?? []) + [fragment]
                     )
                     headings.removeAll()
                 }

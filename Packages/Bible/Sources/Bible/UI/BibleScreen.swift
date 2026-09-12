@@ -14,9 +14,11 @@ public struct BibleScreen: View {
     @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
     @Environment(\.appletWorkspaceStore) private var appletWorkspaceStore
+    @Environment(\.appletNavigationChromeStore) private var navigationChromeStore
     @Environment(\.bottomControlOccupancyStore) private var bottomControlOccupancyStore
     private let readingWorkspaceEnabled: Bool
     private var usesReadingWorkspace: Bool { readingWorkspaceEnabled }
+    private var usesShellNavigation: Bool { usesReadingWorkspace && navigationChromeStore != nil }
     @State private var workspace: BibleReadingWorkspaceViewModel
     @State private var measuredNavigationHeight: CGFloat = 60
 
@@ -69,7 +71,7 @@ public struct BibleScreen: View {
         ZStack(alignment: .top) {
             theme.background.ignoresSafeArea()
             chapterContent
-            navBar
+            if !usesShellNavigation { navBar }
             if let message = viewModel.navigationPersistenceError {
                 BibleAttachToast(
                     message: message,
@@ -100,6 +102,9 @@ public struct BibleScreen: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .transition(motion.transition)
             }
+        }
+        .appletNavigationChrome(isPresented: usesShellNavigation) {
+            if usesShellNavigation { navBar }
         }
         .environment(\.bibleReadingLayout, BibleReadingLayout(isPadWorkspace: usesReadingWorkspace))
         .onAppear { studyPresentation.activate() }
@@ -166,7 +171,7 @@ public struct BibleScreen: View {
             presentation: studyPresentation,
             annotationRepository: annotationRepository,
             narrationContent: { AnyView(narrationSheet) },
-            inlineBottomControls: usesReadingWorkspace,
+            inlineNarration: usesReadingWorkspace,
             minimumBottomReserve: usesReadingWorkspace && workspace.mode == .book ? 180 : 0,
             onBarHeightChange: { bottomControlOccupancyStore?.measuredHeight = $0 },
             onOpenLink: { viewModel.navigateToDeepLink($0) },
@@ -309,7 +314,8 @@ public struct BibleScreen: View {
             ),
             isRestoringNavigation: viewModel.isRestoringNavigation || (usesReadingWorkspace && workspace.isRestoring),
             readingMode: usesReadingWorkspace ? workspace.mode : nil,
-            onCycleReadingMode: usesReadingWorkspace ? { workspace.selectMode(workspace.mode.next) } : nil
+            onCycleReadingMode: usesReadingWorkspace ? { workspace.selectMode(workspace.mode.next) } : nil,
+            centersNavigation: usesReadingWorkspace
         )
         .disabled(viewModel.isRestoringNavigation)
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -366,20 +372,41 @@ public struct BibleScreen: View {
                 onAnnotation: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: $1) },
                 onNote: { viewModel.presentNoteList(for: $0) },
                 onBookmark: { studyPresentation.presentBookmark(at: $0) })
-        } else if usesReadingWorkspace && workspace.mode == .compare {
-            GeometryReader { geometry in
-                BibleTranslationComparison(workspace: workspace,
-                    stacked: geometry.size.width < 72 + 720 * max(1, workspaceBodySize * typography.fontScale / 24), topInset: navigationTopReserve,
-                    onAnnotation: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: $1) },
-                    onNote: { viewModel.presentNoteList(for: $0) })
-                    .id(viewModel.position)
-            }
         } else {
             scrollingChapterContent
         }
     }
 
-    private var scrollingChapterContent: some View {
+    @ViewBuilder private var scrollingChapterContent: some View {
+        if usesReadingWorkspace && workspace.mode == .compare {
+            GeometryReader { geometry in
+                chapterReader(comparison: comparisonConfiguration(width: geometry.size.width))
+            }
+        } else {
+            chapterReader(comparison: nil)
+        }
+    }
+
+    private func comparisonConfiguration(width: CGFloat) -> BibleChapterComparison? {
+        guard usesReadingWorkspace, workspace.mode == .compare else { return nil }
+        let source = workspace.comparisonSource
+        return BibleChapterComparison(
+            primaryTranslation: viewModel.translation, secondaryTranslation: workspace.secondaryTranslation,
+            chapter: source?.chapter, selectedVerses: source.map { viewModel.selectedVerses(in: $0) } ?? [],
+            currentNarratingVerse: source.flatMap { viewModel.narrationVerseNumber(in: $0) },
+            stacked: width < 72 + 720 * max(1, workspaceBodySize * typography.fontScale / 24),
+            error: workspace.comparisonError,
+            onSelectTranslation: { workspace.selectSecondaryTranslation($0) },
+            onTapVerse: { number in
+                guard let source else { return }
+                withAnimation(motion.animation) { viewModel.toggleVerse(number, in: source) }
+            },
+            onAnnotation: { viewModel.presentAnnotationSheet(for: $0, sourceTranslation: workspace.secondaryTranslation) },
+            onRetry: { workspace.refreshComparison() }
+        )
+    }
+
+    private func chapterReader(comparison: BibleChapterComparison?) -> some View {
         BibleChapterContent(
             viewModel: viewModel,
             layout: .init(topInset: navigationTopReserve, bottomInset: usesReadingWorkspace && activeOverlayKind != nil ? 16 : BibleChapterReaderLayout.fullReader.bottomInset, usesSafeAreaStudyBar: usesReadingWorkspace),
@@ -389,6 +416,7 @@ public struct BibleScreen: View {
                 onPrevious: { viewModel.stepChapter(.previous) },
                 onNext: { viewModel.stepChapter(.next) }
             ),
+            comparison: comparison,
             overlayKind: activeOverlayKind,
             currentNarratingVerse: usesReadingWorkspace
                 ? viewModel.primarySource.flatMap { viewModel.narrationVerseNumber(in: $0) }

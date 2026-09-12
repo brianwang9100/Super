@@ -178,7 +178,8 @@ final class BibleReadingWorkspaceViewModel {
     }
 
     func followNarration() {
-        guard mode == .book, isFollowingNarration, let source = reader.narrationSource,
+        guard mode == .book, isFollowingNarration, reader.selectedVerses.isEmpty,
+              let source = reader.narrationSource,
               let verse = reader.narration.currentVerseNumber,
               source.translation == reader.translation else { return }
         let target = BibleTextLocator(position: source.position, translation: source.translation, verseNumber: verse)

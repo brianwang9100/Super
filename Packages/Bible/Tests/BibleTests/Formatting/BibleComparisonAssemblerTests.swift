@@ -17,6 +17,10 @@ struct BibleComparisonAssemblerTests {
         #expect(result.rows.map(\.verseNumber) == [1, 2, 3])
         #expect(result.rows[0].primary?.text == "First\nline\ncontinued")
         #expect(result.rows[0].primary?.headings == ["Left heading"])
+        #expect(result.rows[0].primary?.paragraphs == [
+            .poetry([.init(number: 1, text: "First\nline")]),
+            .prose([.init(number: 1, text: "continued")]),
+        ])
         #expect(result.rows[1].primary == nil)
         #expect(result.rows[1].secondary?.text == "Two")
         #expect(result.rows[2].secondary?.headings == ["Right heading"])

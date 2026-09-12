@@ -1,40 +1,45 @@
 # iPad Reading Modes — Validation
 
-Implementation follows [the approved plan](IPAD_READING_MODES.md). The final control is one icon immediately after the passage/translation selector, cycling Book → Compare → Study → Book. The capability is enabled only by SuperBible on iPad; iPhone and SuperOS retain their existing presentation.
+Implementation follows [the reading plan](IPAD_READING_MODES.md) and [the controls/reuse revision](IPAD_READER_CONTROLS_REVISION.md). One icon after the passage/translation selector cycles Book → Compare → Study → Book. Only SuperBible on iPad enables the workspace. iPhone and SuperOS keep their existing presentation.
 
 ## Automated checks
 
-Pinned local environment: Xcode 26.4.1, iOS 26.4.1, registered worktree iPhone 17 simulator. All image comparisons below ran with recording disabled after intentional recordings were inspected.
+Pinned local environment: Xcode 26.4.1, iOS 26.4.1, registered worktree iPhone 17 simulator. Package suites used `swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors`. Image comparisons ran with recording disabled after five intentional iPad changes were inspected and explicitly recorded.
 
-| Check | Result |
+| Check | Current revision result |
 | --- | --- |
-| Bible package | 998 tests, 103 suites passed after final mode-control change |
-| Core package | 342 tests, 45 suites passed |
+| Bible package | 1,006 tests, 105 suites passed |
+| Core package | 347 tests, 46 suites passed |
 | Chat package | 1,144 tests, 87 suites passed |
-| Bible UIKit | 86 tests across reader, navigation, chapter reader, actions, narration, and reading-mode suites passed |
-| Chat UIKit | 27 tests across ChatScreen and ChatOverlay suites passed |
-| SuperBible and Super simulator builds | Passed; final icon revision rebuilt before publication |
-| SwiftLint | Repository lint passed with its existing warnings |
+| Complete Bible UIKit capture | 231 tests across 30 suites passed; all 273 expected images validated |
+| SuperBible and Super simulator builds | Both passed |
+| SwiftLint | Passed with existing repository warnings; cache disabled for sandbox compatibility |
 | Capture inventory and whitespace | Discovery and `git diff --check` passed |
 
-The new tests exercise source-specific selection/copy/highlights/annotations, disclaimer and regeneration context, captured narration replay, reading preference persistence and retry, single-writer cursor/history persistence, finite pagination and continuation ranges, chapter/book boundaries, bounded cache replenishment, decoration invalidation during in-flight pagination, supplementary heading/glyph anchors, restore/reflow, compact/wide pairing, and companion layout policy. Existing Chat reload tests now retain interrupted output, draft, model, and scroll state.
+The capture runner completed all tests before detecting two outdated inventory dimensions for the intentionally resized iPad galleries. Those dimensions were corrected to match the reviewed fixtures. The existing successful run's complete image set was then validated and bundled through the same pipeline validator; no test was skipped or baseline changed to resolve that metadata error.
 
-Independent plan and implementation reviews completed. Six actionable implementation findings were reproduced or covered by targeted regressions and resolved; the follow-up review and the subsequent cycling-icon review were clean.
+Regression coverage includes source-specific actions, native-action to inline-narration transitions, once-only queued handoffs, finite pagination and continuation ranges, chapter/book boundaries, bounded cache invalidation, restore/reflow/history, comparison poetry and headings, marker hit targets, shared verse decoration/accessibility behavior, narration-follow suppression during selection, and owner-keyed navigation publication. Chat tests retain interrupted output, draft, model, and scroll state. The prior revision also passed 27 Chat UIKit tests; this controls revision does not change Chat sources.
+
+Independent plan and implementation reviews completed. The final integrated review found no serious actionable issues. Earlier CI compiler failures and nine iPhone narration-error snapshot differences were reproduced and fixed; all 44 OpenAI narration captures now compare against their original baselines.
 
 ## Visual coverage
 
-Inventory changes from **601 to 609 captures (+8)**: Book continuation in light/dark, compact chapter opening, aligned comparison with missing verses/unequal text/headings/poetry, stacked comparison at 120% app scale, two inline-control galleries including Dynamic Type XXL, and one narrow light/dark cycling-icon gallery.
+The overall PR changes the inventory from **601 to 609 captures (+8)**: Book continuation in light/dark, compact chapter opening, aligned comparison with missing verses/unequal text/headings/poetry, stacked comparison at 120% app scale, two control galleries including Dynamic Type XXL, and one cycling-icon gallery.
 
-Two existing iPad-size BibleScreen baselines were also refreshed. Main's navigation-height change (#373) updated its 30 reader captures but omitted the landscape and narrow-window fixtures added by #372. Inspection confirmed the differences were the already-merged 44-point toolbar. Existing iPhone PNG baselines remain unchanged. No tolerances or capture coverage were relaxed.
+This controls revision adds **zero captures** and updates **five existing iPad images**: centered mode navigation, two comparison layouts using the original reader, and two restored-action/inline-narration galleries. Two inventory dimensions changed to accommodate the full-window navigation and original action-sheet height. Existing iPhone PNG baselines remain unchanged; all existing Bible screen, reader, navigation, action-sheet, and narration captures passed. No tolerances or fixture coverage were relaxed.
+
+The overall PR also refreshes two existing iPad-size BibleScreen baselines for the 44-point navigation-height change already merged in #373. That change had omitted the iPad fixtures added by #372.
 
 ## Simulator interaction checks
 
-The worktree's retained iPad simulator was checked in landscape and portrait. Book displays consecutive finite pages and keeps its page breaks when verse actions open or close. Compare shows the first verse below its labels, aligns rows, and captures the right translation for actions. Study keeps the reader interactive beside Chat and confines its verse actions to the reader pane.
+The current build is installed on both retained worktree simulators. The iPhone spot check shows its original reader typography, local navigation without a mode icon, chapter controls, and minimized Chat overlay.
 
-A typed draft survived Book/Compare/Study transitions. A WEB verse selected in Compare was attached as WEB to the existing draft while the primary reader remained KJV. A canned response continued while Book was displayed and returned intact in Study. No provider request was needed. Accessibility inspection confirmed mode labels and canonical verse labels on page-continuation fragments.
+On iPad, the current controls revision was checked in landscape and portrait. Navigation remains centered across the entire window in Book, Compare, and Study; the same mode callback cycles all three layouts. Compare retains the original chapter title/study glyphs and verse rendering. Selecting a right-column WEB verse opens the restored native sheet with its WEB citation; closing the sheet retains the selection. Clear Selection works from the shell-hosted toolbar. A typed Study draft survives a full mode cycle and rotation, and the Chat header clears the navigation bar.
 
-The Mac locked during the final software-keyboard spot check. Docked/floating software keyboards, physical-device behavior, and live VoiceOver gesture order remain manual follow-up checks; they are not claimed as verified. Narrow layouts, app font scaling, and large type have automated layout and image coverage. A physical iPad spot check remains useful for these input-specific cases.
+Earlier integrated checks covered fixed Book page breaks while actions opened, attaching a WEB reference to an existing draft while the primary reader stayed KJV, and a canned response continuing through mode changes. Accessibility inspection exposes mode labels and canonical verse labels on continuation fragments. No real provider requests were needed.
+
+Docked/floating software keyboards, physical-device behavior, and live VoiceOver gesture order remain manual follow-up checks; they are not claimed as verified. Narrow layouts, app font scaling, and large type have automated layout and image coverage.
 
 ## Delivery
 
-One integrated PR contains the shared source state, pagination, comparison, companion layout, and reader controls. CI and current-revision Codex approval are required before ready/auto-merge; protected checks must remain enforced.
+Update draft PR #374 and request a new Codex review for its new head. Keep auto-merge disabled and the PR draft as requested. The read-only monitor checks CI and current-revision review together every ten minutes; it does not modify code or merge settings.

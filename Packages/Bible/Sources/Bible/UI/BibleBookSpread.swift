@@ -59,9 +59,10 @@ struct BibleBookSpread: View {
                             selectedVerses: workspace.reader.selectedVerses(in: chapter.source),
                             highlights: highlights(for: page.position),
                             narratingVerse: workspace.reader.narrationVerseNumber(in: chapter.source),
-                            onTapVerse: {
-                                workspace.reader.toggleVerse($0, in: chapter.source)
-                                workspace.reader.presentActionSheet()
+                            onTapVerse: { verse in
+                                withAnimation(BibleSheetMotion(reduceMotion: reduceMotion).animation) {
+                                    workspace.reader.toggleVerse(verse, in: chapter.source)
+                                }
                             },
                             onAnnotation: { onAnnotation($0, page.translation) }, onNote: onNote
                         )
@@ -76,6 +77,9 @@ struct BibleBookSpread: View {
         }
         .tint(theme.inkSoft)
         .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(BibleSheetMotion(reduceMotion: reduceMotion).animation) { workspace.reader.dismissActionSheet() }
+        }
         .simultaneousGesture(DragGesture(minimumDistance: 35).onEnded { value in
             guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
             workspace.turn(value.translation.width < 0 ? .next : .previous)
@@ -85,6 +89,9 @@ struct BibleBookSpread: View {
         .accessibilityScrollAction { edge in
             if edge == .trailing { workspace.turn(.next) }
             if edge == .leading { workspace.turn(.previous) }
+        }
+        .onChange(of: workspace.reader.selectedVerses) { _, selected in
+            if selected.isEmpty { workspace.followNarration() }
         }
         .onChange(of: decorations, initial: true) { _, decorations in
             guard decorations.isLoaded else { return }

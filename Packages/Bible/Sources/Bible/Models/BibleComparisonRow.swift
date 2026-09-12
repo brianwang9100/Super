@@ -2,6 +2,7 @@ struct BibleComparisonRow: Equatable, Identifiable {
     struct Cell: Equatable {
         let text: String
         let headings: [String]
+        let paragraphs: [BibleParagraph]
     }
     let verseNumber: Int
     let primary: Cell?

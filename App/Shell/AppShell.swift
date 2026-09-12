@@ -17,6 +17,7 @@ struct AppShell: View {
     let dependencies: AppShellDependencies
 
     @State private var workspaceStore = AppletWorkspaceStore()
+    @State private var navigationChromeStore = AppletNavigationChromeStore()
     @ScaledMetric(relativeTo: .body) private var workspaceTextScale: CGFloat = 1
     @State private var bottomControlOccupancyStore = BottomControlOccupancyStore()
     @State private var registry: AppletRegistry
@@ -119,6 +120,7 @@ struct AppShell: View {
             .composerAccessoryStore(dependencies.composerAccessoryStore)
             .environment(\.bottomControlOccupancyStore, bottomControlOccupancyStore)
             .environment(\.appletWorkspaceStore, workspaceStore)
+            .environment(\.appletNavigationChromeStore, navigationChromeStore)
             .onChange(of: bottomControlOccupancyStore.isOccupied) { _, occupied in
                 if occupied, !companion, chatState == .semiExpanded {
                     dismissKeyboard()
@@ -143,6 +145,7 @@ struct AppShell: View {
                 \.appletSuggestedChatActions,
                 SuggestedChatAction.merged(registry.applets.map(\.suggestedChatActions))
             )
+            .padding(.top, companion ? navigationChromeStore.measuredHeight + 8 : 0)
             .frame(width: chatPaneWidth)
             .offset(x: companion ? paneWidth + 48 : 0)
             .offset(y: composerHidden ? Self.composerHideDistance : 0)
@@ -163,6 +166,12 @@ struct AppShell: View {
                     reduceMotion: reduceMotion
                 )
             }
+            AppletNavigationChromeLayer(
+                store: navigationChromeStore,
+                isVisible: companion || chatProgress < 0.95,
+                theme: theme,
+                typography: typography
+            )
             HamburgerLayer(theme: theme, chromeVisible: shellChromeVisible, onTap: openSidebar)
             SidebarLayer(
                 sidebarOpen: $sidebarOpen,
@@ -894,6 +903,34 @@ private struct ChatLayer: View {
             reduceMotion ? nil : .easeOut(duration: 0.2),
             value: innerDiscriminant
         )
+    }
+}
+
+private struct AppletNavigationChromeLayer: View {
+    let store: AppletNavigationChromeStore
+    let isVisible: Bool
+    let theme: SuperTheme
+    let typography: SuperTypography
+
+    var body: some View {
+        Group {
+            if let ownerID = store.ownerID, let content = store.content {
+                content
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        store.measure(height: height, ownerID: ownerID)
+                    }
+                    .id(ownerID)
+            }
+        }
+        .superTheme(theme)
+        .superFontScale(typography.fontScale)
+        .superTypography(typography)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
     }
 }
 

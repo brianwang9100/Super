@@ -47,11 +47,14 @@ struct BibleNavBar: View {
     var isRestoringNavigation = false
     var readingMode: BibleReadingMode?
     var onCycleReadingMode: (() -> Void)?
+    var centersNavigation = false
 
     var body: some View {
         // Share one backdrop sample across the glass controls.
         GlassEffectContainer {
-            if showsChapterChevrons {
+            if centersNavigation {
+                centeredBar(historyControls)
+            } else if showsChapterChevrons {
                 adaptiveBar(historyControls)
             } else if dynamicTypeSize >= .accessibility4 {
                 ViewThatFits(in: .horizontal) {
@@ -78,6 +81,34 @@ struct BibleNavBar: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+    }
+
+    private func centeredBar(_ controls: HistoryControls) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 52, height: 44)
+                Spacer(minLength: 0)
+                centerControls(controls, wraps: false)
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                Color.clear.frame(width: 52, height: 44)
+            }
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: 44, height: 44)
+                    Spacer(minLength: 0)
+                    if showsChapterChevrons, selectionCitation == nil {
+                        chapterButton(.previous)
+                        chapterButton(.next)
+                    }
+                    Spacer(minLength: 0)
+                    Color.clear.frame(width: 44, height: 44)
+                }
+                centerControls(controls, wraps: true)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func anchoredBar(_ controls: HistoryControls) -> some View {
