@@ -82,8 +82,7 @@ struct AppShell: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        // Separate bodies limit work when composer focus invalidates the shell.
+    private var shellLayers: some View {
         ZStack {
             BackdropLayer(
                 activeApplet: registry.activeApplet,
@@ -163,6 +162,18 @@ struct AppShell: View {
                 onSelectApplet: { route(.openApplet(id: $0)) },
                 onSeeAllChats: { route(.openApplet(id: ChatsApplet.appletID)) }
             )
+        }
+    }
+
+    var body: some View {
+        // Separate bodies limit work when composer focus invalidates the shell.
+        GeometryReader { geometry in
+            shellLayers
+                // Window controls can overlap the ordinary safe area in resizable iPad windows.
+                .safeAreaPadding(.top, max(
+                    geometry.containerCornerInsets.topLeading.height,
+                    geometry.containerCornerInsets.topTrailing.height
+                ))
         }
         // Reset Settings only after native dismissal completes, for both button and drag dismissals.
         .sheet(isPresented: $settingsOpen, onDismiss: {
@@ -902,6 +913,7 @@ private struct ComposerAccessoryLayer: View {
                 .superTheme(theme)
                 .superTypography(typography)
                 .padding(.horizontal, Self.sidePadding)
+                .frame(maxWidth: SuperContentLayout.maximumColumnWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, composerHidden ? Self.vacatedInset : Self.restingInset)
                 .opacity(accessoryOpacity)

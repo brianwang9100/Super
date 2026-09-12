@@ -66,6 +66,8 @@ struct BibleNavBar: View {
         .padding(.horizontal, 12)
         .padding(.top, 4)
         .padding(.bottom, 12)
+        .frame(maxWidth: SuperContentLayout.maximumColumnWidth)
+        .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
                 colors: [theme.background, theme.background, theme.background.opacity(0)],

@@ -16,22 +16,9 @@ struct AnnotationDisclaimerSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 24)
-            iconPanel
-                .padding(.top, 4)
-                .padding(.bottom, 16)
-            Text("About AI annotations")
-                .font(typography.font(size: 24, weight: .semibold, design: .serif))
-                .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 10)
-            paragraph("Annotations are AI-generated and may contain errors. SuperBible doesn’t verify theological accuracy.")
-                .padding(.bottom, 8)
-            paragraph("Treat them as a starting point — not as commentary you’d cite.")
-            Spacer(minLength: 24)
-            gotItButton
-                .padding(.bottom, 30 + bottomInset)
+        ViewThatFits(in: .vertical) {
+            regularLayout
+            compactLayout
         }
         .padding(.horizontal, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +27,44 @@ struct AnnotationDisclaimerSheet: View {
                 .fill(theme.background)
                 .ignoresSafeArea(edges: .bottom)
         }
+    }
+
+    private var regularLayout: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
+            explanation
+            Spacer(minLength: 24)
+            gotItButton
+                .padding(.bottom, 30 + bottomInset)
+        }
+    }
+
+    private var compactLayout: some View {
+        VStack(spacing: 16) {
+            ScrollView {
+                VStack(spacing: 0) { explanation }
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            gotItButton
+                .padding(.bottom, 16 + bottomInset)
+        }
+    }
+
+    @ViewBuilder
+    private var explanation: some View {
+        iconPanel
+            .padding(.top, 4)
+            .padding(.bottom, 16)
+        Text("About AI annotations")
+            .font(typography.font(size: 24, weight: .semibold, design: .serif))
+            .foregroundStyle(theme.ink)
+            .multilineTextAlignment(.center)
+            .padding(.bottom, 10)
+        paragraph("Annotations are AI-generated and may contain errors. SuperBible doesn’t verify theological accuracy.")
+            .padding(.bottom, 8)
+        paragraph("Treat them as a starting point — not as commentary you’d cite.")
     }
 
     private var iconPanel: some View {

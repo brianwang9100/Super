@@ -62,6 +62,7 @@ public struct ChatOverlay: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.superTheme) private var theme
 
     @State private var dragHeight: CGFloat? = nil
 
@@ -147,13 +148,29 @@ public struct ChatOverlay: View {
         // Clear latches for shell transitions and keyboard changes as well as drag releases.
         .onChange(of: settledState) { resetDragState() }
         .onChange(of: keyboardAwareHeight < geo.size.height - 1) { resetDragState() }
+        .frame(width: min(geo.size.width, SuperContentLayout.maximumColumnWidth))
         .frame(height: metrics.renderedHeight, alignment: .bottom)
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
+        .background {
+            if geo.size.width > SuperContentLayout.maximumColumnWidth {
+                // Cover the applet outside the column only at full expansion. The semi-expanded
+                // margins remain tappable through the shell's existing backdrop dismissal layer.
+                theme.background
+                    .opacity(Self.expandedBackdropOpacity(progress: metrics.progress))
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
+        }
         // Animate inset changes because keyboard-free geometry bypasses layout avoidance.
         // Keying on the inset lets rotation and resize remain immediate.
         .animation(reduceMotion ? nil : SuperMotion.keyboardGlide, value: geo.size.height - keyboardAwareHeight)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
         .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
+    }
+
+    private static func expandedBackdropOpacity(progress: Double) -> Double {
+        let fraction = min(1, max(0, (progress - 0.95) / 0.05))
+        return fraction * fraction * (3 - 2 * fraction)
     }
 
     private func updateDrag(

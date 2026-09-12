@@ -141,9 +141,25 @@ struct ChatOverlaySnapshotTests {
         ]
     }
 
+    @Test("wide minimized dock stays aligned with the conversation column")
+    func landscapeMinimized() {
+        verify(state: .minimized, theme: .vellumLight, size: CGSize(width: 1024, height: 768), name: "landscape_minimized")
+    }
+
+    @Test("wide expanded transcript and composer share a column")
+    func landscapeExpanded() {
+        verify(state: .expanded, theme: .vellumLight, size: CGSize(width: 1024, height: 768), name: "landscape_expanded")
+    }
+
+    @Test("wide semi-expanded panel leaves the surrounding backdrop visible")
+    func landscapeSemiExpanded() {
+        verify(state: .semiExpanded, theme: .vellumLight, size: CGSize(width: 1024, height: 768), name: "landscape_semi_expanded")
+    }
+
     private func verify(
         state: ChatPresentationState,
         theme: SuperTheme.Identifier,
+        size: CGSize = Self.frame,
         name: String,
         function: String = #function
     ) {
@@ -159,12 +175,15 @@ struct ChatOverlaySnapshotTests {
             viewModel: viewModel
         )
         .superTheme(.make(theme))
-        .frame(width: Self.frame.width, height: Self.frame.height)
+        .frame(width: size.width, height: size.height)
+        .background {
+            if size.width > 760 { Color.purple }
+        }
 
         // Translucent rounded edges need tolerance for cross-runner antialiasing drift.
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: size.width, height: size.height)),
             named: name,
             testName: function
         )

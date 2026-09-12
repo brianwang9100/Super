@@ -26,10 +26,16 @@ struct AnnotationDisclaimerSheetSnapshotTests {
         verify(theme: .vellumLight, dynamicType: .xxLarge, height: 480, name: "light_xxl")
     }
 
+    @Test("acknowledgment remains reachable in a short window at 120 percent")
+    func shortWindow() {
+        verify(theme: .vellumLight, height: 300, fontScale: 1.2, name: "short_window")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
         height: CGFloat = 380,
+        fontScale: CGFloat = 1,
         name: String,
         function: String = #function
     ) {
@@ -41,6 +47,7 @@ struct AnnotationDisclaimerSheetSnapshotTests {
         .frame(width: 393, height: height)
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
+        .superTypography(.make(.serif, fontScale: fontScale))
 
         let failure = verifyVisualSnapshot(
             of: view,

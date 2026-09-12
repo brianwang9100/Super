@@ -40,6 +40,12 @@ struct BookmarksScreenSnapshotTests {
         )
     }
 
+    @Test("bookmark slots stay grouped in a wide window")
+    func landscape() throws {
+        try verify(seed: Self.populatedSeed, theme: .vellumLight,
+                   size: CGSize(width: 1024, height: 768), name: "landscape")
+    }
+
     // Assigned and empty slots share one capture.
     private static let populatedSeed: [(BibleBookmarkColor, String, Int)] = [
         (.clay, "JHN", 3),
@@ -51,6 +57,7 @@ struct BookmarksScreenSnapshotTests {
         seed: [(BibleBookmarkColor, String, Int)],
         theme themeID: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
+        size: CGSize = CGSize(width: 402, height: 760),
         name: String,
         function: String = #function
     ) throws {
@@ -66,7 +73,7 @@ struct BookmarksScreenSnapshotTests {
         }
         let theme = SuperTheme.make(themeID)
         let view = BookmarksScreen()
-            .frame(width: 402, height: 760)
+            .frame(width: size.width, height: size.height)
             .dynamicTypeSize(dynamicType)
             .superTheme(theme)
             .superTypography(.make(.serif))
@@ -74,7 +81,7 @@ struct BookmarksScreenSnapshotTests {
 
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 760)),
+            as: .image(layout: .fixed(width: size.width, height: size.height)),
             named: name,
             testName: function
         )

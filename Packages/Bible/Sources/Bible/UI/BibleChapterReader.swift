@@ -205,7 +205,8 @@ struct BibleChapterReader: View {
                 .padding(.horizontal, 26)
                 // Clear the floating nav bar while allowing text to scroll beneath its gradient.
                 .padding(.top, layout.topInset)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: SuperContentLayout.maximumColumnWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
                 .onTapGesture { onBackgroundTap() }
             }

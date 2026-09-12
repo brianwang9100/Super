@@ -66,6 +66,7 @@ public struct BibleScreen: View {
                 )
                 .disabled(viewModel.isRestoringNavigation)
                 .padding(.horizontal, 12)
+                .frame(maxWidth: SuperContentLayout.maximumColumnWidth)
                 .padding(.bottom, bottomReserve)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .transition(motion.transition)
@@ -75,6 +76,7 @@ public struct BibleScreen: View {
                     onDismiss: { withAnimation(motion.animation) { viewModel.dismissToast() } }
                 )
                 .padding(.horizontal, 12)
+                .frame(maxWidth: SuperContentLayout.maximumColumnWidth)
                 .padding(.bottom, bottomReserve)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .transition(motion.transition)
