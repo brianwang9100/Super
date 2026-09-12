@@ -5,10 +5,10 @@ struct BibleNavigationSelector: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 16
-    @ScaledMetric(relativeTo: .body) private var bookSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .body) private var bookSize: CGFloat = 14
     @ScaledMetric(relativeTo: .body) private var translationSize: CGFloat = 11
-    // Mean of 66 book names at 15pt medium (59.62pt), plus " 12" (20pt), rounded up.
-    @ScaledMetric(relativeTo: .body) private var minimumLabelWidth: CGFloat = 80
+    // Nearest-rank p90 of 66 book names at 14pt medium (86.33pt), plus " 12" (19pt), rounded up.
+    @ScaledMetric(relativeTo: .body) private var preferredLabelWidth: CGFloat = 106
 
     let bookName: String
     let chapterNumber: Int
@@ -34,7 +34,7 @@ struct BibleNavigationSelector: View {
                             .frame(height: 1)
                             .padding(.horizontal, 12)
                             .accessibilityHidden(true)
-                        passageButton(minimumWidth: nil)
+                        passageButton(preferredWidth: nil)
                     }
                 }
             } else {
@@ -48,7 +48,7 @@ struct BibleNavigationSelector: View {
         HStack(spacing: 0) {
             historyButtons
             divider
-            passageButton(minimumWidth: minimumLabelWidth * typography.fontScale)
+            passageButton(preferredWidth: preferredLabelWidth * typography.fontScale)
         }
     }
 
@@ -61,27 +61,28 @@ struct BibleNavigationSelector: View {
         }
     }
 
-    private func passageButton(minimumWidth: CGFloat?) -> some View {
+    private func passageButton(preferredWidth: CGFloat?) -> some View {
         Button(action: onSelect) {
             VStack(spacing: 2) {
                 Text("\(bookName) \(chapterNumber)")
                     .font(typography.font(size: bookSize, weight: .medium))
                     .foregroundStyle(theme.ink)
                     .lineLimit(wraps ? nil : 1)
-                    .fixedSize(horizontal: !wraps, vertical: true)
+                    .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.center)
                 Text(translation.rawValue)
                     .font(typography.font(size: translationSize, weight: .medium))
                     .foregroundStyle(theme.inkSoft)
                     .fixedSize()
             }
-            .frame(minWidth: minimumWidth)
+            .frame(minWidth: 0, idealWidth: preferredWidth, maxWidth: .infinity)
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
+        .layoutPriority(-1)
         .accessibilityLabel("\(bookName) \(chapterNumber), \(translation.name), choose passage and translation")
     }
 
@@ -92,7 +93,7 @@ struct BibleNavigationSelector: View {
             .accessibilityHidden(true)
     }
 
-    /// The opposing image offsets keep adjacent glyph centers 28 points apart.
+    /// The opposing image offsets keep adjacent glyph centers 28 points apart at the default size.
     private func historyButton(
         image: String, offset: CGFloat, label: String,
         destination: String?, action: @escaping () -> Void
@@ -102,7 +103,8 @@ struct BibleNavigationSelector: View {
                 .font(typography.font(size: glyphSize, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .offset(x: offset)
-                .frame(width: 32, height: 44)
+                .padding(4)
+                .frame(minWidth: 32, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
