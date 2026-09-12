@@ -104,21 +104,19 @@ struct BibleNavBar: View {
     }
 
     private func navigationPill(_ controls: HistoryControls, wraps: Bool) -> some View {
-        HStack(spacing: 0) {
-            if let selectionCitation, showsSelectionPill {
-                selectionControls(selectionCitation, wraps: wraps)
-            } else {
-                navigationSelector(controls, wraps: wraps)
+        BibleNavigationPill(morph: GlassMorphID("nav.center", in: glassNamespace)) {
+            HStack(spacing: 0) {
+                if let selectionCitation, showsSelectionPill {
+                    selectionControls(selectionCitation, wraps: wraps)
+                } else {
+                    navigationSelector(controls, wraps: wraps)
+                }
+                divider
+                narrationButton
+                divider
+                actionsMenu
             }
-            divider
-            narrationButton
-            divider
-            actionsMenu
         }
-        .superGlassSurface(
-            in: RoundedRectangle(cornerRadius: 22),
-            morph: GlassMorphID("nav.center", in: glassNamespace)
-        )
     }
 
     private var divider: some View {
