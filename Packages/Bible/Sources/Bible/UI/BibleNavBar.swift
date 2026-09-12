@@ -127,12 +127,16 @@ struct BibleNavBar: View {
         }
     }
 
+    @ViewBuilder
     private func navigationPill(_ controls: HistoryControls, wraps: Bool) -> some View {
-        Group {
-            if wraps, dynamicTypeSize.isAccessibilitySize {
-                ViewThatFits(in: .horizontal) {
+        if wraps, dynamicTypeSize.isAccessibilitySize {
+            ViewThatFits(in: .horizontal) {
+                BibleNavigationPill(morph: GlassMorphID("nav.center", in: glassNamespace)) {
                     navigationRow(controls, wraps: wraps)
                         .fixedSize(horizontal: true, vertical: false)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                BibleNavigationPill(morph: GlassMorphID("nav.center", in: glassNamespace)) {
                     VStack(spacing: 0) {
                         passageControls(controls, wraps: wraps)
                         Rectangle()
@@ -147,14 +151,12 @@ struct BibleNavBar: View {
                         }
                     }
                 }
-            } else {
+            }
+        } else {
+            BibleNavigationPill(morph: GlassMorphID("nav.center", in: glassNamespace)) {
                 navigationRow(controls, wraps: wraps)
             }
         }
-        .superGlassSurface(
-            in: RoundedRectangle(cornerRadius: 22),
-            morph: GlassMorphID("nav.center", in: glassNamespace)
-        )
     }
 
     private func navigationRow(_ controls: HistoryControls, wraps: Bool) -> some View {

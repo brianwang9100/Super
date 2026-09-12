@@ -201,6 +201,66 @@ struct BibleNavBarSnapshotTests {
         #expect(size.height < 100, "A second toolbar row exceeds the single-row height budget")
     }
 
+    @Test("the combined pill matches the hamburger height", arguments: ["John", "2 Thessalonians", "Song of Solomon"])
+    func navigationMatchesHamburgerHeight(book: String) {
+        for fontScale in [1.0, 1.5] {
+            let host = UIHostingController(rootView: bar(bookName: book, showsChapterChevrons: false)
+                .superTheme(.make(.vellumLight))
+                .superTypography(.make(.serif, fontScale: fontScale)))
+            let size = host.sizeThatFits(in: CGSize(width: 375, height: 1000))
+            #expect(abs(size.height - 60) < 0.5, "44-point controls plus 16 points of vertical padding")
+        }
+    }
+
+    @Test("height fitting preserves the pill aspect ratio as its content size changes")
+    func pillPreservesAspectRatio() {
+        let host = UIHostingController(rootView: PillSizeProbe(size: CGSize(width: 280, height: 50)))
+        for natural in [
+            CGSize(width: 280, height: 50), CGSize(width: 420, height: 90),
+            CGSize(width: 280, height: 50), CGSize(width: 160, height: 40),
+        ] {
+            host.rootView = PillSizeProbe(size: natural)
+            let fitted = host.sizeThatFits(in: CGSize(width: 1000, height: 1000))
+            #expect(abs(fitted.height - min(natural.height, 44)) < 0.5)
+            #expect(abs(fitted.width / fitted.height - natural.width / natural.height) < 0.02)
+        }
+    }
+
+    private struct PillSizeProbe: View {
+        @Namespace private var glassNamespace
+        let size: CGSize
+
+        var body: some View {
+            BibleNavigationPill(morph: GlassMorphID("test.pill", in: glassNamespace)) {
+                Color.clear.frame(width: size.width, height: size.height)
+            }
+        }
+    }
+
+    @Test("long selection citations fit within the available fallback width")
+    func longSelectionFitsAvailableWidth() {
+        let host = UIHostingController(rootView: LongSelectionPillProbe())
+        let fitted = host.sizeThatFits(in: CGSize(width: 220, height: 1000))
+        #expect(fitted.width <= 220)
+        #expect(abs(fitted.height - 44) < 0.5)
+    }
+
+    private struct LongSelectionPillProbe: View {
+        @Namespace private var glassNamespace
+
+        var body: some View {
+            BibleNavigationPill(morph: GlassMorphID("test.selection", in: glassNamespace)) {
+                HStack(spacing: 0) {
+                    Text("Psalm 119:1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25")
+                        .font(SuperTypography.make(.serif).font(size: 13, weight: .semibold))
+                        .padding(8)
+                        .frame(minHeight: 44)
+                    Color.clear.frame(width: 120, height: 44)
+                }
+            }
+        }
+    }
+
     @Test("passages share the p90 preferred book width")
     func selectorUsesP90BookWidth() {
         let short = UIHostingController(rootView: SelectorSizeProbe(book: "John"))
