@@ -60,7 +60,8 @@ Files: `AnnotationDisclaimerSheet.swift`, `BibleStudySheetsModifier.swift` if pr
 - [ ] Complete exhaustive secondary interaction checks, including short-window voice picker and share cancellation. These remain documented spot-check limits for this starting-point PR.
 - [x] Run a separate implementation review, resolve findings, and repeat affected checks.
 - [x] Update the audit with implementation, validation results and committed evidence links.
-- [ ] Create a draft PR with the repository template and local results. Monitor applicable CI and Codex review. After explicit Codex approval of the current revision and passing CI, mark ready, enable auto-merge with required checks enforced, and verify merge.
+- [x] Create draft PR #372 with the repository template and local results.
+- [ ] Monitor applicable CI and Codex review. After explicit Codex approval of the current revision and passing CI, mark ready, enable auto-merge with required checks enforced, and verify merge.
 
 ## Progress
 
@@ -71,4 +72,6 @@ Files: `AnnotationDisclaimerSheet.swift`, `BibleStudySheetsModifier.swift` if pr
 
 - Both app targets support portrait only on iPhone (project.yml); hardware rotation was tested and correctly keeps the app in portrait. iPad retains all four orientations. No orientation policy was changed.
 
-- Implementation and independent review complete. Local results: 2,436 package tests, 185 affected simulator tests, 48 visual-inventory guard tests, and both app builds passed. Eight new captures bring the tracked inventory from 591 to 599; all existing phone PNGs are unchanged. See the audit for the manual checks and remaining limits.
+- Implementation and independent review complete. Local results: 2,436 package tests, 189 affected simulator tests, 48 visual-inventory guard tests, and both app builds passed. Eight new captures bring the tracked inventory from 593 to 601; all existing phone PNGs from main are unchanged. See the audit for the manual checks and remaining limits.
+
+- Integrated main PR #371 after CI identified stale navigation expectations in the two new reader captures. Reproduced the two mismatches locally, inspected both renderings, explicitly refreshed only those new captures, and passed all 73 affected Bible simulator tests plus 953 package tests. Existing phone baselines from main are unchanged. The new total includes main's two navigation accessibility captures; integration review found no serious actionable issues.
