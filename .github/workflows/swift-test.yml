@@ -57,7 +57,7 @@ jobs:
   test:
     needs: [changes, discover]
     if: needs.changes.outputs.code == 'true'
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +69,7 @@ jobs:
         # Pin the toolchain so runner-image updates cannot silently change compiler behavior.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.4.1"
+          xcode-version: "27.0"
 
       - name: Show toolchain
         run: |
@@ -83,7 +83,7 @@ jobs:
           # Cache entries are immutable: include source inputs so rebuilt outputs get saved.
           # Keep architecture/toolchain boundaries in fallback keys.
           key: >-
-            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc26.4.1-${{ matrix.package }}-${{
+            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc27.0-${{ matrix.package }}-${{
               hashFiles(
                 format('Packages/{0}/Package.swift', matrix.package),
                 format('Packages/{0}/Package.resolved', matrix.package),
@@ -94,7 +94,7 @@ jobs:
               )
             }}
           restore-keys: |
-            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc26.4.1-${{ matrix.package }}-
+            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc27.0-${{ matrix.package }}-
 
       - name: Run tests
         working-directory: Packages/${{ matrix.package }}

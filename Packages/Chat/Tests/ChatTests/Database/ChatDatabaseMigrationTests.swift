@@ -159,14 +159,14 @@ struct ChatDatabaseMigrationTests {
                    maxContextTokens, isSelected, createdAt
             FROM modelConfiguration ORDER BY id
             """
-        let before = try queue.read { db in
-            try Row.fetchAll(db, sql: legacyColumns)
+        let before = try await queue.read { db in
+            try Row.fetchAll(db, sql: legacyColumns).map { row in row.map { $0.1 } }
         }
 
         try migrator.migrate(queue)
 
-        let after = try queue.read { db in
-            try Row.fetchAll(db, sql: legacyColumns)
+        let after = try await queue.read { db in
+            try Row.fetchAll(db, sql: legacyColumns).map { row in row.map { $0.1 } }
         }
         #expect(before.count == 2)
         #expect(after == before)

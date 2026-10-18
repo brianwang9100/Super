@@ -38,6 +38,34 @@ def command(args):
                           timeout=120).stdout.strip()
 
 
+def validate_runtime_disks(disks, runtime, pin):
+    suffix = 'iOS-' + '-'.join(pin['ios_version'].split('.')[:2])
+    matches = [disk for disk in disks.values()
+               if disk.get('runtimeIdentifier', '').endswith(suffix)]
+    if len(matches) == 1 and matches[0].get('build') == pin['ios_build']:
+        return
+    ready = [disk for disk in matches if disk.get('state') == 'Ready']
+    if len(ready) == 1:
+        active = ready[0]
+        identity = ('path', 'kind', 'runtimeIdentifier', 'version', 'build')
+        # macOS 27 can retain a superseded Cryptex mount for the same asset.
+        # Accept it only when the available runtime resolves to the Ready mount.
+        if (active.get('build') == pin['ios_build']
+                and active.get('version') == pin['ios_version']
+                and active.get('kind') == 'Patchable Cryptex Disk Image'
+                and all(active.get(key) for key in identity)
+                and active.get('runtimeBundlePath')
+                and active['runtimeBundlePath'] == runtime.get('bundlePath')
+                and all(disk is active or (
+                    disk.get('state') == 'Unusable'
+                    and disk.get('unusableSubstate') == 'Cryptex Mount Preferred'
+                    and disk.get('unusableErrorMessage') == 'Cryptex Mount Preferred'
+                    and all(disk.get(key) == active[key] for key in identity)
+                ) for disk in matches)):
+            return
+    raise ValueError('Ambiguous or stale pinned runtime disk images')
+
+
 def exists(path):
     """Do not mistake inaccessible paths or dangling symlinks for deletion."""
     try:

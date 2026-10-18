@@ -16,7 +16,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'worktree_simulator.py'
 spec = importlib.util.spec_from_file_location('worktree_simulator', SCRIPT)
 lifecycle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lifecycle)
-RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
+RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
 MODEL = 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'
 PIN = json.loads((SCRIPT.parent / 'VisualTesting/simulator-pins.json').read_text())
 
@@ -28,13 +28,13 @@ class FakeHost:
         self.fail = None
         self.inventory = None
         self.on_shutdown = lambda: None
-        self.build = '23E254a'
+        self.build = '24A434'
 
     def run(self, args):
         if args[0] == 'git':
             return lifecycle.command(args)
         if args == ['xcodebuild', '-version']:
-            return 'Xcode 26.4.1\nBuild version 17E202'
+            return 'Xcode 27.0\nBuild version 27A266a'
         if args[:3] != ['xcrun', 'simctl', 'list']:
             action = args[2]
             self.mutations.append(args[2:])
@@ -56,7 +56,7 @@ class FakeHost:
         if args[3] == 'devices':
             return self.inventory if self.inventory is not None else json.dumps({'devices': {RUNTIME: list(self.devices.values())}})
         if args[3] == 'runtimes':
-            return json.dumps({'runtimes': [{'identifier': RUNTIME, 'version': '26.4.1',
+            return json.dumps({'runtimes': [{'identifier': RUNTIME, 'version': '27.0',
                 'buildversion': self.build, 'isAvailable': True}]})
         if args[3] == 'devicetypes':
             return json.dumps({'devicetypes': [{'name': 'iPhone 17', 'identifier': MODEL}]})

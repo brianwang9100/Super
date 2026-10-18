@@ -55,7 +55,7 @@ The runner explicitly limits modules to Chat/Core and filters file/display ident
 
 ## Fail-closed local workflow
 
-Use Xcode **26.4.1 / 17E202**, iOS **26.4.1 / 23E254a**, and an **iPhone 17** at **3×**. XcodeGen is **2.45.4**. The driver verifies versions and the registered device's runtime, type, and availability before any capture. It refuses missing or mismatched pins. Keep only build 23E254a for the conflated iOS-26-4 identifier. Other iOS minor runtimes are not selected.
+Use Xcode **27.0 / 27A266a**, iOS **27.0 / 24A434**, and an **iPhone 17** at **3×**. XcodeGen is **2.45.4**. The driver verifies versions and the registered device's runtime, type, and availability before any capture. It refuses missing or mismatched pins. Keep only build 24A434 for the iOS-27-0 identifier. Other iOS minor runtimes are not selected.
 
 Use the shared registered worktree simulator:
 

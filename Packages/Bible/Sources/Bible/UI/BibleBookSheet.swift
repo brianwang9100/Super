@@ -276,12 +276,12 @@ struct BibleBookSheet: View {
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
+            .id(Self.bookRowID(book.id))
 
             if isExpanded {
                 chapterGrid(for: book)
             }
         }
-        .id(Self.bookRowID(book.id))
     }
 
     /// Decorative ribbons combine into one VoiceOver element; they add no tap targets.

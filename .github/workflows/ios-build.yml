@@ -35,7 +35,7 @@ jobs:
     # A failed target must not cancel the other target's build.
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +47,7 @@ jobs:
         # Pin Xcode so runner-image updates cannot change the snapshot renderer.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.4.1"
+          xcode-version: "27.0"
 
       - name: Show toolchain
         run: xcodebuild -version
@@ -65,9 +65,9 @@ jobs:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
             ~/Library/Caches/org.swift.swiftpm
-          key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          key: ios-spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
-            ios-spm-${{ runner.os }}-
+            ios-spm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Cache DerivedData build products
         # Reuse per-scheme build products; xcodebuild still recompiles changed inputs.
@@ -75,9 +75,9 @@ jobs:
         with:
           path: ~/Library/Developer/Xcode/DerivedData/Super-*/Build
           # Include the pinned toolchain version to prevent stale-module failures across Xcode updates.
-          key: ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          key: ios-dd-${{ runner.os }}-${{ runner.arch }}-xc27.0-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
-            ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-
+            ios-dd-${{ runner.os }}-${{ runner.arch }}-xc27.0-${{ matrix.scheme }}-
 
       - name: Build (iOS Simulator)
         env:
