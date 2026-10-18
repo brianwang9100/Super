@@ -9,7 +9,7 @@ import sys
 import tempfile
 import shutil
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from worktree_simulator import read_pin
+from worktree_simulator import read_pin, validate_runtime_disks
 from prepare_renderer import prepare
 from verify import verify_exports
 from comparison import compare, record, require_local_recording
@@ -45,9 +45,7 @@ def main():
             or matches[0].get('version') != pins['ios_version'] or not matches[0]['isAvailable']):
         sys.exit('Refusing capture: expected only the pinned iOS runtime version and build')
     disks = json.loads(output('xcrun', 'simctl', 'runtime', 'list', '-j'))
-    minor_disks = [r for r in disks.values() if r.get('runtimeIdentifier', '').endswith(runtime_suffix)]
-    if len(minor_disks) != 1 or minor_disks[0].get('build') != pins['ios_build']:
-        sys.exit('Refusing capture: ambiguous or stale pinned runtime disk images')
+    validate_runtime_disks(disks, matches[0], pins)
     simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'),
                        'ensure', '--repo', str(ROOT)).strip()
     requested = args.simulator or os.environ.get('VISUAL_SIMULATOR_UDID')
@@ -71,7 +69,7 @@ def main():
         'packages': {'SnapshotPreviews': {'path': str(renderer), 'url': None, 'revision': None}}
     }))
     (run / 'environment.json').write_text(json.dumps({'xcode': pins['xcode_version'], 'build': pins['xcode_build'],
-        'runtime': matches[0], 'runtimeDisk': minor_disks[0], 'device': selected[0],
+        'runtime': matches[0], 'runtimeDisks': disks, 'device': selected[0],
         'rendererPatchSHA256': patch_digest}, indent=2))
     subprocess.run(['xcodegen', 'generate', '--spec', str(generated_spec), '--project', str(build)],
                    cwd=ROOT, check=True)

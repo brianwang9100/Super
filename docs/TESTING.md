@@ -49,7 +49,7 @@ Per-screen suites use Vellum light/dark for primary layouts. `ThemeGallerySnapsh
 
 ## Simulator environment
 
-The source of truth is [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both capture drivers, the worktree simulator helper, and the local guard. Current pins are Xcode **26.4.1 / `17E202`**, XcodeGen **2.45.4**, iOS **26.4.1 / `23E254a`**, and **iPhone 17**. Match the exact toolchain and runtime builds. Coordinate pin changes with CI and review the resulting baseline changes.
+The source of truth is [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both capture drivers, the worktree simulator helper, and the local guard. Current pins are Xcode **27.0 / `27A266a`**, XcodeGen **2.45.4**, iOS **27.0 / `24A434`**, and **iPhone 17**. Match the exact toolchain and runtime builds. Coordinate pin changes with CI and review the resulting baseline changes.
 
 ```bash
 xcodebuild -version
@@ -57,7 +57,7 @@ xcrun simctl list runtimes iOS
 xcrun simctl runtime list
 ```
 
-Both `23E244` and `23E254a` report as iOS 26.4 and share the simulator runtime identifier. Keep only the pinned build installed for that minor. When the default Xcode differs, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'` to the installed pinned toolchain. The local [simulator guard](../.codex/hooks/enforce-snapshot-sim.py) checks concrete destinations against the shared pins.
+Keep only the pinned runtime build installed for the iOS 27.0 minor version. When the default Xcode differs, set `DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer'` to the installed pinned toolchain. The local [simulator guard](../.codex/hooks/enforce-snapshot-sim.py) checks concrete destinations against the shared pins.
 
 Use a dedicated **per-worktree** simulator for tests and manual verification, never a shared booted device. The capture drivers call `python3 Scripts/worktree_simulator.py ensure` and reuse its registered UUID. Local visual commands, from the repository root:
 

@@ -209,6 +209,9 @@ public struct MessageList: View {
             // preserve the leading reading edge; only a user action calls scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .sizeChanges)
+            .transaction { transaction in
+                transaction.scrollContentOffsetAdjustmentBehavior = .disabled
+            }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 ScrollToBottomButton.VisibilityState.isAwayFromBottom(geometry)
             } action: { _, isAway in

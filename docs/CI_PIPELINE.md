@@ -122,7 +122,7 @@ jobs:
           echo "applets=$CHANGED" >> "$GITHUB_OUTPUT"
 
   swiftlint:
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - name: Install SwiftLint
@@ -132,7 +132,7 @@ jobs:
 
   build:
     needs: [detect-changes]
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       matrix:
         platform: [iOS, macOS]
@@ -166,7 +166,7 @@ jobs:
   test-applets:
     needs: [detect-changes]
     if: needs.detect-changes.outputs.applets != '[]'
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -199,7 +199,7 @@ jobs:
           flags: ${{ matrix.applet }}
 
   test-core:
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -215,7 +215,7 @@ jobs:
 
   ui-tests:
     needs: [build]
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -516,7 +516,7 @@ jobs:
 
 ### 9.2 Client Deployment (TestFlight)
 
-The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-26`, pins Xcode `26.4.1` (iOS 26.4 SDK) via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
+The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `xcode-27`, pins Xcode `27.0` (build `27A266a`, iOS 27.0 SDK) via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
 
 **Why this way (the four non-obvious choices):**
 
@@ -524,7 +524,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 
 2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
 
-3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5) with 26.4.1 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
+3. **Xcode must be pinned literally on the runner.** The `xcode-27` image uses Apple silicon and includes stable and beta toolchains. We select `xcode-version: "27.0"` explicitly so an image update cannot silently change the compiler. Snapshot jobs also enforce Xcode build `27A266a` and iOS 27.0 simulator build `24A434` through the shared pins. GitHub currently labels this runner as a preview; review image changes and retain the required build/test gates. See [the runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 
 4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
 
@@ -659,13 +659,13 @@ jobs:
 
 ## 12. Cost Considerations
 
-### 12.1 GitHub Actions Pricing (as of early 2026)
+### 12.1 Runner costs
 
 | Runner | Cost per minute | Notes |
 |--------|----------------|-------|
-| Linux (ubuntu-latest) | $0.008 | Cheap. Use for everything that doesn't need macOS. |
-| macOS (macos-26) | $0.08 | **10x more expensive.** Minimize macOS runner time. |
-| macOS (macos-26-xlarge) | $0.16 | Only if build times on standard runners are unacceptable. |
+| Linux (ubuntu-latest) | Check current plan | Use for jobs that do not need macOS. |
+| macOS (xcode-27) | Check current plan | Apple build, test, and snapshot jobs. |
+| macOS (xcode-27-xlarge) | Check current plan | Evaluate only if standard runner build times are unacceptable. |
 
 ### 12.2 Cost Optimization Strategies
 

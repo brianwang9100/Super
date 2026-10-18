@@ -7,7 +7,7 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: true
   groupSortPosition: top
-  xcodeVersion: "26.4"
+  xcodeVersion: "27.0"
   # XcodeGen cannot model package test schemes; copy the maintained schemes after generation.
   postGenCommand: cp Scripts/xcodegen-extras/Core.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Core.xcscheme && cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme && cp Scripts/xcodegen-extras/Bible.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Bible.xcscheme && cp Scripts/xcodegen-extras/Todo.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Todo.xcscheme
 

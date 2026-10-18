@@ -29,7 +29,7 @@ struct ModelConfigurationSeedingTests {
         #expect(record.apiKeyRef == nil)
         #expect(record.isSelected)
         #expect(record.modelId == AppleFoundationLLMProvider.defaultModelID)
-        #expect(record.maxContextTokens == AppleFoundationLLMProvider.defaultMaxContextTokens)
+        #expect(record.maxContextTokens == AppleFoundationLLMProvider.deviceContextTokens)
         #expect(record.name == AppleFoundationLLMProvider.defaultModelDisplayName)
         #expect(record.createdAt == clock.now())
 

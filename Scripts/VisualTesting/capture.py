@@ -12,7 +12,7 @@ import tempfile
 
 from pipeline import ROOT, PACKAGES, identity, inventories, require_new_output, write_bundle
 sys.path.insert(0, str(ROOT / 'Scripts'))
-from worktree_simulator import read_pin
+from worktree_simulator import read_pin, validate_runtime_disks
 
 
 def output(*command):
@@ -63,9 +63,7 @@ def simulator_environment():
             or matches[0].get('version') != pins['ios_version'] or not matches[0]['isAvailable']):
         raise ValueError('Expected only the available pinned iOS runtime version and build')
     disks = json.loads(output('xcrun', 'simctl', 'runtime', 'list', '-j'))
-    disks = [r for r in disks.values() if r.get('runtimeIdentifier', '').endswith(runtime_suffix)]
-    if len(disks) != 1 or disks[0].get('build') != pins['ios_build']:
-        raise ValueError('Ambiguous or stale pinned iOS runtime disk')
+    validate_runtime_disks(disks, matches[0], pins)
     simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'), 'ensure', '--repo', str(ROOT))
     if os.environ.get('VISUAL_SIMULATOR_UDID', simulator) != simulator:
         raise ValueError('VISUAL_SIMULATOR_UDID must identify the registered worktree simulator')
@@ -79,7 +77,7 @@ def simulator_environment():
     # Fresh hosted simulators can spend several minutes migrating system data.
     # Keep readiness bounded and fail before testing if boot still cannot finish.
     subprocess.run(['xcrun', 'simctl', 'bootstatus', simulator, '-b'], check=True, timeout=900)
-    return simulator, {'xcode': pins['xcode_version'], 'build': pins['xcode_build'], 'runtime': matches[0], 'device': selected[0]}
+    return simulator, {'xcode': pins['xcode_version'], 'build': pins['xcode_build'], 'runtime': matches[0], 'runtimeDisks': disks, 'device': selected[0]}
 
 
 def test_count(result):
@@ -104,6 +102,25 @@ def run_suites(command, suites, package, evidence, environment, runner=subproces
             raise ValueError(f'No tests executed for selected suite {package}/{suite}')
         if resolved is not None:
             verify_resolution(resolved)
+
+
+def prepare_project(root, build):
+    generated = build / 'Project'
+    generated.mkdir(parents=True, exist_ok=True)
+    spec = generated / 'project.json'
+    # Capture generation must not overwrite signing edits in the open project.
+    spec.write_text(json.dumps({'include': [str(root / 'project.yml')],
+                               'options': {'postGenCommand': ''}}))
+    subprocess.run(['xcodegen', 'generate', '--spec', str(spec), '--project-root', str(root),
+                    '--project', str(generated)], cwd=root, check=True, timeout=120)
+    project = generated / 'Super.xcodeproj'
+    schemes = project / 'xcshareddata/xcschemes'
+    schemes.mkdir(parents=True, exist_ok=True)
+    packages = os.path.relpath(root / 'Packages', generated)
+    for source in (root / 'Scripts/xcodegen-extras').glob('*.xcscheme'):
+        (schemes / source.name).write_text(source.read_text().replace(
+            'container:Packages/', f'container:{packages}/'))
+    return project
 
 
 def capture_environment(record=False, environ=None):
@@ -141,11 +158,11 @@ def main():
     images.mkdir()
     print(f'Evidence: {evidence}', flush=True)
     (evidence / 'environment.json').write_text(json.dumps(environment_info, indent=2) + '\n')
-    subprocess.run(['xcodegen', 'generate'], cwd=ROOT, check=True, timeout=120)
-    resolved = ROOT / 'Super.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
+    project = prepare_project(ROOT, build)
+    resolved = project / 'project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
     resolved.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(__file__).with_name('Package.resolved'), resolved)
-    options = ['-project', str(ROOT / 'Super.xcodeproj'), '-scheme', args.package,
+    options = ['-project', str(project), '-scheme', args.package,
                '-destination', f'platform=iOS Simulator,id={simulator}',
                '-derivedDataPath', str(build / f'DerivedData-{args.package}'),
                '-parallel-testing-enabled', 'NO', '-testLanguage', 'en', '-testRegion', 'US',

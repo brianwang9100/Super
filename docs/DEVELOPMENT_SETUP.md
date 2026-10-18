@@ -10,9 +10,9 @@ Self-host guide for developers who want to clone the repo, run the backend local
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| macOS | 15+ | Required for Xcode and iOS development |
-| Xcode | 26.4.1 | Swift 6, SwiftUI. CI is pinned to this exact build; mismatches break SwiftUI snapshot baselines. |
-| XcodeGen | latest | `brew install xcodegen` — generates `Super.xcodeproj` from `project.yml` |
+| macOS | 26.6+ | Required for Xcode 27 |
+| Xcode | 27.0 (`27A266a`) | Swift 6, SwiftUI. CI is pinned to this exact build; mismatches break SwiftUI snapshot baselines. |
+| XcodeGen | 2.45.4 | `brew install xcodegen` — generates `Super.xcodeproj` from `project.yml` |
 | Docker Desktop | Latest | *Future:* runs Postgres, Redis, and the server |
 | Node.js | 22+ | *Future:* only needed if running the server outside Docker |
 | Git | Latest | |
